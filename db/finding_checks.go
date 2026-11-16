@@ -12,14 +12,14 @@ import (
 
 const FindingVerifierAgentKey = "verifier"
 
-// Finding check kinds: verify = 上报后的反证验证(出生证); retest 预留给后续
-// 与 finding_retests 管线合一(W3 合并后的增量重验也走这里)。
+// Finding check kinds: verify = 報告後の反証検証（出生証明）; retest は後続の
+// finding_retests パイプラインへの統合用に予約（W3 統合後の増分再検証もここを通る）。
 const (
 	FindingCheckKindVerify = "verify"
 	FindingCheckKindRetest = "retest"
 )
 
-var ErrCheckNotRunning = errors.New("本次验证已结束或尚未开始，请重新发起验证")
+var ErrCheckNotRunning = errors.New("この検証はすでに終了したか、まだ開始されていません。検証をやり直してください")
 
 // validCheckVerdict gates the only three conclusions a check may record.
 func validCheckVerdict(verdict string) bool {
@@ -61,7 +61,7 @@ func scanCheck(row interface{ Scan(...any) error }) (*FindingCheck, error) {
 // triggers; an existing active check is returned without dispatching.
 func (d *DB) CreateFindingCheck(ctx context.Context, findingID int64, kind string) (*FindingCheck, *Conversation, bool, error) {
 	if kind != FindingCheckKindVerify && kind != FindingCheckKindRetest {
-		return nil, nil, false, errors.New("kind 必须为 verify / retest")
+		return nil, nil, false, errors.New("kind は verify / retest のいずれかである必要があります")
 	}
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
@@ -70,7 +70,7 @@ func (d *DB) CreateFindingCheck(ctx context.Context, findingID int64, kind strin
 	defer tx.Rollback()
 	var title string
 	var snapshot []byte
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(f.name,''), NULLIF(f.vulnclass,''), '未分类'),
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(f.name,''), NULLIF(f.vulnclass,''), '未分類'),
 	jsonb_build_object('finding', to_jsonb(f),
 	 'assets', COALESCE((SELECT jsonb_agg(to_jsonb(a)) FROM assets a WHERE f.asset_ids @> to_jsonb(ARRAY[a.id])), '[]'::jsonb),
 	 'constraints', COALESCE((SELECT jsonb_agg(to_jsonb(c)) FROM task_constraints c JOIN tasks t ON t.exploration_id=c.exploration_id WHERE t.id=f.task_id), '[]'::jsonb))
@@ -90,7 +90,7 @@ func (d *DB) CreateFindingCheck(ctx context.Context, findingID int64, kind strin
 		title = string(runes[:100])
 	}
 	conv, err := scanConv(tx.QueryRowContext(ctx, `INSERT INTO conversations(agent_key,title) VALUES ($1,$2) RETURNING `+convCols,
-		FindingVerifierAgentKey, fmt.Sprintf("验证 #%d · %s", findingID, title)))
+		FindingVerifierAgentKey, fmt.Sprintf("検証 #%d · %s", findingID, title)))
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -101,7 +101,7 @@ func (d *DB) CreateFindingCheck(ctx context.Context, findingID int64, kind strin
 	}
 	msg := c.InitialMessage()
 	_, err = tx.ExecContext(ctx, `INSERT INTO conversation_activities(conversation_id,worker,kind,summary,detail) VALUES ($1,$2,'user',$3,$4)`,
-		conv.ID, FindingVerifierAgentKey, fmt.Sprintf("请验证漏洞 #%d", findingID), msg)
+		conv.ID, FindingVerifierAgentKey, fmt.Sprintf("脆弱性 #%d の検証をお願いします", findingID), msg)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -164,14 +164,14 @@ func (d *DB) StartFindingCheck(ctx context.Context, id int64) (bool, error) {
 // runtime conversation. Identical retries are safe; a second verdict is refused.
 func (d *DB) RecordFindingCheckResult(ctx context.Context, conversationID int64, verdict, summary, evidence string) error {
 	if !validCheckVerdict(verdict) {
-		return errors.New("verdict 必须为 verified / false_positive / inconclusive")
+		return errors.New("verdict は verified / false_positive / inconclusive のいずれかである必要があります")
 	}
 	summary, evidence = strings.TrimSpace(summary), strings.TrimSpace(evidence)
 	if summary == "" || evidence == "" {
-		return errors.New("summary 与 evidence 不能为空；无法确认时说明实际检查及阻塞原因")
+		return errors.New("summary と evidence を入力してください;確認できない場合は実際のチェック内容と阻害要因を説明してください")
 	}
 	if len(summary) > 16000 || len(evidence) > 128000 {
-		return errors.New("验证结论过长（summary ≤ 16KB，evidence ≤ 128KB）")
+		return errors.New("検証結果が長すぎます（summary ≤ 16KB、evidence ≤ 128KB）")
 	}
 	res, err := d.ExecContext(ctx, `UPDATE finding_checks SET verdict=$2,summary=$3,evidence=$4
 	WHERE conversation_id=$1 AND status='running' AND (verdict='' OR (verdict=$2 AND summary=$3 AND evidence=$4))`, conversationID, verdict, summary, evidence)
@@ -192,8 +192,8 @@ func (d *DB) RecordFindingCheckResult(ctx context.Context, conversationID int64,
 // still triage-pending so a replay cannot overwrite a later manual decision):
 //
 //	verified       → findings.status='confirmed'
-//	false_positive → findings.status='false_positive' + 探索节点 state→'dismissed'
-//	inconclusive   → 不改状态,留人工
+//	false_positive → findings.status='false_positive' + 探索ノード state→'dismissed'
+//	inconclusive   → ステータスを変えず、手動判断に委ねる
 func (d *DB) FinishFindingCheck(id int64, status, reason string) error {
 	if status != "completed" && status != "failed" && status != "stopped" {
 		return errors.New("invalid terminal check status")
@@ -215,7 +215,7 @@ func (d *DB) FinishFindingCheck(id int64, status, reason string) error {
 	var finalStatus, verdict string
 	err = tx.QueryRow(`UPDATE finding_checks SET
 	status=CASE WHEN $2='completed' AND verdict='' THEN 'failed' ELSE $2 END,
-	error=CASE WHEN $2='completed' AND verdict='' THEN 'Agent 未保存验证结论，请查看会话后重新验证' ELSE $3 END,
+	error=CASE WHEN $2='completed' AND verdict='' THEN 'Agent が検証結果を保存していません。セッションを確認してから再検証してください' ELSE $3 END,
 	finished_at=now() WHERE id=$1 AND status IN ('pending','running') RETURNING status,verdict`, id, status, reason).Scan(&finalStatus, &verdict)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil // A replay must not overwrite a later manual triage decision.
@@ -235,7 +235,7 @@ func (d *DB) FinishFindingCheck(id int64, status, reason string) error {
 		var nodeID *int64
 		err = tx.QueryRow(`UPDATE findings SET status=$1 WHERE id=$2 AND status='pending' RETURNING node_id`, FindingFalsePositive, findingID).Scan(&nodeID)
 		if errors.Is(err, sql.ErrNoRows) {
-			break // 已被人工处置过,不覆盖;节点状态也随之不动。
+			break // すでに手動で処理済みのため上書きしない;ノードの状態も変更しない。
 		}
 		if err != nil {
 			return err
@@ -250,6 +250,6 @@ func (d *DB) FinishFindingCheck(id int64, status, reason string) error {
 }
 
 func (d *DB) RecoverFindingChecks() error {
-	_, err := d.Exec(`UPDATE finding_checks SET status='stopped', error='服务重启，验证已中断，请重新发起', finished_at=now() WHERE status IN ('pending','running')`)
+	_, err := d.Exec(`UPDATE finding_checks SET status='stopped', error='サービス再起動により検証が中断されました。もう一度開始してください', finished_at=now() WHERE status IN ('pending','running')`)
 	return err
 }

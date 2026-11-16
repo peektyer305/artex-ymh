@@ -1,7 +1,7 @@
 package db
 
-// sessions_test.go:sessions 落库层测试。加解密 roundtrip 不依赖 PG;
-// CRUD 走现有 PG-gated skip 模式（无库即跳）。
+// sessions_test.go は sessions の永続化層テスト。暗号化/復号の roundtrip は PG に依存しない;
+// CRUD は既存の PG-gated skip 方式（DB がなければスキップ）。
 
 import (
 	"context"
@@ -10,18 +10,18 @@ import (
 	"testing"
 )
 
-// TestSessionSecretCrypto 不依赖 PG:AES-GCM roundtrip、错密钥失败、
-// 未初始化密钥拒绝明文落库、未知格式拒绝按明文读取。
+// TestSessionSecretCrypto は PG に依存しない：AES-GCM の roundtrip、誤った鍵での失敗、
+// 未初期化の鍵による平文保存の拒否、未知形式の平文読み取り拒否を確認する。
 func TestSessionSecretCrypto(t *testing.T) {
 	master := []byte("test-jwt-key-material-32bytes!!!")
 	key := SessionSecretKey(master)
 	if len(key) != 32 {
-		t.Fatalf("派生密钥长度 = %d", len(key))
+		t.Fatalf("派生鍵の長さ = %d", len(key))
 	}
-	// 域分离:派生密钥不得等于 master 本身或其直接哈希之外的可用形式。
+	// ドメイン分離:派生鍵は master 自身やその直接ハッシュ以外の利用可能な形と一致してはならない。
 	other := SessionSecretKey([]byte("another-master-key-32bytes!!!!"))
 	if string(key) == string(other) {
-		t.Fatal("不同 master 派生出相同密钥")
+		t.Fatal("異なる master から同じ鍵が派生しました")
 	}
 
 	store := &SessionStore{key: key}
@@ -31,10 +31,10 @@ func TestSessionSecretCrypto(t *testing.T) {
 		t.Fatalf("encrypt: %v", err)
 	}
 	if !strings.HasPrefix(enc, secretPrefix) {
-		t.Fatalf("密文缺版本前缀: %q", enc[:16])
+		t.Fatalf("暗号文にバージョン接頭辞がありません: %q", enc[:16])
 	}
 	if strings.Contains(enc, "shell.php") || strings.Contains(enc, "cmd") {
-		t.Fatal("密文不得包含明文片段")
+		t.Fatal("暗号文に平文の断片を含めてはなりません")
 	}
 	dec, err := store.decrypt(enc)
 	if err != nil {
@@ -43,36 +43,36 @@ func TestSessionSecretCrypto(t *testing.T) {
 	if string(dec) != string(secret) {
 		t.Fatalf("roundtrip 不一致: %q", dec)
 	}
-	// 两次加密密文不同（随机 nonce)。
+	// 2 回の暗号化で暗号文が異なる（nonce はランダム）。
 	enc2, _ := store.encrypt(secret)
 	if enc == enc2 {
-		t.Fatal("nonce 未随机化：两次密文相同")
+		t.Fatal("nonce がランダム化されていません：2 回の暗号文が同一です")
 	}
-	// 错密钥解密必须失败（诚实，不返回垃圾）。
+	// 誤った鍵での復号は必ず失敗する（誠実に、ゴミを返さない）。
 	wrong := &SessionStore{key: other}
 	if _, err := wrong.decrypt(enc); err == nil {
-		t.Fatal("错密钥解密应失败")
+		t.Fatal("誤った鍵での復号は失敗すべきです")
 	}
-	// 未初始化密钥:拒绝加密（不落明文）也拒绝解密。
+	// 未初期化の鍵:暗号化（平文を保存しない）も復号も拒否する。
 	noKey := &SessionStore{}
 	if _, err := noKey.encrypt(secret); err == nil {
-		t.Fatal("密钥未初始化应拒绝加密")
+		t.Fatal("鍵が未初期化なら暗号化を拒否すべきです")
 	}
 	if _, err := noKey.decrypt(enc); err == nil {
-		t.Fatal("密钥未初始化应拒绝解密")
+		t.Fatal("鍵が未初期化なら復号を拒否すべきです")
 	}
-	// 无版本前缀的历史/异常数据：拒绝按明文读取。
+	// バージョン接頭辞のない履歴/異常データ:平文としての読み取りを拒否する。
 	if _, err := store.decrypt(`{"url":"x"}`); err == nil {
-		t.Fatal("未知格式应拒绝按明文读取")
+		t.Fatal("不明な形式は平文としての読み取りを拒否すべきです")
 	}
-	// 篡改密文:GCM 认证失败。
+	// 暗号文の改ざん：GCM 認証に失敗する。
 	tampered := enc[:len(enc)-4] + "AAAA"
 	if _, err := store.decrypt(tampered); err == nil {
-		t.Fatal("篡改密文应认证失败")
+		t.Fatal("改ざんした暗号文は認証に失敗すべきです")
 	}
 }
 
-// TestSessionStoreCRUD 走 live PG（现有 skip 模式：无库即跳）。
+// TestSessionStoreCRUD は実際の PG を使う（既存の skip 方式：DB がなければスキップ）。
 func TestSessionStoreCRUD(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
@@ -86,7 +86,7 @@ func TestSessionStoreCRUD(t *testing.T) {
 		Kind: "http_php", URL: "http://target.local/s.php",
 		Secret:          json.RawMessage(`{"url":"http://target.local/s.php","password":"cmd","lang":"php","variant":"eval","funcs":["exec"]}`),
 		Lang:            "php",
-		CreatedByTask:   0, // 可空列
+		CreatedByTask:   0, // NULL を許容する列
 		CreatedByIntent: 0,
 	}
 	id, err := store.Create(ctx, rec)
@@ -95,13 +95,13 @@ func TestSessionStoreCRUD(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Delete(context.Background(), id) })
 
-	// DB 里不得是明文。
+	// DB 内は平文であってはならない。
 	var raw string
 	if err := d.QueryRow(`SELECT secret FROM sessions WHERE id=$1`, id).Scan(&raw); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(raw, secretPrefix) || strings.Contains(raw, "target.local") {
-		t.Fatalf("落库 secret 应为 gcm1 密文: %q", raw[:24])
+		t.Fatalf("保存された secret は gcm1 の暗号文であるべきです: %q", raw[:24])
 	}
 
 	got, err := store.Get(ctx, id)
@@ -112,10 +112,10 @@ func TestSessionStoreCRUD(t *testing.T) {
 		t.Fatalf("got = %+v", got)
 	}
 	if !strings.Contains(string(got.Secret), `"password":"cmd"`) {
-		t.Fatalf("secret 解密失败: %q", got.Secret)
+		t.Fatalf("secret の復号に失敗しました: %q", got.Secret)
 	}
 
-	// List + status 过滤。
+	// List と status による絞り込み。
 	alive, err := store.List(ctx, SessionAlive)
 	if err != nil || len(alive) == 0 {
 		t.Fatalf("List alive: %v", err)
@@ -127,7 +127,7 @@ func TestSessionStoreCRUD(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("List(alive) 未包含新建会话")
+		t.Fatal("List(alive) に新しいセッションが含まれていません")
 	}
 
 	// UpdateStatus + Touch + SetHostAsset。
@@ -135,13 +135,13 @@ func TestSessionStoreCRUD(t *testing.T) {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	if err := store.UpdateStatus(ctx, id, "bogus"); err == nil {
-		t.Fatal("非法状态应报错")
+		t.Fatal("不正なステータスはエラーになるべきです")
 	}
 	store.Touch(ctx, id)
 	store.SetHostAsset(ctx, id, 12345)
 	got, _ = store.Get(ctx, id)
 	if got.Status != SessionDead || got.HostAssetID != 12345 {
-		t.Fatalf("状态/资产回填失败: %+v", got)
+		t.Fatalf("ステータス/アセットの書き戻しに失敗しました: %+v", got)
 	}
 	dead, err := store.List(ctx, SessionDead)
 	if err != nil {
@@ -154,7 +154,7 @@ func TestSessionStoreCRUD(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("List(dead) 未包含新建会话")
+		t.Fatal("List(dead) に新しいセッションが含まれていません")
 	}
 
 	// Delete + Get miss。
@@ -163,6 +163,6 @@ func TestSessionStoreCRUD(t *testing.T) {
 	}
 	got, err = store.Get(ctx, id)
 	if err != nil || got != nil {
-		t.Fatalf("删除后 Get 应为 (nil,nil), got %v, %v", got, err)
+		t.Fatalf("削除後の Get は (nil,nil) であるべき、実際は %v, %v", got, err)
 	}
 }

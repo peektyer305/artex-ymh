@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ARTEX 安装脚本：① 全部 Docker  ② 本地编译运行
+# ARTEX インストールスクリプト：① 全て Docker  ② ローカルでビルド・実行
 set -euo pipefail
 cd "$(cd "$(dirname "$0")" && pwd)"
 
@@ -10,71 +10,71 @@ die(){  printf '\033[31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 ask(){  local p="$1" d="${2:-}" a; read -rp "$p${d:+ [$d]}: " a; echo "${a:-$d}"; }
 rand(){ head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24; }
 
-# ── docker 环境检测 / 自动安装 ───────────────────
+# ── docker 環境検出 / 自動インストール ───────────────────
 ensure_docker(){
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    ok "已检测到 docker 与 docker compose"; return
+    ok "docker と docker compose を検出しました"; return
   fi
-  warn "未检测到 docker / docker compose"
+  warn "docker / docker compose が見つかりません"
   case "$(uname -s)" in
     Linux)
-      if [ "$(ask '自动安装 Docker? (y/n)' y)" = y ]; then
+      if [ "$(ask 'Docker を自動インストールしますか（y/n）' y)" = y ]; then
         curl -fsSL https://get.docker.com | sh
         sudo usermod -aG docker "$USER" || true
-        ok "Docker 安装完成（用户组变更需重新登录后免 sudo）"
+        ok "Docker のインストールが完了しました（グループ変更の反映には再ログインが必要です）"
       else
-        die "请自行安装 docker 后重试"
+        die "docker をインストールしてから再試行してください"
       fi ;;
-    Darwin) die "macOS 请安装 Docker Desktop：https://www.docker.com/products/docker-desktop/" ;;
-    *)      die "请自行安装 docker 后重试" ;;
+    Darwin) die "macOS では Docker Desktop をインストールしてください：https://www.docker.com/products/docker-desktop/" ;;
+    *)      die "docker をインストールしてから再試行してください" ;;
   esac
 }
 
-# ── ① 全部 Docker ───────────────────────────────
+# ── ① 全て Docker ───────────────────────────────
 install_docker(){
   ensure_docker
   if [ ! -f .env ]; then
     cp .env.example .env 2>/dev/null || true
     local pw key
-    pw="$(ask 'Postgres 密码（回车随机生成）' "$(rand)")"
-    key="$(ask 'ANTHROPIC_API_KEY（可留空，后续在 UI 配）' '')"
+    pw="$(ask 'Postgres パスワード（Enter でランダム生成）' "$(rand)")"
+    key="$(ask 'ANTHROPIC_API_KEY（空欄可、後で UI から設定）' '')"
     sed -i.bak "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${pw}|" .env
     sed -i.bak "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${key}|" .env
     rm -f .env.bak
-    ok "已生成 .env（POSTGRES_PASSWORD 已设置）"
+    ok ".env を生成しました（POSTGRES_PASSWORD 設定済み）"
   else
-    info "沿用已存在的 .env"
+    info "既存の .env を使用します"
   fi
-  info "拉取镜像并启动…"
+  info "イメージを取得して起動します…"
   docker compose pull || true
   docker compose up -d
-  ok "启动完成 → http://localhost:8787"
-  info "查看日志：docker compose logs -f artex"
+  ok "起動しました → http://localhost:8787"
+  info "ログ確認：docker compose logs -f artex"
 }
 
-# ── ② 本地编译运行 ──────────────────────────────
+# ── ② ローカルでビルド・実行 ──────────────────────────────
 install_local(){
-  echo "数据库安装方式："
-  echo "  1) 连接已有 PostgreSQL"
-  echo "  2) 用 Docker 起一个 PostgreSQL（需要 docker）"
-  case "$(ask '选择' 1)" in
+  echo "データベースの準備方法："
+  echo "  1) 既存の PostgreSQL に接続"
+  echo "  2) Docker で PostgreSQL を起動（docker が必要）"
+  case "$(ask '番号を選択' 1)" in
     2)
       ensure_docker
-      local pw; pw="$(ask 'Postgres 密码（回车随机）' "$(rand)")"
+      local pw; pw="$(ask 'Postgres パスワード（Enter でランダム）' "$(rand)")"
       docker run -d --name artex-pg -p 5432:5432 \
         -e POSTGRES_USER=artex -e POSTGRES_PASSWORD="$pw" -e POSTGRES_DB=artex \
         -v artex-pg:/var/lib/postgresql/data postgres:16-alpine
       DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=artex DB_PASS="$pw" DB_NAME=artex DB_SSL=disable ;;
     *)
-      DB_HOST="$(ask '数据库地址' 127.0.0.1)"
-      DB_PORT="$(ask '端口' 5432)"
-      DB_USER="$(ask '账号' artex)"
-      DB_PASS="$(ask '密码' '')"
-      DB_NAME="$(ask '数据库名' artex)"
+      DB_HOST="$(ask 'データベースのアドレス' 127.0.0.1)"
+      DB_PORT="$(ask 'ポート' 5432)"
+      DB_USER="$(ask 'アカウント' artex)"
+      DB_PASS="$(ask 'パスワード' '')"
+      DB_NAME="$(ask 'データベース名' artex)"
       DB_SSL="$(ask 'sslmode (disable/require)' disable)" ;;
   esac
 
-  # 生成 config.json
+  # config.json を生成
   cat > config.json <<JSON
 {
   "database": {
@@ -87,40 +87,40 @@ install_local(){
   }
 }
 JSON
-  ok "已生成 config.json"
+  ok "config.json を生成しました"
 
-  # go 环境检查
-  command -v go >/dev/null 2>&1 || die "未检测到 Go，请先安装 Go（>=1.26）：https://go.dev/dl/"
+  # go 環境の確認
+  command -v go >/dev/null 2>&1 || die "Go が見つかりません。先に Go（>=1.26）をインストールしてください：https://go.dev/dl/"
   ok "Go: $(go version)"
 
-  # 内嵌前端需要 node 出静态产物
+  # フロントエンドの埋め込みには node による静的成果物の生成が必要
   if command -v npm >/dev/null 2>&1; then
-    info "构建前端静态产物…"
+    info "フロントエンドの静的成果物をビルドします…"
     ( cd web && npm ci && npm run build:static )
-    # dist 整个被 gitignore,全新克隆下父目录可能不存在,先建再拷(2026-09 实测踩坑)
+    # dist は全体が gitignore 対象。新規クローンでは親ディレクトリが存在しないことがあるため、先に作成してからコピーする（2026-09 実測で発生）
     mkdir -p server/webui/dist && rm -rf server/webui/dist && cp -r web/out server/webui/dist
-    info "编译内嵌单二进制…"
+    info "フロントエンド埋め込みの単一バイナリをビルドします…"
     CGO_ENABLED=0 go build -tags embedui -trimpath -o artex ./cmd/artex
   else
-    warn "未检测到 npm：将编译**不内嵌前端**的后端（前端需另跑 npm run dev）"
+    warn "npm が見つかりません：**フロントエンドを埋め込まない**バックエンドをビルドします（フロントエンドは別途 npm run dev）"
     CGO_ENABLED=0 go build -o artex ./cmd/artex
   fi
-  ok "编译完成 → ./artex"
+  ok "ビルド完了 → ./artex"
 
-  # 可选：托管给 systemd（崩溃自动拉起 + 开机自启）。守护职责移交 systemd，
-  # 不再套 start.sh；页面一键更新（退出码 75）由 Restart=on-failure 重新拉起。
+  # 任意：systemd に管理を委ねる（クラッシュ時に自動再起動 + 起動時自動開始）。監視の役割は systemd に移し、
+  # start.sh は経由しない。ページのワンクリック更新（終了コード 75）は Restart=on-failure で再起動される。
   if [ "$(uname -s)" = Linux ] && command -v systemctl >/dev/null 2>&1; then
-    if [ "$(ask '安装为 systemd 服务并开机自启? (y/n)' y)" = y ]; then
+    if [ "$(ask 'systemd サービスとしてインストールし起動時に自動開始しますか（y/n）' y)" = y ]; then
       install_systemd
       return
     fi
   fi
 
-  info "启动…（Ctrl-C 退出）"
+  info "起動します…（Ctrl-C で終了）"
   ./artex
 }
 
-# ── ③ 可选：systemd 托管 ────────────────────────
+# ── ③ 任意：systemd による管理 ────────────────────────
 install_systemd(){
   local svc_user="${SUDO_USER:-$(id -un)}"
   asroot(){
@@ -128,42 +128,42 @@ install_systemd(){
   }
   if ! id -u "$svc_user" >/dev/null 2>&1; then
     svc_user="$(id -un)"
-    warn "用户 ${SUDO_USER:-} 不存在，改用当前用户 $svc_user"
+    warn "ユーザー ${SUDO_USER:-} が存在しないため、現在のユーザー $svc_user を使用します"
   fi
 
-  # 环境变量模板：只在不存在时生成，避免覆盖已有配置
+  # 環境変数テンプレート：存在しない場合のみ生成し、既存設定の上書きを回避
   if [ ! -f /etc/artex.env ]; then
     asroot tee /etc/artex.env >/dev/null <<'ENV'
-# ARTEX 环境变量（全部可选），修改后执行 systemctl restart artex 生效。
-# 反弹 shell / 隧道回连平台用的地址（host:port）：
+# ARTEX 環境変数（すべて任意）。変更後は systemctl restart artex で反映されます。
+# リバースシェル / トンネルのコールバック先アドレス（host:port）：
 # ARTEX_CALLBACK_ADDR=1.2.3.4:8787
 ENV
     asroot chmod 600 /etc/artex.env
-    ok "已生成 /etc/artex.env 模板"
+    ok "/etc/artex.env のテンプレートを生成しました"
   else
-    info "沿用已存在的 /etc/artex.env"
+    info "既存の /etc/artex.env を使用します"
   fi
 
-  # 从模板生成 unit：替换安装目录与运行账号
+  # テンプレートから unit を生成：インストールディレクトリと実行アカウントを置換
   sed -e "s|^User=.*|User=${svc_user}|" \
       -e "s|^WorkingDirectory=.*|WorkingDirectory=${PWD}|" \
       -e "s|^ExecStart=.*|ExecStart=${PWD}/artex -addr :8787 -proxy :8788|" \
       packaging/artex.service | asroot tee /etc/systemd/system/artex.service >/dev/null
-  ok "已安装 /etc/systemd/system/artex.service（User=${svc_user}, 目录=${PWD}）"
+  ok "/etc/systemd/system/artex.service をインストールしました（User=${svc_user}, ディレクトリ=${PWD}）"
 
   asroot systemctl daemon-reload
   asroot systemctl enable --now artex
-  ok "ARTEX 已由 systemd 托管 → http://localhost:8787"
-  info "查看日志：journalctl -u artex -f"
+  ok "ARTEX は systemd 管理になりました → http://localhost:8787"
+  info "ログ確認：journalctl -u artex -f"
 }
 
 echo "=============================="
-echo "  ARTEX 安装"
-echo "  1) 全部 Docker 安装"
-echo "  2) 本地运行（go 编译）"
+echo "  ARTEX インストール"
+echo "  1) 全て Docker でインストール"
+echo "  2) ローカルで実行（go ビルド）"
 echo "=============================="
-case "$(ask '选择' 1)" in
+case "$(ask '番号を選択' 1)" in
   1) install_docker ;;
   2) install_local ;;
-  *) die "无效选择" ;;
+  *) die "無効な選択です" ;;
 esac

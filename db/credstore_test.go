@@ -1,7 +1,7 @@
 package db
 
-// credstore_test.go:凭据落库层测试。加解密 roundtrip 不依赖 PG;
-// CRUD 走现有 PG-gated skip 模式(无库即跳)。
+// credstore_test.go:認証情報の永続化層のテスト。暗号化/復号の roundtrip は PG に依存しない。
+// CRUD は既存の PG-gated skip 方式(DB がなければ skip)に従う。
 
 import (
 	"context"
@@ -9,17 +9,17 @@ import (
 	"testing"
 )
 
-// TestCredentialSecretCrypto 不依赖 PG:AES-GCM roundtrip、与 sessions 的域分离、
-// 错密钥失败、未初始化密钥拒绝明文落库、篡改认证失败。
+// TestCredentialSecretCrypto は PG に依存しない：AES-GCM の roundtrip、sessions とのドメイン分離、
+// 誤った鍵での失敗、未初期化鍵での平文保存拒否、改ざん時の認証失敗を検証する。
 func TestCredentialSecretCrypto(t *testing.T) {
 	master := []byte("test-jwt-key-material-32bytes!!!")
 	key := CredentialSecretKey(master)
 	if len(key) != 32 {
-		t.Fatalf("派生密钥长度 = %d", len(key))
+		t.Fatalf("派生鍵の長さ = %d", len(key))
 	}
-	// 域分离:与 sessions 派生密钥不同(同 master、不同域标签)。
+	// ドメイン分離：sessions の派生鍵と異なる(同じ master、異なるドメインラベル)。
 	if string(key) == string(SessionSecretKey(master)) {
-		t.Fatal("credentials 与 sessions 派生密钥相同,域分离失效")
+		t.Fatal("credentials と sessions の派生鍵が同じで、ドメイン分離が機能していません")
 	}
 
 	store := &CredentialStore{key: key}
@@ -28,10 +28,10 @@ func TestCredentialSecretCrypto(t *testing.T) {
 		t.Fatalf("encrypt: %v", err)
 	}
 	if !strings.HasPrefix(enc, secretPrefix) {
-		t.Fatalf("密文缺版本前缀: %q", enc[:16])
+		t.Fatalf("暗号文にバージョン接頭辞がありません: %q", enc[:16])
 	}
 	if strings.Contains(enc, "P@ssw0rd") {
-		t.Fatal("密文不得包含明文片段")
+		t.Fatal("暗号文に平文の断片を含めてはなりません")
 	}
 	dec, err := store.decrypt(enc)
 	if err != nil {
@@ -40,40 +40,40 @@ func TestCredentialSecretCrypto(t *testing.T) {
 	if dec != "P@ssw0rd!" {
 		t.Fatalf("roundtrip 不一致: %q", dec)
 	}
-	// 两次加密密文不同(随机 nonce)。
+	// 2 回の暗号化で暗号文が異なる(ランダム nonce)。
 	enc2, _ := store.encrypt("P@ssw0rd!")
 	if enc == enc2 {
-		t.Fatal("nonce 未随机化:两次密文相同")
+		t.Fatal("nonce がランダム化されていません: 2 回の暗号文が同一です")
 	}
-	// 错密钥(含 sessions 密钥)解密必须失败。
+	// 誤った鍵(sessions の鍵を含む)での復号は必ず失敗する。
 	wrong := &CredentialStore{key: CredentialSecretKey([]byte("another-master-key-32bytes!!!!"))}
 	if _, err := wrong.decrypt(enc); err == nil {
-		t.Fatal("错密钥解密应失败")
+		t.Fatal("誤った鍵での復号は失敗すべきです")
 	}
 	cross := &CredentialStore{key: SessionSecretKey(master)}
 	if _, err := cross.decrypt(enc); err == nil {
-		t.Fatal("sessions 密钥解 credentials 密文应失败(域分离)")
+		t.Fatal("sessions の鍵で credentials の暗号文を復号すると失敗すべきです（ドメイン分離）")
 	}
-	// 未初始化密钥:拒绝加密(不落明文)也拒绝解密。
+	// 未初期化鍵:暗号化を拒否し(平文を保存しない)、復号も拒否する。
 	noKey := &CredentialStore{}
 	if _, err := noKey.encrypt("x"); err == nil {
-		t.Fatal("密钥未初始化应拒绝加密")
+		t.Fatal("鍵が未初期化なら暗号化を拒否すべきです")
 	}
 	if _, err := noKey.decrypt(enc); err == nil {
-		t.Fatal("密钥未初始化应拒绝解密")
+		t.Fatal("鍵が未初期化なら復号を拒否すべきです")
 	}
-	// 无版本前缀:拒绝按明文读取。
+	// バージョン接頭辞なし:平文としての読み取りを拒否する。
 	if _, err := store.decrypt("P@ssw0rd!"); err == nil {
-		t.Fatal("未知格式应拒绝按明文读取")
+		t.Fatal("不明な形式は平文としての読み取りを拒否すべきです")
 	}
-	// 篡改密文:GCM 认证失败。
+	// 暗号文の改ざん：GCM 認証に失敗する。
 	tampered := enc[:len(enc)-4] + "AAAA"
 	if _, err := store.decrypt(tampered); err == nil {
-		t.Fatal("篡改密文应认证失败")
+		t.Fatal("改ざんした暗号文は認証に失敗すべきです")
 	}
 }
 
-// TestMaskSecret 脱敏:前后各 2 字符,过短全掩码。
+// TestMaskSecret はマスク処理:前後 2 文字ずつ残し、短すぎる場合は全体をマスクする。
 func TestMaskSecret(t *testing.T) {
 	cases := map[string]string{
 		"P@ssw0rd!": "P@****d!",
@@ -85,26 +85,26 @@ func TestMaskSecret(t *testing.T) {
 	}
 	for in, want := range cases {
 		if got := MaskSecret(in); got != want {
-			t.Errorf("MaskSecret(%q) = %q,期望 %q", in, got, want)
+			t.Errorf("MaskSecret(%q) = %q、期待は %q", in, got, want)
 		}
 	}
 }
 
-// TestValidCredType 类型全集校验。
+// TestValidCredType は種別の全集合を検証する。
 func TestValidCredType(t *testing.T) {
 	for _, ty := range []string{"password", "hash_nt", "hash_lm", "hash_sha1", "ticket", "ssh_key", "token"} {
 		if !ValidCredType(ty) {
-			t.Errorf("%s 应合法", ty)
+			t.Errorf("%s は有効であるべきです", ty)
 		}
 	}
 	for _, ty := range []string{"", "ntlm", "PASSWORD", "key"} {
 		if ValidCredType(ty) {
-			t.Errorf("%q 不应合法", ty)
+			t.Errorf("%q は有効であってはなりません", ty)
 		}
 	}
 }
 
-// TestCredentialStoreCRUD 走 live PG(现有 skip 模式:无库即跳)。
+// TestCredentialStoreCRUD は live PG で実行する(既存の skip 方式：DB がなければ skip)。
 func TestCredentialStoreCRUD(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
@@ -114,15 +114,15 @@ func TestCredentialStoreCRUD(t *testing.T) {
 	store := NewCredentialStore(d, []byte("test-jwt-key-material-32bytes!!!"))
 	ctx := context.Background()
 
-	// 校验:非法类型/空 secret/缺 task 直接报错,不落库。
+	// 検証:不正な種別/空の secret/task 欠落は即エラーとなり、DB へ書き込まない。
 	if _, err := store.Create(ctx, &CredentialRecord{TaskID: 1, CredType: "ntlm", Secret: "x", Source: "t"}); err == nil {
-		t.Fatal("非法 cred_type 应报错")
+		t.Fatal("不正な cred_type はエラーになるべきです")
 	}
 	if _, err := store.Create(ctx, &CredentialRecord{TaskID: 1, CredType: "password", Source: "t"}); err == nil {
-		t.Fatal("空 secret 应报错")
+		t.Fatal("secret が空ならエラーになるべきです")
 	}
 	if _, err := store.Create(ctx, &CredentialRecord{CredType: "password", Secret: "x", Source: "t"}); err == nil {
-		t.Fatal("缺 task_id 应报错")
+		t.Fatal("task_id が欠けていればエラーになるべきです")
 	}
 
 	rec := &CredentialRecord{
@@ -136,13 +136,13 @@ func TestCredentialStoreCRUD(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Delete(context.Background(), id) })
 
-	// DB 里不得是明文。
+	// DB 内は平文であってはならない。
 	var raw string
 	if err := d.QueryRow(`SELECT secret FROM credentials WHERE id=$1`, id).Scan(&raw); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(raw, secretPrefix) || strings.Contains(raw, "aad3b435") {
-		t.Fatalf("落库 secret 应为 gcm1 密文: %q", raw[:24])
+		t.Fatalf("保存された secret は gcm1 の暗号文であるべきです: %q", raw[:24])
 	}
 
 	got, err := store.Get(ctx, id)
@@ -153,7 +153,7 @@ func TestCredentialStoreCRUD(t *testing.T) {
 		t.Fatalf("got = %+v", got)
 	}
 
-	// ListByTask 只回本任务。
+	// ListByTask は自タスクの分だけ返す。
 	other := &CredentialRecord{TaskID: 999999002, CredType: "password", Secret: "x12345", Source: "t"}
 	oid, err := store.Create(ctx, other)
 	if err != nil {
@@ -171,7 +171,7 @@ func TestCredentialStoreCRUD(t *testing.T) {
 	}
 	got, _ = store.Get(ctx, id)
 	if !got.Verified {
-		t.Fatal("SetVerified 未生效")
+		t.Fatal("SetVerified が反映されていません")
 	}
 
 	// Delete + Get miss。
@@ -180,6 +180,6 @@ func TestCredentialStoreCRUD(t *testing.T) {
 	}
 	got, err = store.Get(ctx, id)
 	if err != nil || got != nil {
-		t.Fatalf("删除后 Get 应为 (nil,nil), got %v, %v", got, err)
+		t.Fatalf("削除後の Get は (nil,nil) であるべき、実際は %v, %v", got, err)
 	}
 }

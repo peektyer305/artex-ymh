@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { sseUrl } from "@/lib/api";
 import { isBtwCommand, type SideExchange, type SideHistory, sideAPI } from "@/lib/side-questions";
 
-// crypto.randomUUID 仅在安全上下文可用(https/localhost);经 IP+http 访问时降级。
+// crypto.randomUUID は安全なコンテキスト（https/localhost）でのみ利用可能。IP+http 経由では代替実装に切り替える。
 function newSideRequestID(): string {
   return (
     globalThis.crypto?.randomUUID?.() ?? `btw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
@@ -130,7 +130,7 @@ export function useSideQuestions(parent: string | null) {
     const version = epoch.current;
     let stream: EventSource | null = null;
     let cancelled = false;
-    // F6:SSE 凭据是 60s 一次性 ticket;断流后不再自动重连,由 2s 轮询兜底。
+    // F6:SSE の認証情報は 60 秒のワンタイム ticket。切断後は再接続せず、2 秒ポーリングに任せる。
     void sseUrl(`/api/side-questions/${runningID}/events`)
       .then((url) => {
         if (cancelled) return;
@@ -144,7 +144,7 @@ export function useSideQuestions(parent: string | null) {
             restoreFailedDraft([item]);
             if (item.status !== "running") stream?.close();
           } catch {
-            setError("旁路数据解析失败，请重新打开面板");
+            setError("サイドクエスチョンのデータ解析に失敗しました。パネルを開き直してください");
           }
         });
         stream.addEventListener("cleared", () => {
@@ -153,7 +153,7 @@ export function useSideQuestions(parent: string | null) {
         });
       })
       .catch(() => {
-        // 换票失败(如 token 刚过期)——轮询仍在跑,不视为致命。
+        // ticket 再取得の失敗（token 失効直後など）——ポーリング継続中のため致命的ではない。
       });
     return () => {
       cancelled = true;

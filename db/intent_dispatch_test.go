@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// open 意图计数 + open 意图作废事务(cancel_intent 的 db 路径)。
-// PG-gated:无库即跳,走包内既有 skip 模式。
+// open 意図のカウント + open 意図の取り消しトランザクション(cancel_intent の db パス)。
+// PG 必須：DB が無ければ skip し、パッケージ既存の skip 方式に従う。
 func TestCountOpenIntentsAndCancelOpenIntent(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
@@ -41,11 +41,11 @@ func TestCountOpenIntentsAndCancelOpenIntent(t *testing.T) {
 		t.Fatalf("claim: claimed=%v err=%v", claimed, err)
 	}
 	if n, err := es.CountOpenIntents(); err != nil || n != 2 {
-		t.Fatalf("count=%d err=%v, want 2(running 不计入)", n, err)
+		t.Fatalf("count=%d err=%v, want 2(running は数えない)", n, err)
 	}
 
-	// 作废 open 意图:状态落 stopped、payload 带作废标记、原因挂图成事实、frontier 排除。
-	factID, err := es.CancelOpenIntent(open1, "方向已过期", "mainagent")
+	// open 意図の取り消し:状態は stopped、payload に取り消しマーク、理由はファクトとしてグラフに接続、frontier から除外。
+	factID, err := es.CancelOpenIntent(open1, "方向は期限切れ", "mainagent")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +72,11 @@ func TestCountOpenIntentsAndCancelOpenIntent(t *testing.T) {
 	}
 	for _, fn := range frontier {
 		if fn.ID == open1 {
-			t.Fatal("已作废意图不得再进 frontier")
+			t.Fatal("取り消し済みの意図は frontier に入ってはならない")
 		}
 	}
 
-	// 重复作废 → 状态冲突;作废 running 意图 → 状态冲突(kill_work 的职责)。
+	// 重複取り消し → 状態競合、running 意図の取り消し → 状態競合(kill_work の責務)。
 	if _, err := es.CancelOpenIntent(open1, "again", "mainagent"); !errors.Is(err, ErrIntentStateConflict) {
 		t.Fatalf("re-cancel err=%v, want ErrIntentStateConflict", err)
 	}
@@ -84,10 +84,10 @@ func TestCountOpenIntentsAndCancelOpenIntent(t *testing.T) {
 		t.Fatalf("cancel running err=%v, want ErrIntentStateConflict", err)
 	}
 	if _, err := es.CancelOpenIntent(999999999, "ghost", "mainagent"); err == nil {
-		t.Fatal("不存在的意图必须报错")
+		t.Fatal("存在しない意図はエラーになるべきです")
 	}
 
-	// 其余意图不受影响。
+	// その他の意図は影響を受けない。
 	keep, err := es.GetNode(open2)
 	if err != nil || keep == nil || keep.State != "open" {
 		t.Fatalf("unrelated intent=%+v err=%v, want open", keep, err)

@@ -32,7 +32,7 @@ func rawString(raw json.RawMessage) string {
 type TaskDTO struct {
 	ID                 string        `json:"id"`
 	ExplorationID      int64         `json:"exploration_id"`
-	Name               string        `json:"name"` // 可选任务名称;空=未命名
+	Name               string        `json:"name"` // 任意のタスク名。空 = 名称未設定
 	CategoryID         *int64        `json:"category_id,omitempty"`
 	CategoryName       string        `json:"category_name,omitempty"`
 	Pinned             bool          `json:"pinned"`
@@ -50,7 +50,7 @@ type TaskDTO struct {
 	Tokens             TokenTotalDTO `json:"tokens"` // whole-task token consumption
 	GoalsTotal         int           `json:"goals_total"`
 	GoalsMet           int           `json:"goals_met"`
-	InFlight           int           `json:"in_flight"`                // 运行中 Worker 数（state=running 的意图）
+	InFlight           int           `json:"in_flight"`                // 実行中 Worker 数（state=running の意図）
 	LLMProfileID       *int64        `json:"llm_profile_id,omitempty"` // LLM profile used for this task; nil = default
 	LLMProfileIDs      []int64       `json:"llm_profile_ids"`
 	ActiveLLMProfileID *int64        `json:"active_llm_profile_id,omitempty"`
@@ -59,7 +59,7 @@ type TaskDTO struct {
 	SourceTaskIDs      []string      `json:"source_task_ids"`
 	ArchiveBlockedBy   string        `json:"archive_blocked_by_task_id,omitempty"`
 	CompanyIDs         []int64       `json:"company_ids"`
-	CoverageEnabled    bool          `json:"coverage_enabled"` // 资产覆盖度功能开关(创建时定)
+	CoverageEnabled    bool          `json:"coverage_enabled"` // アセットカバレッジ機能のスイッチ（作成時に確定）
 }
 
 func applyTaskArchiveBlocker(dto *TaskDTO, blockers map[int64]int64) {
@@ -177,7 +177,7 @@ type TaskNodeDTO struct {
 	TS           string `json:"ts"`
 	SourceTaskID string `json:"source_task_id,omitempty"`
 	Inherited    bool   `json:"inherited,omitempty"`
-	DeleteReason string `json:"delete_reason,omitempty"` // 意图假删除(state='deleted')时的删除原因
+	DeleteReason string `json:"delete_reason,omitempty"` // 意図の論理削除（state='deleted'）時の削除理由
 }
 
 func taskNodeDTO(n *db.Node) TaskNodeDTO {
@@ -199,7 +199,7 @@ func taskNodeDTO(n *db.Node) TaskNodeDTO {
 }
 
 // GoalDTO is a goal node with its payload unpacked into text/vulnclass — the shape
-// the 总览「目标管理」UI works with (vs TaskNodeDTO which carries raw payload JSON).
+// the 概要「ゴール管理」UI works with (vs TaskNodeDTO which carries raw payload JSON).
 type GoalDTO struct {
 	ID        string `json:"id"`
 	Text      string `json:"text"`
@@ -233,7 +233,7 @@ func goalDTOs(in []*db.Node) []GoalDTO {
 	return out
 }
 
-// ConstraintDTO is one operation constraint (allow/deny) for the 总览「约束管理」UI.
+// ConstraintDTO is one operation constraint (allow/deny) for the 概要画面の「制約管理」UI.
 type ConstraintDTO struct {
 	ID     string `json:"id"`
 	Kind   string `json:"kind"` // allow | deny
@@ -303,12 +303,12 @@ type FindingDTO struct {
 	ID        string `json:"id"`
 	FindingID string `json:"finding_id,omitempty"` // standalone findings-table id — the handle for status updates
 	VulnClass string `json:"vulnclass"`
-	Name      string `json:"name,omitempty"` // 漏洞名称;为空时前端回退展示 vulnclass
+	Name      string `json:"name,omitempty"` // 脆弱性名。空のときはフロントが vulnclass を代わりに表示する
 	Severity  string `json:"severity"`       // critical | high | medium | low
 	Status    string `json:"status"`         // pending | in_progress | confirmed | resolved | fixed | false_positive | ignored | duplicate | risk_accepted
 	Summary   string `json:"summary"`
 	Evidence  string `json:"evidence"`
-	Report    string `json:"report,omitempty"` // 详细报告(Markdown);仅详情接口返回,列表为空
+	Report    string `json:"report,omitempty"` // 詳細レポート（Markdown）。詳細 API のみ返し、一覧では空
 
 	IntentID        string            `json:"intent_id,omitempty"`
 	ParamID         string            `json:"param_id,omitempty"`
@@ -389,7 +389,7 @@ func findingDTO(n *db.Node) FindingDTO {
 }
 
 // findingDTOsForTask converts a task's finding nodes to DTOs, stamping each with
-// the owning task's id/description so the global 发现 page can group across tasks.
+// the owning task's id/description so the global ファインディング page can group across tasks.
 // meta maps node id → the standalone findings row (id + status + asset ids), so the
 // per-task view shows the same triage state and anchored assets as the global page;
 // nodes with no row keep the 'pending' default and no finding_id (not editable).
@@ -535,8 +535,8 @@ type AgentDTO struct {
 	RunSecs          int    `json:"run_seconds"`
 	WebSearch        bool   `json:"web_search"`
 	InteractiveShell bool   `json:"interactive_shell"`
-	LLMProfileID     *int64 `json:"llm_profile_id"` // 绑定的 LLM 配置;null=跟随任务/全局
-	// P3 触发后处理策略(仅自定义 agent 有意义)。
+	LLMProfileID     *int64 `json:"llm_profile_id"` // 紐付ける LLM 設定。null = タスク/グローバルに追従
+	// P3 トリガー後の処理ポリシー（カスタム agent でのみ意味を持つ）。
 	TriggerRunMode     string `json:"trigger_run_mode"`
 	TriggerMergeMode   string `json:"trigger_merge_mode"`
 	TriggerMaxParallel int    `json:"trigger_max_parallel"`
@@ -590,23 +590,25 @@ type LLMProfileDTO struct {
 	ThinkingType    string  `json:"thinking_type"`
 	ReasoningEffort string  `json:"reasoning_effort"`
 	IsDefault       bool    `json:"is_default"`
-	// 轮询(故障转移)参数：priority 越大越先被选中(激活配置恒为链首)；
-	// pool_exclude=true 则不作为故障转移目标，但仍可被 agent/任务显式绑定。
+	// ポーリング（フェイルオーバー）パラメータ：priority が大きいほど先に選ばれる（有効な設定は常にチェーン先頭）。
+	// pool_exclude=true ならフェイルオーバー先にはならないが、agent/タスクから明示的に紐付けることは可能。
 	Priority    int  `json:"priority"`
 	PoolExclude bool `json:"pool_exclude"`
-	// 收发模式：true=流式(SSE) | false=非流式。没有 omitempty —— false 必须出现在
-	// 响应里，否则前端读不到「非流式」，开关会回落成默认的流式。
+	// 送受信モード：true=ストリーミング（SSE） | false=非ストリーミング。omitempty は付けない——
+	// false がレスポンスに出ないとフロントが「非ストリーミング」を読めず、スイッチが既定の
+	// ストリーミングに戻ってしまう。
 	Streaming bool `json:"streaming"`
-	// 单次回复输出上限(0=不发送，由服务端默认值决定)，以及它用哪个请求字段名
-	// (''=max_tokens | 'max_completion_tokens'，仅 openai 格式有意义)。
+	// 1 回の応答の出力上限（0=送信せず、サーバ側の既定値に任せる）と、それをどのリクエスト
+	// フィールド名で送るか（''=max_tokens | 'max_completion_tokens'、openai 形式のみ意味を持つ）。
 	MaxTokens      int    `json:"max_tokens"`
 	MaxTokensField string `json:"max_tokens_field"`
-	// 自定义会话头名：非空时每次请求带该 HTTP 头，头值=当前会话/意图的 session id。
-	// ''=不发送。用于按 session-id 头做提示缓存/粘性路由的网关。
+	// カスタムセッションヘッダ名：空でなければ毎回のリクエストにこの HTTP ヘッダを付け、
+	// 値=現在のセッション/意図の session id。''=送信しない。session-id ヘッダでプロンプト
+	// キャッシュ/スティッキールーティングを行うゲートウェイ向け。
 	SessionHeaderKey string `json:"session_header_key"`
-	// 本配置对重试的覆盖(建连/空响应/同 provider 安全窗口)。每项 attempts:
-	// 0=继承全局策略 | -1=关闭该层重试 | >0=次数；interval_ms: 0=用默认指数退避 |
-	// >0=改用该固定毫秒间隔。全 0 = 完全跟随全局，即历史行为。
+	// この設定による再試行の上書き（接続/空応答/同一 provider の安全ウィンドウ）。各項目の attempts：
+	// 0=グローバル方針を継承 | -1=その層の再試行を無効化 | >0=回数。interval_ms：0=既定の指数バックオフ |
+	// >0=その固定ミリ秒間隔に変更。すべて 0 = 完全にグローバルに従う、つまり従来の挙動。
 	Retry db.RetryOverride `json:"retry"`
 }
 

@@ -1,9 +1,9 @@
 // Package guard implements the safety boundary layer (docs §11): an audit log,
 // user-configured intercept-rule evaluation, RoE authorization-scope enforcement
-// (F5, see roe.go — Bash/HTTP 工具的交互目标与任务 task_scope 比对), and
+// (F5, see roe.go — Bash/HTTP ツールの相互作用ターゲットとタスクの task_scope の照合), and
 // Observer/G5 failure attribution. Every tool call passes through the PreToolUse
 // hook before executing. Destructive/exfil gating is no longer hard-coded here —
-// it lives in the DB intercept rules (seeded as ordinary [内置] rules, so users
+// it lives in the DB intercept rules (seeded as ordinary built-in rules, so users
 // can disable or delete them), evaluated via applyIntercept.
 package guard
 
@@ -36,8 +36,8 @@ type Guard struct {
 	reg         *hook.Registry
 	interceptor *intercept.Interceptor // optional; nil disables user-configured rules
 	roe         RoEConfig              // optional; Scope==nil disables the RoE check
-	egress      *EgressGuard           // optional; 批 5 B2 出口审查(敏感指纹拦截),nil 关闭
-	tarpit      *tarpitState           // optional; 批 5 B3 tarpit 熔断,nil 关闭
+	egress      *EgressGuard           // optional; バッチ 5 B2 出口審査（機密フィンガープリントのインターセプト）、nil で無効
+	tarpit      *tarpitState           // optional; バッチ 5 B3 tarpit サーキットブレーカー、nil で無効
 }
 
 // New creates a Guard without user-configured intercept rules (used for pentest
@@ -78,35 +78,35 @@ func (g *Guard) preToolUse(ctx context.Context, ev hook.Event) hook.Result {
 		_ = json.Unmarshal(ev.Input, &in)
 		cmd = in.Text
 	}
-	// 批 5 B2 出口审查:出站内容含平台敏感指纹(LLM key/jwt.key/gate 路径/PG 密码/
-	// callback_addr)即 deny,先于一切其他检查(含下方的 allow 审计——命中时命令
-	// 原文本身就可能带秘密,不能落盘)——这类 deny 不走拦截规则,也不被一键放行
-	// 豁免。审计只记 kind,不落指纹/原文。
+	// バッチ 5 B2 出口審査:送信内容にプラットフォームの機密フィンガープリント（LLM key/jwt.key/gate パス/
+	// PG パスワード/callback_addr）が含まれれば deny。他のあらゆるチェックより先に評価する（下の allow 監査も含む——
+	// 命中時はコマンド原文自体に秘密が含まれ得るため、保存できない）。この種の deny はインターセプトルールを
+	// 通さず、一括許可の対象にもならない。監査には kind のみを記録し、フィンガープリント/原文は残さない。
 	if res, stop := g.checkEgress(ev, cmd); stop {
 		return res
 	}
 	g.record(ev.ToolName, "allow", "", cmd)
-	// RoE 授权范围检查(F5):Bash/HTTP 类工具的交互目标与 task_scope 比对,
-	// 先于用户拦截规则;Out+strict 走 ask,Out+warn 只记审计。
+	// RoE 認可範囲チェック（F5）:Bash/HTTP 系ツールの相互作用ターゲットを task_scope と照合し、
+	// ユーザーのインターセプトルールより先に評価する。Out+strict は ask、Out+warn は監査のみ記録。
 	if res, stop := g.checkRoE(ctx, ev, cmd); stop {
 		return res
 	}
-	// 批 5 B3 tarpit 熔断:每 host 抓取计数,超预算写一次 hint 提示 planner,
-	// 之后对该 host 仍 warn 放行(不硬 block,防误杀真实大站)。
+	// バッチ 5 B3 tarpit サーキットブレーカー：host ごとに取得回数を数え、予算超過時に一度だけ hint を書いて
+	// planner に促す。以降その host へは warn で通過させる（ハード block はせず、実在する大規模サイトの誤爆を防ぐ）。
 	g.checkTarpit(ev)
 	return g.applyIntercept(ctx, ev)
 }
 
-// SetEgress 装配出口审查的敏感指纹集合(server 侧进程内共享一份,见 egress.go)。
-// nil = 关闭。
+// SetEgress は出口審査の機密フィンガープリント集合を設定する（server 側のプロセス内で 1 つを共有。egress.go 参照）。
+// nil = 無効。
 func (g *Guard) SetEgress(e *EgressGuard) {
 	g.mu.Lock()
 	g.egress = e
 	g.mu.Unlock()
 }
 
-// checkEgress 是 PreToolUse 第一道:对 Bash 类命令全文与 WebFetch 的 url/body
-// 做敏感指纹检查,命中 → deny("操作包含平台敏感信息,禁止外发")。
+// checkEgress は PreToolUse の最初の関門：Bash 系コマンド全文と WebFetch の url/body に
+// 機密フィンガープリントの検査を行い、命中 → deny（固定文言でブロックする）。
 func (g *Guard) checkEgress(ev hook.Event, cmd string) (hook.Result, bool) {
 	g.mu.Lock()
 	e := g.egress
@@ -132,9 +132,9 @@ func (g *Guard) checkEgress(ev hook.Event, cmd string) (hook.Result, bool) {
 			continue
 		}
 		if kind, hit := e.Check(text); hit {
-			// 审计/日志只记 kind:命令原文可能本身就含敏感信息,不落盘;
-			// block 文案也不带命中内容,防止把指纹回显给模型。
-			log.Printf("[guard][egress] 命中平台敏感指纹(%s),%s 外发已拦截", kind, ev.ToolName)
+			// 監査/ログには kind のみを記録する:コマンド原文自体に機密が含まれ得るため保存しない。
+			// block の文言にもヒット内容を含めず、モデルへフィンガープリントをエコーしない。
+			log.Printf("[guard][egress] プラットフォームの機密フィンガープリント(%s)に命中しました。%s の外部送信をブロックしました", kind, ev.ToolName)
 			return g.block(ev.ToolName, systemBlockMessage("操作包含平台敏感信息，禁止外发"), ""), true
 		}
 	}
@@ -163,7 +163,7 @@ func (g *Guard) applyIntercept(ctx context.Context, ev hook.Event) hook.Result {
 	}
 	switch dec.Action {
 	case "deny":
-		// 观测:deny 命中不阻塞审批,直接记一条 denied（历史/任务拦截页可见）。
+		// 観測：deny 命中は承認を待たず、denied を 1 件記録する（履歴/タスクのインターセプトページで参照可能）。
 		g.interceptor.Log(ctx, intercept.ConvIDFromContext(ctx), dec, ev.ToolName, ev.Input, "denied")
 		return g.block(ev.ToolName, systemBlockMessage(dec.Message), "")
 	case "allow":
@@ -175,11 +175,11 @@ func (g *Guard) applyIntercept(ctx context.Context, ev hook.Event) hook.Result {
 		// immediately without creating a pending record — avoids orphaned DB entries
 		// and makes execOne complete fast, reducing the race against drainSynthetic.
 		if ctx.Err() != nil {
-			return g.block(ev.ToolName, systemBlockMessage("工作已取消，平台安全管控阻止执行"), "")
+			return g.block(ev.ToolName, systemBlockMessage("作業はキャンセルされました。プラットフォームの安全制御により実行を阻止します"), "")
 		}
 		convID := intercept.ConvIDFromContext(ctx)
 		if !g.interceptor.HandleAsk(ctx, convID, dec, ev.ToolName, ev.Input) {
-			return g.block(ev.ToolName, systemBlockMessage("人工审批未通过（用户拒绝或审批超时）"), "")
+			return g.block(ev.ToolName, systemBlockMessage("手動承認が得られませんでした（ユーザーによる拒否または承認タイムアウト）"), "")
 		}
 		return hook.Result{}
 	}
@@ -189,9 +189,9 @@ func (g *Guard) applyIntercept(ctx context.Context, ev hook.Event) hook.Result {
 // systemBlockMessage frames an intercept block as an ARTEX platform-governance
 // decision so the agent does not mistake it for a target-side defense.
 //
-// The bare reasons ("禁止执行此工具" / "用户拒绝") read exactly like a WAF/403 on
-// the target, so a pentest agent's instinct is to bypass them — rewrite the
-// command, swap the payload, re-encode, retry. That is both futile (the platform
+// The bare reasons ("tool execution forbidden" / "user denied") read exactly like
+// a WAF/403 on the target, so a pentest agent's instinct is to bypass them — rewrite
+// the command, swap the payload, re-encode, retry. That is both futile (the platform
 // blocks the class of action, not one string) and wrong (it's a policy decision,
 // not an obstacle to defeat). This prefix states plainly that the block comes
 // from the platform, is not the target's protection, and that the operation is
@@ -199,8 +199,8 @@ func (g *Guard) applyIntercept(ctx context.Context, ev hook.Event) hook.Result {
 // Audit/history rows keep the raw reason (see Interceptor.Log); only the
 // model-facing tool_result carries this framing.
 func systemBlockMessage(reason string) string {
-	return "【ARTEX 平台管控·非目标防御】此调用被平台拦截。" +
-		"原因：" + reason + "。此操作被禁止。"
+	return "【ARTEX プラットフォーム制御・対象側の防御ではありません】この呼び出しはプラットフォームによりブロックされました。" +
+		"理由：" + reason + "。この操作は禁止されています。"
 }
 
 var reBlocked = regexp.MustCompile(`(?i)\b(403|forbidden|waf|blocked|rate.?limit|429|captcha|denied)\b`)

@@ -14,68 +14,68 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-// sigAsset 是 release.yml 用 minisign 对 SHA256SUMS 生成的签名文件。
+// sigAsset は release.yml が minisign で SHA256SUMS に対して生成する署名ファイル。
 const sigAsset = sumsAsset + ".minisig"
 
-// embeddedPubKey 是 ARTEX Release 的 minisign 公钥（base64，对应 minisign -P 的输出）。
-// 私钥不入库，只保存在 GitHub Secrets 的 MINISIGN_KEY；换 key 时这里与 secret 同步更换。
+// embeddedPubKey は ARTEX Release の minisign 公開鍵（base64、minisign -P の出力に対応）。
+// 秘密鍵はリポジトリに置かず、GitHub Secrets の MINISIGN_KEY にのみ保存する；鍵を替えるときはここも secret と同期して入れ替える。
 const embeddedPubKey = "RWSXIi1nUNeBgfwSraBVDfhBz6DC3SE0sWAK1z5CaLMaqAY7NAcerhIa"
 
-// skipSignEnv 是逃生门：置 1 时跳过验签（仅降级兼容旧 Release 等紧急场景使用，
-// 会打警告）。默认 fail-closed：签名缺失或验不过都拒绝安装。
+// skipSignEnv は緊急用の逃げ道：1 にすると署名検証をスキップする（旧 Release との互換のための
+// 緊急時の用途に限り、警告を出す）。デフォルトは fail-closed：署名がない場合も検証に通らない場合もインストールを拒否する。
 const skipSignEnv = "ARTEX_UPDATE_SKIP_SIGN"
 
-// minisign 文件格式（参考 https://jedisct1.github.io/minisign/ 与 minisign 源码）：
+// minisign のファイル形式（https://jedisct1.github.io/minisign/ と minisign のソースを参照）：
 //
-//	公钥: base64( "Ed" || keynum(8) || pubkey(32) )                     42 字节
-//	签名: base64( "ED" || keynum(8) || ed25519_sig(64) )                74 字节
+//	公開鍵: base64( "Ed" || keynum(8) || pubkey(32) )                   42 バイト
+//	署名: base64( "ED" || keynum(8) || ed25519_sig(64) )               74 バイト
 //
-// 算法标记大小写不同：公钥固定为 "Ed"；签名里 "ED"（大写 D）表示预哈希模式，
-// 签名对象是 Blake2b-512(message)——minisign ≥0.9 只产出这种。小写 "Ed" 是
-// 上古版本直接签原始消息的格式，本实现不支持。
+// アルゴリズムのマーカーは大文字小文字が異なる：公開鍵は常に "Ed"；署名の "ED"（大文字の D）は
+// 事前ハッシュモードで、署名対象は Blake2b-512(message)——minisign ≥0.9 はこの形式しか出力しない。
+// 小文字の "Ed" は古いバージョンが元のメッセージを直接署名する形式で、本実装では未対応。
 const (
 	minisignAlgPubKey    = "Ed"
 	minisignAlgPrehashed = "ED"
 	minisignKeynumLen    = 8
 )
 
-// parsePubKey 解析 minisign 公钥行（base64），返回 keynum 与 Ed25519 公钥。
+// parsePubKey は minisign の公開鍵行（base64）を解析し、keynum と Ed25519 公開鍵を返す。
 func parsePubKey(b64 string) ([minisignKeynumLen]byte, ed25519.PublicKey, error) {
 	var keynum [minisignKeynumLen]byte
 	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(b64))
 	if err != nil {
-		return keynum, nil, fmt.Errorf("公钥 base64 解码失败: %w", err)
+		return keynum, nil, fmt.Errorf("公開鍵の base64 デコードに失敗しました: %w", err)
 	}
 	if len(raw) != 2+minisignKeynumLen+ed25519.PublicKeySize || string(raw[:2]) != minisignAlgPubKey {
-		return keynum, nil, fmt.Errorf("公钥格式无法识别（期望 minisign Ed25519 公钥）")
+		return keynum, nil, fmt.Errorf("公開鍵の形式を認識できません（minisign Ed25519 公開鍵を期待しています）")
 	}
 	copy(keynum[:], raw[2:2+minisignKeynumLen])
 	return keynum, ed25519.PublicKey(raw[2+minisignKeynumLen:]), nil
 }
 
-// parseMinisig 从 .minisig 文本里取出主签名。只认第一个 base64 行
-// （trusted comment 及其全局签名不参与校验——更新链路不消费注释内容）。
+// parseMinisig は .minisig テキストから主署名を取り出す。最初の base64 行のみを扱う
+// （trusted comment とそのグローバル署名は検証に参加しない——更新経路はコメント内容を使わない）。
 func parseMinisig(raw string) ([minisignKeynumLen]byte, []byte, error) {
 	var keynum [minisignKeynumLen]byte
 	for line := range strings.Lines(raw) {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.Contains(line, ":") { // 注释行形如 "untrusted comment: …"
+		if line == "" || strings.Contains(line, ":") { // コメント行は "untrusted comment: …" の形
 			continue
 		}
 		dec, err := base64.StdEncoding.DecodeString(line)
 		if err != nil {
-			return keynum, nil, fmt.Errorf("签名 base64 解码失败: %w", err)
+			return keynum, nil, fmt.Errorf("署名の base64 デコードに失敗しました: %w", err)
 		}
 		if len(dec) != 2+minisignKeynumLen+ed25519.SignatureSize || string(dec[:2]) != minisignAlgPrehashed {
-			return keynum, nil, fmt.Errorf("签名格式无法识别（期望预哈希 Ed25519 签名）")
+			return keynum, nil, fmt.Errorf("署名の形式を認識できません（事前ハッシュ Ed25519 署名を期待しています）")
 		}
 		copy(keynum[:], dec[2:2+minisignKeynumLen])
 		return keynum, dec[2+minisignKeynumLen:], nil
 	}
-	return keynum, nil, fmt.Errorf("%s 里没有签名数据", sigAsset)
+	return keynum, nil, fmt.Errorf("%s に署名データがありません", sigAsset)
 }
 
-// verifyMinisig 用 pubB64 校验 sigRaw 是否为 msg 的有效 minisign 签名。
+// verifyMinisig は pubB64 を使い、sigRaw が msg の有効な minisign 署名かを検証する。
 func verifyMinisig(pubB64, sigRaw string, msg []byte) error {
 	wantKeynum, pub, err := parsePubKey(pubB64)
 	if err != nil {
@@ -86,38 +86,38 @@ func verifyMinisig(pubB64, sigRaw string, msg []byte) error {
 		return err
 	}
 	if !bytes.Equal(gotKeynum[:], wantKeynum[:]) {
-		return fmt.Errorf("签名 keynum 与内置公钥不匹配（不是本项目的发布 key 签的）")
+		return fmt.Errorf("署名の keynum が組み込み公開鍵と一致しません（本プロジェクトのリリース鍵で署名されていません）")
 	}
 	digest := blake2b.Sum512(msg)
 	if !ed25519.Verify(pub, digest[:], sig) {
-		return fmt.Errorf("minisign 验签失败：%s 被篡改或签名者与内置公钥不符", sumsAsset)
+		return fmt.Errorf("minisign の署名検証に失敗しました：%s が改ざんされているか、署名者が組み込み公開鍵と一致しません", sumsAsset)
 	}
 	return nil
 }
 
-// verifySumsSignature 下载 sigAsset 并对 sums（SHA256SUMS 原始字节）验签。
-// 验签与 SHA256 比对串行叠加：签名保证清单来源可信，哈希保证 zip 字节完整。
+// verifySumsSignature は sigAsset をダウンロードし、sums（SHA256SUMS の生バイト列）の署名を検証する。
+// 署名検証と SHA256 照合は直列に重ねる：署名が一覧の出所の信頼性を、ハッシュが zip のバイト列の完全性を保証する。
 func verifySumsSignature(ctx context.Context, c *http.Client, rel *Release, sums []byte, prog Progress) error {
 	if os.Getenv(skipSignEnv) == "1" {
 		if prog != nil {
-			prog(PhaseVerify, -1, fmt.Sprintf("警告：%s=1，已跳过发布签名验证（仅限紧急兼容场景）", skipSignEnv))
+			prog(PhaseVerify, -1, fmt.Sprintf("警告：%s=1 のため、リリース署名の検証をスキップしました（緊急の互換用途に限ります）", skipSignEnv))
 		}
 		return nil
 	}
 
 	asset, ok := rel.FindAsset(sigAsset)
 	if !ok {
-		return fmt.Errorf("该 Release 没有 %s，无法验证来源，拒绝升级（紧急情况下可设 %s=1 跳过）", sigAsset, skipSignEnv)
+		return fmt.Errorf("この Release には %s がないため出所を検証できず、アップグレードを拒否します（緊急時は %s=1 でスキップ可能）", sigAsset, skipSignEnv)
 	}
 	body, err := get(ctx, c, asset.URL)
 	if err != nil {
-		return fmt.Errorf("下载 %s: %w", sigAsset, err)
+		return fmt.Errorf("%s のダウンロードに失敗しました: %w", sigAsset, err)
 	}
 	defer body.Close()
 
-	raw, err := io.ReadAll(io.LimitReader(body, 1<<16)) // 签名文件正常只有几百字节
+	raw, err := io.ReadAll(io.LimitReader(body, 1<<16)) // 署名ファイルは通常数百バイトしかない
 	if err != nil {
-		return fmt.Errorf("读取 %s: %w", sigAsset, err)
+		return fmt.Errorf("%s の読み込みに失敗しました: %w", sigAsset, err)
 	}
 	return verifyMinisig(embeddedPubKey, string(raw), sums)
 }

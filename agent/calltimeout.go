@@ -13,24 +13,26 @@ import (
 	"github.com/Autumn-27/norma/llm"
 )
 
-// 整体墙钟(call-level hard wall clock)。
+// 呼び出し全体のウォールクロック（call-level hard wall clock）。
 //
-// 实战出现过 LLM 连接挂死数小时:TCP 没断、SSE 没帧,SDK 的建连重试和 per-attempt
-// HTTP timeout 都管不到「流已经开始但永远不再来数据」这种半开状态,worker/planner/
-// 收尾时序被整体冻住。本层在 provider 组装处(Config.NewProvider)给每一次
-// Stream/Complete 调用套一个 context.WithTimeout:从发起计时,覆盖整个流式生命周期;
-// 到点 cancel,错误归一化为 *CallTimeoutError(call_timeout 类,语义 = 可重试的瞬时
-// 失败,参照 429→402 归一化模式),供 llmpool 走故障转移。
+// 実運用で LLM 接続が数時間ハングする事象が起きた：TCP は切れず、SSE もフレームを送らず、
+// SDK の接続リトライも per-attempt HTTP timeout も「ストリームは開始済みだがデータが
+// 永遠に来ない」半開状態をカバーできず、worker/planner/終了処理の時系列が丸ごと凍り付いた。
+// 本層は provider の組み立て箇所（Config.NewProvider）で各 Stream/Complete 呼び出しに
+// context.WithTimeout を適用する:発行時点から計時し、ストリーミング全体のライフサイクルを
+// 覆う。期限到達で cancel し、エラーは *CallTimeoutError に正規化する（call_timeout 種別、
+// 意味は再試行可能な一過性の失敗。429→402 の正規化パターンに倣う）。llmpool はこれを受け
+// てフェイルオーバーする。
 //
-// 与已有的 per-attempt HTTP timeout 不冲突:那是单次 HTTP 尝试的保险,本层是单次
-// 逻辑调用(含 SDK 内部重试、流式全程)的更上层保险。
+// 既存の per-attempt HTTP timeout とは競合しない:あちらは単発の HTTP 試行の保険、本層は
+// 単一の論理呼び出し（SDK 内部のリトライとストリーミング全体を含む）の上位保険である。
 //
-// 配置:env ARTEX_LLM_CALL_TIMEOUT,单位秒,默认 600,0 = 不限(不包这层)。
+// 設定：env ARTEX_LLM_CALL_TIMEOUT、単位は秒、既定 600、0 = 制限なし（本層を被せない）。
 const defaultCallTimeoutSeconds = 600
 
-// callTimeoutFromEnv 解析 ARTEX_LLM_CALL_TIMEOUT(秒)。未设/非法 → 默认 600s;
-// 0 → 0(不限)。负值视为非法,回落默认。每次构建 provider 时读一次(非热路径),
-// 因此改 env 后新建/重建的 provider 即生效。
+// callTimeoutFromEnv は ARTEX_LLM_CALL_TIMEOUT（秒）を解釈する。未設定/不正 → 既定 600s;
+// 0 → 0（制限なし）。負値は不正とみなし既定にフォールバックする。provider の構築時に
+// 1 回だけ読む（非ホットパス）ので、env を変えた後に作成/再構築した provider から有効になる。
 func callTimeoutFromEnv() time.Duration {
 	s := strings.TrimSpace(os.Getenv("ARTEX_LLM_CALL_TIMEOUT"))
 	if s == "" {
@@ -38,40 +40,42 @@ func callTimeoutFromEnv() time.Duration {
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 0 {
-		log.Printf("[llm-call] WARN ARTEX_LLM_CALL_TIMEOUT=%q 非法(应为非负整数秒),按默认 %ds 处理", s, defaultCallTimeoutSeconds)
+		log.Printf("[llm-call] WARN ARTEX_LLM_CALL_TIMEOUT=%q が不正（非負の整数秒であること）,既定の %ds として扱います", s, defaultCallTimeoutSeconds)
 		return defaultCallTimeoutSeconds * time.Second
 	}
 	return time.Duration(n) * time.Second
 }
 
-// CallTimeoutError 是整体墙钟到点后的归一化错误(call_timeout 类)。语义:本层判定
-// 该次调用挂死,属可重试的瞬时失败——llmpool 把它当传输级瞬时故障走故障转移(软熔断
-// 计数,非 hard failure)。Unwrap 返回 context.DeadlineExceeded,因此
-// errors.Is(err, context.DeadlineExceeded) 成立;与「调用方主动取消/上层截止」的
-// 区分不在错误本身,而在调用方 ctx 是否也已结束(见 normalizeDeadline 与
-// llmpool.shouldFailover)。
+// CallTimeoutError はウォールクロック到達後の正規化エラー（call_timeout 種別）。意味:本層が
+// その呼び出しをハングと判定したもので、再試行可能な一過性の失敗——llmpool はこれを伝送
+// レベルの一過性障害として扱いフェイルオーバーする（ソフトサーキットブレーカの計数対象で、
+// hard failure ではない）。Unwrap は context.DeadlineExceeded を返すため
+// errors.Is(err, context.DeadlineExceeded) が成立する。「呼び出し側の能動的な取り消し/
+// 上位の期限」との区別はエラー自体ではなく、呼び出し側の ctx が既に終了しているかによる
+// （normalizeDeadline と llmpool.shouldFailover を参照）。
 type CallTimeoutError struct {
-	Provider string        // 提供方格式名(anthropic/openai/…)
-	Model    string        // 模型 id
-	Timeout  time.Duration // 墙钟上限
-	Elapsed  time.Duration // 触发时已耗时(≈ Timeout,保留实测值便于核对)
+	Provider string        // 提供元の書式名(anthropic/openai/…)
+	Model    string        // モデル id
+	Timeout  time.Duration // ウォールクロックの上限
+	Elapsed  time.Duration // 発動時の経過時間(≈ Timeout、実測値の保持は照合用)
 }
 
 func (e *CallTimeoutError) Error() string {
-	return fmt.Sprintf("llm call_timeout: %s/%s 整体墙钟超时(已耗时 %s,上限 %s),判定连接挂死,按瞬时失败处理",
+	return fmt.Sprintf("llm call_timeout: %s/%s ウォールクロック超過(経過 %s,上限 %s)、接続ハングと判定し一過性の失敗として扱います",
 		e.Provider, e.Model, e.Elapsed.Round(time.Millisecond), e.Timeout)
 }
 
-// Unwrap 暴露 context.DeadlineExceeded:下游所有 errors.Is 截止判定继续成立。
+// Unwrap は context.DeadlineExceeded を公開する:下流の errors.Is による期限判定は引き続き成立する。
 func (e *CallTimeoutError) Unwrap() error { return context.DeadlineExceeded }
 
-// normalizeDeadline 是超时归类的纯函数,区分三种情况:
+// normalizeDeadline はタイムアウト分類の純関数で、3 つの場合を区別する:
 //
-//   - 调用方 ctx 已结束(用户停止 / 任务级截止 / 上层墙钟):原样透传。主动取消永不
-//     归一化、永不转移——这是 llmpool 的既有语义,不能因本层存在而被破坏。
-//   - 调用方 ctx 存活而派生 callCtx 已结束:只有本层计时器会取消 callCtx,即墙钟到点,
-//     归一化为 *CallTimeoutError。
-//   - 两个 ctx 都存活:普通错误(含 SDK 内部 per-attempt 超时),原样透传。
+//   - 呼び出し側 ctx が終了済み（ユーザー停止 / タスク単位の期限 / 上位のウォールクロック）:
+//     そのまま透過する。能動的な取り消しは決して正規化せず、フェイルオーバーもしない
+//     ——llmpool の既存の意味論であり、本層の存在によって壊してはならない。
+//   - 呼び出し側 ctx は生存し、派生した callCtx が終了:本層のタイマーだけが callCtx を
+//     取り消す、つまりウォールクロック到達であり、*CallTimeoutError に正規化する。
+//   - 両方の ctx が生存:通常のエラー（SDK 内部の per-attempt タイムアウトを含む）を透過する。
 func normalizeDeadline(ctx, callCtx context.Context, err error, provider, model string, timeout time.Duration, start time.Time) error {
 	if err == nil {
 		return nil
@@ -82,8 +86,9 @@ func normalizeDeadline(ctx, callCtx context.Context, err error, provider, model 
 	return &CallTimeoutError{Provider: provider, Model: model, Timeout: timeout, Elapsed: time.Since(start)}
 }
 
-// callTimeoutProvider 在单次调用外包一层整体墙钟。包在 recorder(llmrec.Wrap)之下,
-// 因此归一化后的错误会带 status=error 与真实耗时落进 llm_usage。
+// callTimeoutProvider は単一呼び出しの外側にウォールクロックを被せる。recorder
+// （llmrec.Wrap）の下に位置するため、正規化後のエラーは status=error と実際の所要時間を
+// 伴って llm_usage に記録される。
 type callTimeoutProvider struct {
 	inner    llm.Provider
 	timeout  time.Duration
@@ -91,7 +96,7 @@ type callTimeoutProvider struct {
 	model    string
 }
 
-// wrapCallTimeout 按 env 配置给 inner 套整体墙钟;0(不限)或 nil inner 时原样返回。
+// wrapCallTimeout は env 設定に従って inner にウォールクロックを被せる;0（制限なし）または nil の inner はそのまま返す。
 func wrapCallTimeout(inner llm.Provider, c Config) llm.Provider {
 	if inner == nil {
 		return nil
@@ -104,15 +109,16 @@ func wrapCallTimeout(inner llm.Provider, c Config) llm.Provider {
 }
 
 func (p *callTimeoutProvider) warnTimeout(elapsed time.Duration) {
-	// 注意:provider 组装层拿不到 profile 名(Config 里没有);profile 名由外层
-	// llmpool 故障转移日志与 llm_usage 记录(recorder 按 profile 名打标)补全。
-	log.Printf("[llm-call] WARN 整体墙钟超时(call_timeout):provider=%s model=%s 已耗时=%s 上限=%s — 判定连接挂死,归一化为瞬时失败交上层重试/故障转移",
+	// 注意：provider の組み立て層では profile 名を取得できない（Config に無い）。profile 名は
+	// 外側の llmpool フェイルオーバーログと llm_usage の記録（recorder が profile 名でタグ付け）
+	// で補完される。
+	log.Printf("[llm-call] WARN ウォールクロック超過(call_timeout):provider=%s model=%s 経過=%s 上限=%s — 接続ハングと判定し、一過性の失敗として正規化して上位の再試行/フェイルオーバーに委ねます",
 		p.provider, p.model, elapsed.Round(time.Millisecond), p.timeout)
 }
 
-// Stream 从发起计时,覆盖整个流式生命周期;墙钟到点即 cancel 并把错误归一化为
-// call_timeout。调用方中途停止消费(yield=false)时 defer 的 cancel 会立刻断掉
-// 底层流,不留半开连接。
+// Stream は発行時点から計時し、ストリーミング全体のライフサイクルを覆う;ウォールクロック
+// 到達で即 cancel し、エラーを call_timeout に正規化する。呼び出し側が途中で消費を止めた
+// 場合（yield=false）は defer の cancel が直ちに下位ストリームを切断し、半開接続を残さない。
 func (p *callTimeoutProvider) Stream(ctx context.Context, req llm.CompletionRequest) iter.Seq2[llm.StreamEvent, error] {
 	return func(yield func(llm.StreamEvent, error) bool) {
 		start := time.Now()
@@ -136,7 +142,7 @@ func (p *callTimeoutProvider) Stream(ctx context.Context, req llm.CompletionRequ
 	}
 }
 
-// Complete 与 Stream 同语义:非流式调用是原子的,墙钟到点直接归一化返回。
+// Complete は Stream と同じ意味論:非ストリーミング呼び出しは原子的なので、ウォールクロック到達時はそのまま正規化して返す。
 func (p *callTimeoutProvider) Complete(ctx context.Context, req llm.CompletionRequest) (llm.Message, string, llm.Usage, error) {
 	start := time.Now()
 	callCtx, cancel := context.WithTimeout(ctx, p.timeout)

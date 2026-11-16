@@ -12,11 +12,11 @@ import type { Credential } from "@/lib/types";
 
 import { fmtTime } from "./format";
 
-// 凭据台账：密钥只做脱敏展示。后端提供 task_id 字段时出现任务过滤框。
+// 認証情報の台帳：秘密情報はマスク表示のみ。バックエンドが task_id を返す場合はタスク絞り込み欄を表示します。
 export function CredsTab({ credentials, loading }: { credentials: Credential[]; loading: boolean }) {
   const [taskFilter, setTaskFilter] = React.useState("");
 
-  // 后端 task_id 是 JSON number(0 = 未关联),不是字符串。
+  // バックエンドの task_id は JSON の number（0 = 未関連）で、文字列ではありません。
   const hasTaskField = credentials.some((c) => typeof c.task_id === "number" && c.task_id > 0);
   const q = taskFilter.trim();
   const visible = q ? credentials.filter((c) => String(c.task_id ?? "").includes(q)) : credentials;
@@ -26,7 +26,7 @@ export function CredsTab({ credentials, loading }: { credentials: Credential[]; 
       {hasTaskField && (
         <div className="flex items-center gap-2 px-1 pb-2">
           <Input
-            placeholder="按任务 ID 过滤..."
+            placeholder="タスク ID で絞り込み..."
             className="h-8 w-56"
             value={taskFilter}
             onChange={(e) => setTaskFilter(e.target.value)}
@@ -44,13 +44,13 @@ export function CredsTab({ credentials, loading }: { credentials: Credential[]; 
             <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
                 <TableHead className="w-[70px]">ID</TableHead>
-                <TableHead className="w-[110px]">类型</TableHead>
-                <TableHead>用户名</TableHead>
-                <TableHead className="w-[140px]">域</TableHead>
-                <TableHead>密钥（脱敏）</TableHead>
-                <TableHead className="w-[160px]">来源</TableHead>
-                <TableHead className="w-[80px]">已验证</TableHead>
-                <TableHead className="w-[140px]">时间</TableHead>
+                <TableHead className="w-[110px]">種類</TableHead>
+                <TableHead>ユーザー名</TableHead>
+                <TableHead className="w-[140px]">ドメイン</TableHead>
+                <TableHead>秘密情報（マスク済み）</TableHead>
+                <TableHead className="w-[160px]">ソース</TableHead>
+                <TableHead className="w-[80px]">検証済み</TableHead>
+                <TableHead className="w-[140px]">日時</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -63,7 +63,7 @@ export function CredsTab({ credentials, loading }: { credentials: Credential[]; 
               ) : visible.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
-                    {q ? "该任务下暂无凭据" : "暂无凭据"}
+                    {q ? "このタスクに認証情報はありません" : "認証情報はありません"}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -97,9 +97,9 @@ export function CredsTab({ credentials, loading }: { credentials: Credential[]; 
                     </TableCell>
                     <TableCell>
                       {c.verified ? (
-                        <CheckCircle2Icon className="size-4 text-emerald-500" aria-label="已验证" />
+                        <CheckCircle2Icon className="size-4 text-emerald-500" aria-label="検証済み" />
                       ) : (
-                        <MinusCircleIcon className="size-4 text-muted-foreground" aria-label="未验证" />
+                        <MinusCircleIcon className="size-4 text-muted-foreground" aria-label="未検証" />
                       )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground tabular-nums">

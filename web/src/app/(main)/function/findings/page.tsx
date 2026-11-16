@@ -67,14 +67,14 @@ import {
 
 const FINDING_LIST_PREFERENCE_KEY = "artex_finding_list_preferences";
 
-// 列表视图:flat = 跨任务平铺大表(默认);grouped = 按任务分组折叠;
-// asset = 左侧资产树 + 右侧该子树下的发现。
+// リストビュー：flat = タスク横断の平置きテーブル（デフォルト）、grouped = タスク別グループの折りたたみ、
+// asset = 左のアセットツリー + 右のそのサブツリー下のファインディング。
 type FindingView = "flat" | "grouped" | "asset";
 
 const FINDING_VIEWS: FindingView[] = ["flat", "grouped", "asset"];
 
-// 资产树的一次性快照。与另外两个视图不同,资产视图不轮询:进入视图、改筛选、
-// 或本页改动了发现之后才重新查询。
+// アセットツリーのスナップショット（1 回だけ取得）。他の 2 ビューと違いアセットビューはポーリングせず、
+// ビューに入ったとき、絞り込みを変えたとき、このページでファインディングを変更したときだけ再取得する。
 interface AssetTreeState {
   nodes: FindingAssetNode[];
   findingTotal: number;
@@ -93,7 +93,7 @@ const EMPTY_ASSET_TREE: AssetTreeState = {
   loading: false,
 };
 
-// 分组视图里每个已展开任务组自带一份分页状态,彼此独立。
+// グループビューでは展開中のタスクグループごとにページング状態を持ち、互いに独立している。
 interface GroupFindingsState {
   items: Finding[];
   total: number;
@@ -103,7 +103,7 @@ interface GroupFindingsState {
   loading: boolean;
 }
 
-// 平铺视图的页码单独放 state(而非塞进快照),筛选一变就能连带重置并触发重新加载。
+// 平置きビューのページ番号は state に分けて置き（スナップショットには入れない）、絞り込みが変わればまとめてリセットして再読み込みできるようにする。
 interface FlatFindingsState {
   items: Finding[];
   total: number;
@@ -166,7 +166,7 @@ export default function FindingsPage() {
   const activeFilterFingerprint = React.useRef(filterFingerprint);
   activeFilterFingerprint.current = filterFingerprint;
 
-  // 一个轻量请求覆盖所有行/视图，避免逐行拉取完整复测历史；等待上一轮完成再轮询。
+  // 軽量なリクエスト 1 回で全行/全ビューをまかない、行ごとに完全な再テスト履歴を取得しないようにする。前のラウンドの完了を待ってからポーリングする。
   React.useEffect(() => {
     let disposed = false;
     let failed = false;
@@ -179,7 +179,7 @@ export default function FindingsPage() {
         setActiveRetests(Object.fromEntries(rows.map((item) => [item.finding_id, item])));
         failed = false;
       } catch (error) {
-        if (!disposed && !failed) toast.error(`加载复测状态失败：${(error as Error).message}`);
+        if (!disposed && !failed) toast.error(`再テスト状態の読み込みに失敗しました：${(error as Error).message}`);
         failed = true;
       } finally {
         if (!disposed) timer = setTimeout(() => void refreshRetests(), 3000);
@@ -234,7 +234,7 @@ export default function FindingsPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  // setFindings 同时改写两个视图缓存里的同一条发现,切换视图不会看到过期状态。
+  // setFindings は 2 つのビューキャッシュ内の同じファインディングを同時に書き換えるので、ビューを切り替えても古い状態は見えない。
   const setFindings = React.useCallback((update: (current: Finding[]) => Finding[]) => {
     setFlat((current) => ({ ...current, items: update(current.items) }));
     setGroupFindings((current) => {
@@ -246,9 +246,9 @@ export default function FindingsPage() {
     });
   }, []);
 
-  // 勾选导出:按 finding_id(独立表 id)记选中项,跨页保留。
+  // チェックしてエクスポート：finding_id（独立テーブルの id）で選択項目を記録し、ページをまたいで保持する。
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
-  // 导出弹窗状态:范围(当前筛选/全部/选中) × 格式(md 单文件/md 分文件 zip/csv/json)。
+  // エクスポートダイアログの状態:範囲（現在の絞り込み/すべて/選択分）× 形式（md 単一ファイル/md 分割 zip/csv/json）。
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exportScope, setExportScope] = React.useState<"filtered" | "all" | "selected">("filtered");
   const [exportFormat, setExportFormat] = React.useState<"md-single" | "md-zip" | "csv" | "json">("md-single");
@@ -274,7 +274,7 @@ export default function FindingsPage() {
     });
   }, []);
 
-  // 打开导出弹窗时,若有勾选项则默认范围切到「选中」,否则「当前筛选」。
+  // エクスポートダイアログを開くとき、チェック済み項目があれば既定の範囲を「選択分」に、なければ「現在の絞り込み」にする。
   function openExport() {
     setExportScope(selectedIds.size > 0 ? "selected" : "filtered");
     setExportOpen(true);
@@ -290,9 +290,9 @@ export default function FindingsPage() {
         ids: [...selectedIds],
       });
       setExportOpen(false);
-      toast.success("已开始下载导出文件");
+      toast.success("エクスポートファイルのダウンロードを開始しました");
     } catch (e) {
-      toast.error(`导出失败：${(e as Error).message}`);
+      toast.error(`エクスポートに失敗しました：${(e as Error).message}`);
     } finally {
       setExporting(false);
     }
@@ -311,10 +311,10 @@ export default function FindingsPage() {
   groupFindingsRef.current = groupFindings;
   visibleGroupKeysRef.current = new Set(groups.map(findingGroupKey));
 
-  // 资产视图右侧列表 = 平铺列表 + 选中子树的筛选,所以两个视图共用一份列表状态。
+  // アセットビュー右側のリスト = 平置きリスト + 選択サブツリーの絞り込みなので、2 つのビューで同じリスト状態を共有する。
   const activeAssetScope = view === "asset" ? assetScope : null;
 
-  // loadFlat 拉取平铺视图的当前页;task 筛选交给后端,与分组视图共用同一批筛选条件。
+  // loadFlat は平置きビューの現在ページを取得する。task の絞り込みはバックエンドに委ね、グループビューと同じ条件を共有する。
   const loadFlat = React.useCallback(async () => {
     const requestFilter = filterFingerprint;
     if (activeFilterFingerprint.current !== requestFilter) return;
@@ -341,8 +341,8 @@ export default function FindingsPage() {
     }
   }, [activeAssetScope, filterFingerprint, flatPage, flatPageSize, severity, status, vulnclass, task, query, sort]);
 
-  // loadAssetTree 取整棵资产树。树不随选中节点变化(否则选一下就塌成一条链),
-  // 所以这里不带 assetScope。
+  // loadAssetTree はアセットツリー全体を取得する。ツリーは選択ノードでは変わらない（選ぶたびに 1 本のチェーンに
+  // 潰れてしまうため）ので、ここでは assetScope を渡さない。
   const loadAssetTree = React.useCallback(async () => {
     const requestFilter = filterFingerprint;
     if (activeFilterFingerprint.current !== requestFilter) return;
@@ -362,7 +362,7 @@ export default function FindingsPage() {
     } catch (e) {
       if (request !== assetTreeRequest.current || activeFilterFingerprint.current !== requestFilter) return;
       setAssetTree((current) => ({ ...current, loading: false }));
-      toast.error(`资产树加载失败：${(e as Error).message}`);
+      toast.error(`アセットツリーの読み込みに失敗しました：${(e as Error).message}`);
     }
   }, [filterFingerprint, severity, status, vulnclass, task, query, sort]);
 
@@ -473,17 +473,17 @@ export default function FindingsPage() {
     [expandedGroups, groupFindings, loadGroup],
   );
 
-  // 行内改动后刷新当前视图:平铺视图重拉当前页,分组视图刷组头 + 该发现所在的组。
+  // インライン変更後に現在のビューを更新する:平置きビューは現在ページを再取得し、グループビューはグループヘッダー + 該当ファインディングのグループを更新する。
   const refreshAfterMutation = React.useCallback(
     (finding: Finding, removed = false) => {
       if (view === "asset") {
-        // 资产视图不轮询,所以改完要顺带把树的计数也重新算一次。
+        // アセットビューはポーリングしないため、変更後にツリーの件数も計算し直す。
         void loadFlat();
         void loadAssetTree();
         return;
       }
       if (view === "flat") {
-        // 删空最后一页时,页码由越界修正 effect 回退并连带重新加载。
+        // 最後のページを空にした場合、ページ番号は範囲外補正の effect で戻され、あわせて再読み込みされる。
         void loadFlat();
         return;
       }
@@ -508,31 +508,31 @@ export default function FindingsPage() {
     setGroupFindings({});
     setFlatPage(1);
     setFlat(EMPTY_FLAT_STATE);
-    // 筛选变了树也会变,原先选中的节点可能已经不在树里,退回「全部资产」。
+    // 絞り込みが変わればツリーも変わり、選択済みのノードがツリーに無いこともあるので「すべてのアセット」に戻す。
     setAssetScope(null);
     setAssetTree(EMPTY_ASSET_TREE);
   }, [filterFingerprint]);
 
-  // 换资产节点等于换了一份结果集,回到第一页。
+  // アセットノードを変えると結果セットが変わるので、1 ページ目に戻る。
   React.useEffect(() => {
     void assetScope;
     setFlatPage(1);
   }, [assetScope]);
 
-  // 资产树只在进入视图 / 筛选变化时查一次(以及本页改动发现后由
-  // refreshAfterMutation 主动重拉),不做轮询。
+  // アセットツリーはビューに入ったとき / 絞り込みが変わったときに 1 回だけ取得する（このページでファインディングを
+  // 変更した後に refreshAfterMutation が再取得する場合も含む）。ポーリングはしない。
   React.useEffect(() => {
     if (!preferencesHydrated || view !== "asset") return;
-    void activeRetestFingerprint; // 复测结束可能改变状态筛选下的资产计数。
+    void activeRetestFingerprint; // 再テストの終了でステータス絞り込み下のアセット件数が変わり得る。
     void loadAssetTree();
   }, [activeRetestFingerprint, loadAssetTree, preferencesHydrated, view]);
 
-  // 只轮询当前视图:平铺视图刷当前页,分组视图刷组头与每个已展开的组(其分页彼此独立)。
-  // 资产视图只查一次(见下面的 return),它的左树是导航结构,没必要每 5 秒重算。
-  // 等偏好水合后再发首个请求,否则会先按默认视图/筛选白拉一次。
+  // ポーリングするのは現在のビューだけ:平置きビューは現在ページ、グループビューはグループヘッダーと展開中の各グループ（ページングは独立）。
+  // アセットビューは 1 回だけ取得し（下の return 参照）、左のツリーはナビゲーション構造なので 5 秒ごとに計算し直す必要はない。
+  // 設定の水和を待ってから最初のリクエストを送る。そうしないと既定のビュー/絞り込みで無駄に 1 回取得してしまう。
   React.useEffect(() => {
     if (!preferencesHydrated) return;
-    void activeRetestFingerprint; // 包括不定时轮询的资产视图，也在复测结束后刷新处置状态。
+    void activeRetestFingerprint; // 不定期ポーリングのアセットビューも、再テスト終了後に処理ステータスを更新する。
     const refresh = () => {
       if (view === "flat" || view === "asset") {
         if (!flatStateRef.current.loading) void loadFlat();
@@ -607,7 +607,7 @@ export default function FindingsPage() {
       setFindings((cur) => cur.map((x) => (isSameFinding(x, f) ? { ...x, status: next } : x)));
       try {
         await api.setFindingStatus(f.finding_id, next);
-        toast.success(`已标记为「${statusMeta("finding", next).label}」`);
+        toast.success(`「${statusMeta("finding", next).label}」に変更しました`);
         // refresh stat cards (pending count) and drop the row if it no longer matches the status filter
         api
           .findingStats()
@@ -623,22 +623,22 @@ export default function FindingsPage() {
         refreshAfterMutation(f);
       } catch (e) {
         setFindings((cur) => cur.map((x) => (isSameFinding(x, f) ? { ...x, status: prev } : x)));
-        toast.error(`更新失败：${(e as Error).message}`);
+        toast.error(`更新に失敗しました：${(e as Error).message}`);
       }
     },
     [refreshAfterMutation, setFindings, status],
   );
 
-  // 行内展开的详细报告缓存按全局稳定行键存。report 是大段 Markdown,列表查询不带它,
-  // 故展开时才按 finding_id 单独拉取一次;done 且文本为空 = 该漏洞暂无报告。
+  // インライン展開の詳細レポートキャッシュはグローバルに安定した行キーで保持する。report は大きな Markdown で一覧クエリに含まれないため、
+  // 展開時に finding_id で別途 1 回だけ取得する。done かつテキストが空 = この脆弱性にはまだレポートがない。
   const [reports, setReports] = React.useState<Record<string, FindingReport>>({});
 
-  // 行内可编辑缓冲:当前展开行的名称/类别/严重等级,展开时用该行数据初始化,收起清空。
-  // 单行展开,故一份缓冲即可。
+  // インライン編集バッファ:展開中の行の名前/カテゴリ/深刻度。展開時にその行のデータで初期化し、折りたたみ時にクリアする。
+  // 展開は 1 行だけなので、バッファも 1 つで足りる。
   const [edit, setEdit] = React.useState<FindingEdit | null>(null);
   const [saving, setSaving] = React.useState(false);
 
-  // toggle 展开/收起一行;新展开时初始化编辑缓冲,并(尚未取过时)按 finding_id 拉一次报告缓存。
+  // toggle は 1 行の展開/折りたたみを切り替える。新しく展開するときは編集バッファを初期化し、(未取得なら)finding_id でレポートを 1 回取得する。
   const toggleRow = React.useCallback(
     (f: Finding) => {
       const key = findingRowKey(f);
@@ -660,7 +660,7 @@ export default function FindingsPage() {
     [expanded, reports],
   );
 
-  // saveEdit 保存当前展开行的名称/类别/严重等级,回写本地列表并刷新统计(类别下拉/严重计数可能变)。
+  // saveEdit は展開中の行の名前/カテゴリ/深刻度を保存し、ローカル一覧へ書き戻して統計も更新する(カテゴリの選択肢/深刻度の件数が変わり得る)。
   const saveEdit = React.useCallback(
     async (f: Finding) => {
       if (!f.finding_id || !edit) return;
@@ -678,7 +678,7 @@ export default function FindingsPage() {
               : x,
           ),
         );
-        toast.success("已保存");
+        toast.success("保存しました");
         api
           .findingStats()
           .then(setStats)
@@ -687,7 +687,7 @@ export default function FindingsPage() {
           });
         refreshAfterMutation(f);
       } catch (e) {
-        toast.error(`保存失败：${(e as Error).message}`);
+        toast.error(`保存に失敗しました：${(e as Error).message}`);
       } finally {
         setSaving(false);
       }
@@ -695,7 +695,7 @@ export default function FindingsPage() {
     [edit, refreshAfterMutation, setFindings],
   );
 
-  // deleteFinding 删除一个漏洞(需二次确认):删成功后从列表移除、收起行、刷新统计。
+  // deleteFinding は 1 件の脆弱性を削除する(2 段階確認あり)。成功したら一覧から外し、行を折りたたみ、統計を更新する。
   const deleteFinding = React.useCallback(
     async (f: Finding) => {
       if (!f.finding_id) return;
@@ -711,7 +711,7 @@ export default function FindingsPage() {
         setFlat((cur) => ({ ...cur, total: Math.max(0, cur.total - 1) }));
         const rowKey = findingRowKey(f);
         setExpanded((cur) => (cur === rowKey ? null : cur));
-        toast.success("已删除漏洞");
+        toast.success("脆弱性を削除しました");
         api
           .findingStats()
           .then(setStats)
@@ -720,7 +720,7 @@ export default function FindingsPage() {
           });
         refreshAfterMutation(f, true);
       } catch (e) {
-        toast.error(`删除失败：${(e as Error).message}`);
+        toast.error(`削除に失敗しました：${(e as Error).message}`);
       }
     },
     [refreshAfterMutation, setFindings],
@@ -738,30 +738,30 @@ export default function FindingsPage() {
       const result = await api.deepenFinding(deepenFinding.finding_id, deepenDescription.trim());
       toast.success(
         result.queued
-          ? `深入意图 #${result.intent_id} 已进入任务队列`
-          : `已创建高优先级 Worker 意图 #${result.intent_id}`,
+          ? `深掘り意図 #${result.intent_id} をタスクキューに追加しました`
+          : `優先度の高い Worker 意図 #${result.intent_id} を作成しました`,
       );
       refreshAfterMutation(deepenFinding);
       setDeepenFinding(null);
       setDeepenDescription("");
     } catch (error) {
-      toast.error(`提交失败：${(error as Error).message}`);
+      toast.error(`送信に失敗しました：${(error as Error).message}`);
     } finally {
       setDeepening(false);
     }
   }
 
   const statCards = [
-    { label: "发现总数", value: stats.total, icon: BugIcon },
-    { label: "待处理", value: stats.pending, tone: "text-amber-500", icon: ClockIcon },
-    { label: "严重", value: stats.critical, tone: "text-rose-600", icon: ShieldAlertIcon },
-    { label: "高危", value: stats.high, tone: "text-red-500", icon: TriangleAlertIcon },
-    { label: "中危", value: stats.medium, tone: "text-amber-500", icon: TriangleAlertIcon },
-    { label: "低危", value: stats.low, tone: "text-slate-500", icon: InfoIcon },
+    { label: "ファインディング総数", value: stats.total, icon: BugIcon },
+    { label: "未処理", value: stats.pending, tone: "text-amber-500", icon: ClockIcon },
+    { label: "緊急", value: stats.critical, tone: "text-rose-600", icon: ShieldAlertIcon },
+    { label: "高", value: stats.high, tone: "text-red-500", icon: TriangleAlertIcon },
+    { label: "中", value: stats.medium, tone: "text-amber-500", icon: TriangleAlertIcon },
+    { label: "低", value: stats.low, tone: "text-slate-500", icon: InfoIcon },
   ];
 
-  // 导出弹窗里「当前筛选」的条数:两个视图的筛选一致,只是统计口径来源不同。
-  // 平铺与资产视图共用 flat 列表状态,分组视图的口径来自组接口的 finding_total。
+  // エクスポートダイアログの「現在の絞り込み」の件数：2 つのビューの絞り込みは同じで、集計の出どころだけが違う。
+  // 平置きとアセットビューは flat リスト状態を共有し、グループビューの値はグループ API の finding_total から取る。
   const filteredTotal = view === "grouped" ? total : flat.total;
   const assetPath = React.useMemo(
     () => (view === "asset" ? assetPathOf(assetTree.nodes, assetScope) : []),
@@ -786,7 +786,7 @@ export default function FindingsPage() {
     onDelete: deleteFinding,
   };
 
-  // 平铺视图与资产视图右侧是同一张表 + 同一份分页,只是筛选条件不同。
+  // 平置きビューとアセットビューの右側は同じテーブル + 同じページングで、絞り込み条件だけが違う。
   const flatListCard = (
     <Card className="gap-0 py-0">
       <CardContent className="px-0">
@@ -796,7 +796,7 @@ export default function FindingsPage() {
           </div>
         ) : (
           <>
-            <FindingsTable items={flat.items} selectAllLabel="选择当前页全部" {...rowProps} />
+            <FindingsTable items={flat.items} selectAllLabel="現在のページをすべて選択" {...rowProps} />
             <TablePagination
               page={flatPage}
               pageSize={flatPageSize}
@@ -818,14 +818,14 @@ export default function FindingsPage() {
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">发现</h1>
-          <p className="text-muted-foreground text-sm">跨任务漏洞汇总</p>
+          <h1 className="text-xl font-semibold tracking-tight">ファインディング</h1>
+          <p className="text-muted-foreground text-sm">タスク横断の脆弱性サマリ</p>
         </div>
         <Tabs value={view} onValueChange={(v) => setView(v as FindingView)}>
           <TabsList>
-            <TabsTrigger value="flat">全部发现</TabsTrigger>
-            <TabsTrigger value="grouped">按任务分组</TabsTrigger>
-            <TabsTrigger value="asset">按资产</TabsTrigger>
+            <TabsTrigger value="flat">すべてのファインディング</TabsTrigger>
+            <TabsTrigger value="grouped">タスク別グループ</TabsTrigger>
+            <TabsTrigger value="asset">アセット別</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -853,8 +853,8 @@ export default function FindingsPage() {
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="检索漏洞内容"
-              aria-label="检索漏洞内容"
+              placeholder="脆弱性の内容を検索"
+              aria-label="脆弱性の内容を検索"
             />
             <InputGroupAddon>
               <SearchIcon aria-hidden="true" />
@@ -871,14 +871,14 @@ export default function FindingsPage() {
           >
             {(
               [
-                ["all", "全部"],
-                ["critical", "严重"],
-                ["high", "高危"],
-                ["medium", "中危"],
-                ["low", "低危"],
+                ["all", "すべて"],
+                ["critical", "緊急"],
+                ["high", "高"],
+                ["medium", "中"],
+                ["low", "低"],
               ] as const
             ).map(([val, label]) => (
-              <ToggleGroupItem key={val} value={val} aria-label={`按${label}等级筛选`}>
+              <ToggleGroupItem key={val} value={val} aria-label={`${label}で絞り込み`}>
                 {label}
               </ToggleGroupItem>
             ))}
@@ -886,10 +886,10 @@ export default function FindingsPage() {
 
           <Select value={status} onValueChange={(v) => setStatus(v as "all" | FindingStatus)}>
             <SelectTrigger size="sm" className="w-32">
-              <SelectValue placeholder="状态" />
+              <SelectValue placeholder="ステータス" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部状态</SelectItem>
+              <SelectItem value="all">すべてのステータス</SelectItem>
               {FINDING_STATUSES.map((st) => (
                 <SelectItem key={st} value={st}>
                   {statusMeta("finding", st).label}
@@ -900,10 +900,10 @@ export default function FindingsPage() {
 
           <Select value={vulnclass} onValueChange={setVulnclass}>
             <SelectTrigger size="sm" className="w-40">
-              <SelectValue placeholder="漏洞类型" />
+              <SelectValue placeholder="脆弱性タイプ" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部类型</SelectItem>
+              <SelectItem value="all">すべてのタイプ</SelectItem>
               {stats.vulnclasses.map((vc) => (
                 <SelectItem key={vc} value={vc}>
                   {vc}
@@ -914,14 +914,14 @@ export default function FindingsPage() {
 
           <Select value={task} onValueChange={setTask}>
             <SelectTrigger size="sm" className="w-48">
-              <SelectValue placeholder="任务" />
+              <SelectValue placeholder="タスク" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部任务</SelectItem>
-              <SelectItem value={UNASSIGNED_TASK}>未关联 / 任务已删除</SelectItem>
+              <SelectItem value="all">すべてのタスク</SelectItem>
+              <SelectItem value={UNASSIGNED_TASK}>未関連 / タスク削除済み</SelectItem>
               {(stats.tasks ?? []).map((t) => {
                 const id = String(t.id);
-                const label = t.name || t.description || `任务 #${id}（已删除）`;
+                const label = t.name || t.description || `タスク #${id}（削除済み）`;
                 return (
                   <SelectItem key={id} value={id}>
                     <span className="flex w-full items-center gap-2">
@@ -944,17 +944,17 @@ export default function FindingsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="severity">按严重度</SelectItem>
-              <SelectItem value="time">按时间</SelectItem>
+              <SelectItem value="severity">深刻度順</SelectItem>
+              <SelectItem value="time">日時順</SelectItem>
             </SelectContent>
           </Select>
 
           <div className="ml-auto flex items-center gap-3">
             {selectedIds.size > 0 && (
-              <span className="text-xs text-muted-foreground tabular-nums">已选 {selectedIds.size} 条</span>
+              <span className="text-xs text-muted-foreground tabular-nums">選択中 {selectedIds.size} 件</span>
             )}
             <Button size="sm" variant="outline" onClick={openExport}>
-              <DownloadIcon /> 导出
+              <DownloadIcon /> エクスポート
             </Button>
           </div>
         </div>
@@ -990,7 +990,7 @@ export default function FindingsPage() {
                   className={cn("hover:text-foreground", assetScope === null && "font-medium text-foreground")}
                   onClick={() => setAssetScope(null)}
                 >
-                  全部资产
+                  すべてのアセット
                 </button>
                 {assetPath.map((node) => (
                   <React.Fragment key={node.key}>
@@ -1008,7 +1008,7 @@ export default function FindingsPage() {
                     </button>
                   </React.Fragment>
                 ))}
-                <span className="ml-auto shrink-0 text-xs tabular-nums">共 {flat.total} 条</span>
+                <span className="ml-auto shrink-0 text-xs tabular-nums">全 {flat.total} 件</span>
               </div>
               {flatListCard}
             </div>
@@ -1047,13 +1047,13 @@ export default function FindingsPage() {
                         <div className="flex min-w-0 flex-col gap-1">
                           <CardTitle className="truncate text-sm">
                             {group.task_id === null
-                              ? "未关联 / 任务已删除"
+                              ? "未関連 / タスク削除済み"
                               : group.task_name
-                                ? `${group.task_name}（任务 #${group.task_id}）`
-                                : `任务 #${group.task_id}`}
+                                ? `${group.task_name}（タスク #${group.task_id}）`
+                                : `タスク #${group.task_id}`}
                           </CardTitle>
                           <CardDescription className="truncate" title={group.task_description}>
-                            {group.task_description || "来源任务不可用"}
+                            {group.task_description || "ソースタスクは利用できません"}
                           </CardDescription>
                         </div>
                       </button>
@@ -1076,7 +1076,7 @@ export default function FindingsPage() {
                           <Button size="icon-sm" variant="ghost" asChild>
                             <Link
                               href={`/function/tasks/detail?id=${group.task_id}`}
-                              aria-label={`查看任务 #${group.task_id}`}
+                              aria-label={`タスク #${group.task_id} を表示`}
                             >
                               <ArrowUpRightIcon />
                             </Link>
@@ -1093,7 +1093,7 @@ export default function FindingsPage() {
                         </div>
                       ) : (
                         <>
-                          <FindingsTable items={state.items} selectAllLabel="选择本组当前页全部" {...rowProps} />
+                          <FindingsTable items={state.items} selectAllLabel="このグループの現在のページをすべて選択" {...rowProps} />
                           <TablePagination
                             page={state.page}
                             pageSize={state.pageSize}
@@ -1110,7 +1110,7 @@ export default function FindingsPage() {
             })}
             {groups.length === 0 && (
               <Card>
-                <CardContent className="py-12 text-center text-sm text-muted-foreground">没有匹配的发现。</CardContent>
+                <CardContent className="py-12 text-center text-sm text-muted-foreground">一致するファインディングがありません。</CardContent>
               </Card>
             )}
             <TablePagination
@@ -1159,25 +1159,25 @@ export default function FindingsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>深入利用漏洞</DialogTitle>
+            <DialogTitle>脆弱性の深掘り</DialogTitle>
             <DialogDescription className="break-words">
-              将在原任务 #{deepenFinding?.task_id} 中创建优先级 10 的 Worker 意图，基于当前漏洞开展二次验证：
+              元のタスク #{deepenFinding?.task_id} に優先度 10 の Worker 意図を作成し、この脆弱性をもとに二次検証を行います：
               {deepenFinding?.name || deepenFinding?.vulnclass || deepenFinding?.summary}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="finding-deepen-description">利用描述</FieldLabel>
+              <FieldLabel htmlFor="finding-deepen-description">利用の説明</FieldLabel>
               <Textarea
                 id="finding-deepen-description"
                 value={deepenDescription}
                 onChange={(event) => setDeepenDescription(event.target.value)}
                 maxLength={4000}
-                placeholder="描述需要验证的利用路径、边界条件、目标或期望证据"
+                placeholder="検証したい利用経路、境界条件、ターゲット、期待するエビデンスを記述"
                 disabled={deepening}
               />
               <FieldDescription className="flex justify-between gap-3">
-                <span>新意图会继承该漏洞的资产锚点。</span>
+                <span>新しい意図はこの脆弱性のアセットアンカーを引き継ぎます。</span>
                 <span className="shrink-0 tabular-nums">{deepenDescription.length} / 4000</span>
               </FieldDescription>
             </Field>
@@ -1191,11 +1191,11 @@ export default function FindingsPage() {
               }}
               disabled={deepening}
             >
-              取消
+              キャンセル
             </Button>
             <Button onClick={submitDeepen} disabled={deepening || !deepenDescription.trim()}>
               {deepening && <Spinner data-icon="inline-start" />}
-              创建深入意图
+              深掘り意図を作成
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1204,42 +1204,42 @@ export default function FindingsPage() {
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>导出发现</DialogTitle>
-            <DialogDescription>选择导出范围与格式,生成后浏览器会自动下载。</DialogDescription>
+            <DialogTitle>ファインディングのエクスポート</DialogTitle>
+            <DialogDescription>エクスポート範囲と形式を選択してください。生成後、ブラウザが自動でダウンロードします。</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-5 py-1">
             <div className="flex flex-col gap-2">
-              <span className="text-xs text-muted-foreground">导出范围</span>
+              <span className="text-xs text-muted-foreground">エクスポート範囲</span>
               <RadioGroup value={exportScope} onValueChange={(v) => setExportScope(v as typeof exportScope)}>
                 <label htmlFor="export-scope-filtered" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-scope-filtered" value="filtered" /> 导出当前筛选结果（共 {filteredTotal}{" "}
-                  条）
+                  <RadioGroupItem id="export-scope-filtered" value="filtered" /> 現在の絞り込み結果をエクスポート（全 {filteredTotal}{" "}
+                  件）
                 </label>
                 <label htmlFor="export-scope-all" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-scope-all" value="all" /> 导出全部
+                  <RadioGroupItem id="export-scope-all" value="all" /> すべてをエクスポート
                 </label>
                 <label
                   htmlFor="export-scope-selected"
                   className={cn("flex items-center gap-2 text-sm", selectedIds.size === 0 && "text-muted-foreground")}
                 >
                   <RadioGroupItem id="export-scope-selected" value="selected" disabled={selectedIds.size === 0} />
-                  导出勾选的 {selectedIds.size} 条
+                  選択した {selectedIds.size} 件をエクスポート
                 </label>
               </RadioGroup>
             </div>
 
             <div className="flex flex-col gap-2">
-              <span className="text-xs text-muted-foreground">导出格式</span>
+              <span className="text-xs text-muted-foreground">エクスポート形式</span>
               <RadioGroup value={exportFormat} onValueChange={(v) => setExportFormat(v as typeof exportFormat)}>
                 <label htmlFor="export-format-md-single" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-md-single" value="md-single" /> Markdown 汇总报告（单个 .md 文件）
+                  <RadioGroupItem id="export-format-md-single" value="md-single" /> Markdown サマリレポート（単一 .md ファイル）
                 </label>
                 <label htmlFor="export-format-md-zip" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-md-zip" value="md-zip" /> Markdown 分文件（一漏洞一 .md,打包 .zip）
+                  <RadioGroupItem id="export-format-md-zip" value="md-zip" /> Markdown 分割ファイル（1 脆弱性 1 .md、.zip にまとめる）
                 </label>
                 <label htmlFor="export-format-csv" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-csv" value="csv" /> CSV 表格（.csv）
+                  <RadioGroupItem id="export-format-csv" value="csv" /> CSV テーブル（.csv）
                 </label>
                 <label htmlFor="export-format-json" className="flex items-center gap-2 text-sm">
                   <RadioGroupItem id="export-format-json" value="json" /> JSON（.json）
@@ -1250,10 +1250,10 @@ export default function FindingsPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setExportOpen(false)} disabled={exporting}>
-              取消
+              キャンセル
             </Button>
             <Button onClick={doExport} disabled={exporting || (exportScope === "selected" && selectedIds.size === 0)}>
-              <DownloadIcon /> {exporting ? "导出中…" : "导出"}
+              <DownloadIcon /> {exporting ? "エクスポート中…" : "エクスポート"}
             </Button>
           </DialogFooter>
         </DialogContent>

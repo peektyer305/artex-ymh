@@ -18,8 +18,8 @@ import (
 	"github.com/Autumn-27/norma/llm"
 )
 
-// settingRoEEnforcement is the settings 键 for the RoE scope-enforcement mode:
-// "off" | "warn"(默认) | "strict". See guard.RoEConfig.
+// settingRoEEnforcement is the settings key for the RoE scope-enforcement mode:
+// "off" | "warn"(デフォルト) | "strict". See guard.RoEConfig.
 const settingRoEEnforcement = "roe_enforcement"
 
 // agentGuard returns a fresh guard wired with the manager's interceptor, used
@@ -29,13 +29,13 @@ const settingRoEEnforcement = "roe_enforcement"
 func (s *Server) agentGuard() *guard.Guard {
 	g := guard.NewWithInterceptor(s.m.interceptor)
 	g.SetRoE(newRoEConfig(s.m.pg))
-	g.SetEgress(s.m.egress) // 批 5 B2 出口审查:chat/planner/mainagent 同样过敏感指纹拦截
+	g.SetEgress(s.m.egress) // バッチ 5 B2 外向き送信の審査：chat/planner/mainagent も同じく機密フィンガープリントのインターセプトを通す
 	return g
 }
 
 // newRoEConfig builds the guard RoE wiring backed by pg: mode from the
-// roe_enforcement settings 键, scope rules lazily read from task_scope per call
-// (范围随 add_task_scope 即时生效,guard 不缓存)。
+// roe_enforcement settings key, scope rules lazily read from task_scope per call
+// (範囲は add_task_scope で即時反映され、guard はキャッシュしない)。
 func newRoEConfig(pg *db.DB) guard.RoEConfig {
 	return guard.RoEConfig{
 		Mode: func() string {
@@ -45,7 +45,7 @@ func newRoEConfig(pg *db.DB) guard.RoEConfig {
 		Scope: func(taskID int64) []guard.ScopeRule {
 			rows, err := pg.Assets().ListTaskScope(taskID)
 			if err != nil {
-				// 读取失败按未登记范围处理(Unknown → 放行),与覆盖度 fail-open 一致。
+				// 読み込み失敗は範囲未登録として扱う（Unknown → 許可）。カバレッジの fail-open と同じ。
 				return nil
 			}
 			return scopeRulesFromRows(rows)
@@ -57,8 +57,8 @@ func newRoEConfig(pg *db.DB) guard.RoEConfig {
 }
 
 // scopeRulesFromRows normalizes db task_scope rows into guard scope rules:
-// root_domain/subdomain → domain;ip(/32、/128 网段)与 cidr → cidr;icp 原样;
-// company/keyword 无可匹配的主机值,跳过(keyword 本来就是死规则)。
+// root_domain/subdomain → domain;ip（/32、/128 セグメント）と cidr → cidr;icp はそのまま;
+// company/keyword はマッチ可能なホスト値が無いためスキップ（keyword は元々死んだルール）。
 func scopeRulesFromRows(rows []db.TaskScope) []guard.ScopeRule {
 	out := make([]guard.ScopeRule, 0, len(rows))
 	for _, r := range rows {
@@ -92,11 +92,11 @@ func (s *Server) wireInterceptReviewer() {
 			}
 		}
 		if profileID == 0 {
-			return intercept.Decision{}, fmt.Errorf("未配置可用的裁判模型")
+			return intercept.Decision{}, fmt.Errorf("利用可能な判定モデルが設定されていません")
 		}
 		prov, _, ok := s.providerForProfile(profileID)
 		if !ok {
-			return intercept.Decision{ProfileID: profileID}, fmt.Errorf("裁判模型 profile %d 不可用", profileID)
+			return intercept.Decision{ProfileID: profileID}, fmt.Errorf("判定モデル profile %d は利用できません", profileID)
 		}
 		text, err := reviewCompletion(ctx, prov, prompt, input)
 		if err != nil {
@@ -104,7 +104,7 @@ func (s *Server) wireInterceptReviewer() {
 		}
 		v := intercept.ParseVerdict(text)
 		if v.Action == "" {
-			return intercept.Decision{ProfileID: profileID}, fmt.Errorf("模型裁决格式无效，必须包含裁决、实际操作、成功后的后果和命中规则")
+			return intercept.Decision{ProfileID: profileID}, fmt.Errorf("モデルの判定形式が不正です。判定、実際の操作、成功後の結果、命中ルールを含める必要があります")
 		}
 		return intercept.Decision{Action: v.Action, Message: v.Reason, ProfileID: profileID}, nil
 	})
@@ -115,8 +115,9 @@ func reviewCompletion(ctx context.Context, prov llm.Provider, prompt string, inp
 	if err != nil {
 		return "", err
 	}
-	// 整个 ReviewInput(工具参数/历史/任务背景)都含目标侧可控文本,按不可信数据
-	// 包裹后再喂给裁判模型,防止其中的注入文本被当成指令。
+	// ReviewInput 全体（ツールパラメータ/履歴/タスク背景）に目標側が制御できるテキストが
+	// 含まれるため、信頼できないデータとして包んでから判定モデルに渡し、中のインジェクション
+	// テキストが指示として解釈されるのを防ぐ。
 	return streamCollectText(ctx, prov, prompt, agent.WrapUntrustedData("tool-input", string(user)))
 }
 
@@ -388,12 +389,12 @@ func interceptFilterParams(q url.Values) (db.InterceptApprovalFilter, error) {
 	switch filter.Status {
 	case "", "pending", "allowed", "denied", "timeout":
 	default:
-		return filter, fmt.Errorf("status 必须是 pending、allowed、denied 或 timeout")
+		return filter, fmt.Errorf("status は pending、allowed、denied、timeout のいずれかである必要があります")
 	}
 	switch filter.DecisionSource {
 	case "", "model", "rule", "unknown":
 	default:
-		return filter, fmt.Errorf("decision_source 必须是 model、rule 或 unknown")
+		return filter, fmt.Errorf("decision_source は model、rule、unknown のいずれかである必要があります")
 	}
 	return filter, nil
 }
@@ -427,7 +428,7 @@ func (s *Server) interceptDecide(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Decision != "allowed" && req.Decision != "denied" {
-		writeErr(w, 400, "decision 必须是 allowed 或 denied")
+		writeErr(w, 400, "decision は allowed または denied である必要があります")
 		return
 	}
 	if err := s.m.interceptor.Decide(id, req.Decision == "allowed"); err != nil {
@@ -441,7 +442,7 @@ func (s *Server) interceptDecide(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-// --- guard auto-allow (一键放行) ---
+// --- guard auto-allow（ワンクリック許可） ---
 
 // guardAutoAllowGet returns the current auto-allow status, including the
 // remaining validity seconds. Expiry is enforced lazily on read.
@@ -450,7 +451,7 @@ func (s *Server) guardAutoAllowGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // guardAutoAllowSet enables/disables the one-click auto-allow switch. When
-// enabling, hours 夹逼到 {2,4,8};when disabling, hours is ignored.
+// enabling, hours is clamped to {2,4,8}; when disabling, hours is ignored.
 func (s *Server) guardAutoAllowSet(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Enabled bool `json:"enabled"`
@@ -467,7 +468,7 @@ func (s *Server) guardAutoAllowSet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.m.interceptor.AutoAllowStatus())
 }
 
-// --- tool-config (全局工具拦截范围) ---
+// --- tool-config（ツール全体のインターセプト範囲） ---
 
 // interceptGetToolConfig returns the list of tool names that are currently
 // configured to enter the intercept rule system.
@@ -500,7 +501,7 @@ func (s *Server) interceptSetToolConfig(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-// --- LLM fallback judge config (全局模型兜底) ---
+// --- LLM fallback judge config（モデル全体のフォールバック） ---
 
 // interceptGetJudgeConfig returns the resolved judge configuration. Prompt is the
 // effective prompt (built-in template when unset), so the UI can prefill it.
@@ -518,13 +519,13 @@ func (s *Server) interceptSetJudgeConfig(w http.ResponseWriter, r *http.Request)
 	switch req.FailAction {
 	case "allow", "ask", "deny":
 	default:
-		writeErr(w, 400, "fail_action 必须是 allow、ask 或 deny")
+		writeErr(w, 400, "fail_action は allow、ask、deny のいずれかである必要があります")
 		return
 	}
 	switch req.AskTimeoutAction {
 	case "allow", "deny":
 	default:
-		writeErr(w, 400, "ask_timeout_action 必须是 allow 或 deny")
+		writeErr(w, 400, "ask_timeout_action は allow または deny である必要があります")
 		return
 	}
 	if err := s.m.interceptor.SetJudgeConfig(req); err != nil {
@@ -552,29 +553,29 @@ type interceptRuleReq struct {
 
 func validateInterceptRuleReq(req interceptRuleReq) error {
 	if req.Name == "" {
-		return fmt.Errorf("name 不能为空")
+		return fmt.Errorf("name を入力してください")
 	}
 	switch req.MatchTarget {
 	case "tool_name", "tool_input":
 	default:
-		return fmt.Errorf("match_target 必须是 tool_name 或 tool_input")
+		return fmt.Errorf("match_target は tool_name または tool_input である必要があります")
 	}
 	switch req.MatchType {
 	case "string", "regex":
 	default:
-		return fmt.Errorf("match_type 必须是 string 或 regex")
+		return fmt.Errorf("match_type は string または regex である必要があります")
 	}
 	if req.Pattern == "" {
-		return fmt.Errorf("pattern 不能为空")
+		return fmt.Errorf("pattern を入力してください")
 	}
 	switch req.Action {
 	case "allow", "deny", "ask":
 	default:
-		return fmt.Errorf("action 必须是 allow、deny 或 ask")
+		return fmt.Errorf("action は allow、deny、ask のいずれかである必要があります")
 	}
 	if req.MatchType == "regex" {
 		if _, err := regexp.Compile(req.Pattern); err != nil {
-			return fmt.Errorf("pattern 不是有效正则：%w", err)
+			return fmt.Errorf("pattern が有効な正規表現ではありません：%w", err)
 		}
 	}
 	return nil
@@ -637,11 +638,11 @@ func (s *Server) interceptExecution(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if conv == nil {
-				writeErr(w, http.StatusGone, "对话已被删除")
+				writeErr(w, http.StatusGone, "チャットは削除されました")
 				return
 			}
 		}
-		writeErr(w, 404, "审批记录已被删除或不存在")
+		writeErr(w, 404, "承認記録は削除されたか存在しません")
 		return
 	}
 	writeJSON(w, 200, map[string]any{"conversation_id": target.ConversationID, "task_id": target.TaskID, "session": target.Session, "seq": target.Seq, "items": activityDTOs(target.Items)})

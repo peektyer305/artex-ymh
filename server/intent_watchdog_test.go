@@ -8,7 +8,7 @@ import (
 	"github.com/Autumn-27/artex/agent"
 )
 
-// P0 领取超时的纯判定:优先级门槛 + 5 分钟等待时长。
+// P0 受領タイムアウトの純粋な判定:優先度のしきい値 + 5 分の待機時間。
 func TestP0ClaimOverdue(t *testing.T) {
 	now := time.Now()
 	created := now.Add(-6 * time.Minute)
@@ -18,12 +18,12 @@ func TestP0ClaimOverdue(t *testing.T) {
 		createdAt time.Time
 		want      bool
 	}{
-		{"P0 等 6 分钟 → 逾期", 8, created, true},
-		{"最高档 10 等 6 分钟 → 逾期", 10, created, true},
-		{"P0 等 4 分钟 → 未逾期", 8, now.Add(-4 * time.Minute), false},
-		{"恰低于阈值 7 等再久也不报", 7, now.Add(-time.Hour), false},
-		{"默认档 5 等再久也不报", 5, now.Add(-time.Hour), false},
-		{"阈值边界 8 恰好 5 分钟 → 逾期", 8, now.Add(-p0ClaimTimeout), true},
+		{"P0 が 6 分待ち → 期限超過", 8, created, true},
+		{"最高段 10 が 6 分待ち → 期限超過", 10, created, true},
+		{"P0 が 4 分待ち → 期限内", 8, now.Add(-4 * time.Minute), false},
+		{"しきい値未満の 7 はいくら待っても報告しない", 7, now.Add(-time.Hour), false},
+		{"デフォルト段 5 はいくら待っても報告しない", 5, now.Add(-time.Hour), false},
+		{"しきい値境界 8 がちょうど 5 分 → 期限超過", 8, now.Add(-p0ClaimTimeout), true},
 	} {
 		overdue, waited := p0ClaimOverdue(tc.priority, tc.createdAt, now)
 		if overdue != tc.want {
@@ -34,33 +34,33 @@ func TestP0ClaimOverdue(t *testing.T) {
 		}
 	}
 	if p0ClaimTimeout != 5*time.Minute {
-		t.Fatalf("p0ClaimTimeout=%v, want 5m(R2 修复契约)", p0ClaimTimeout)
+		t.Fatalf("p0ClaimTimeout=%v, want 5m(R2 修正の契約)", p0ClaimTimeout)
 	}
 }
 
-// 冷却:同一意图只报一次;撤销后允许重报(hint 写库失败的重试路径)。
+// クールダウン:同じ意図は 1 回だけ通知する。取り消し後は再通知を許可する(hint の DB 書き込み失敗時の再試行経路)。
 func TestP0ReportedCooldown(t *testing.T) {
 	e := NewEngine(nil)
 	if !e.p0MarkReported("t1", 207) {
-		t.Fatal("首次登记应返回 true")
+		t.Fatal("初回の記録は true を返すべき")
 	}
 	if e.p0MarkReported("t1", 207) {
-		t.Fatal("同一意图重复登记必须返回 false(只报一次)")
+		t.Fatal("同じ意図の再記録は false を返すべき(1 回だけ報告)")
 	}
 	if !e.p0MarkReported("t1", 208) {
-		t.Fatal("不同意图互不影响")
+		t.Fatal("異なる意図同士は影響しない")
 	}
 	if !e.p0MarkReported("t2", 207) {
-		t.Fatal("不同任务互不影响")
+		t.Fatal("異なるタスク同士は影響しない")
 	}
 	e.p0Unmark("t1", 207)
 	if !e.p0MarkReported("t1", 207) {
-		t.Fatal("unmark 后应允许重报")
+		t.Fatal("unmark 後は再報告できるべき")
 	}
 }
 
-// mainagent 的 kill_work 必须带 killed_by_mainagent 具名原因,且只取消该 work、
-// 不波及整个任务 ctx(对照 planner 的 killed_by_planner)。
+// mainagent の kill_work は killed_by_mainagent という名前付き理由を必ず伴い、その work だけをキャンセルし、
+// タスク全体の ctx には波及しない(planner の killed_by_planner と対比)。
 func TestKillWorkAsCarriesMainagentCause(t *testing.T) {
 	e := NewEngine(nil)
 	execCtx := e.execContextFor(context.Background(), "t1")
@@ -75,7 +75,7 @@ func TestKillWorkAsCarriesMainagentCause(t *testing.T) {
 	if execCtx.Err() != nil {
 		t.Fatal("mainagent kill_work cancelled the entire task context")
 	}
-	// planner 路径仍是原原因。
+	// planner の経路は元の理由のまま。
 	workCtx2, workCancel2 := context.WithCancelCause(execCtx)
 	e.registerWork(43, workCancel2)
 	if err := e.KillWork(43); err != nil {

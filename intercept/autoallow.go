@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// SettingAutoAllow is the settings 键 for the one-click auto-allow switch
-// (「一键放行」). Value is JSON: {"enabled":bool,"expires_at":unix}. A single
+// SettingAutoAllow is the settings キー for the one-click auto-allow switch
+// (「ワンクリック許可」). Value is JSON: {"enabled":bool,"expires_at":unix}. A single
 // key keeps the state atomic — two keys could disagree on partial writes.
 const SettingAutoAllow = "guard_auto_allow"
 
@@ -26,7 +26,7 @@ type autoAllowSetting struct {
 	ExpiresAt int64 `json:"expires_at"`
 }
 
-// autoAllowHours 夹逼到 {2,4,8}:≤2 → 2,≤4 → 4,其余 → 8。
+// autoAllowHours は {2,4,8} にクランプする：≤2 → 2、≤4 → 4、それ以外 → 8。
 func autoAllowHours(hours int) int {
 	switch {
 	case hours <= 2:
@@ -38,8 +38,8 @@ func autoAllowHours(hours int) int {
 	}
 }
 
-// SetAutoAllow 开启/关闭一键放行。开启时有效期为 hours 小时(夹逼到 2/4/8);
-// 关闭时忽略 hours 并清空到期时间。
+// SetAutoAllow はワンクリック許可をオン/オフする。オンのとき有効期間は hours 時間（2/4/8 にクランプ）。
+// オフのときは hours を無視し、失効時刻をクリアする。
 func (i *Interceptor) SetAutoAllow(enabled bool, hours int) error {
 	s := autoAllowSetting{}
 	if enabled {
@@ -53,8 +53,9 @@ func (i *Interceptor) SetAutoAllow(enabled bool, hours int) error {
 	return i.db.SetSetting(SettingAutoAllow, string(raw))
 }
 
-// AutoAllowStatus 返回当前一键放行状态。每次调用都做惰性到期检查:已过期则
-// 自动关闭(回写 settings 并记日志),等价于到期自动失效,无需后台定时器。
+// AutoAllowStatus は現在のワンクリック許可状態を返す。呼び出しごとに遅延失効チェックを行い、
+// 失効していれば自動でオフにする（settings に書き戻してログを記録）。タイマーなしで
+// 期限切れ時に自動失効するのと同じ効果になる。
 func (i *Interceptor) AutoAllowStatus() AutoAllowState {
 	v, ok, err := i.db.GetSetting(SettingAutoAllow)
 	if err != nil || !ok {
@@ -66,23 +67,23 @@ func (i *Interceptor) AutoAllowStatus() AutoAllowState {
 	}
 	remaining := s.ExpiresAt - time.Now().Unix()
 	if remaining <= 0 {
-		log.Printf("[intercept] 一键放行已到期,自动恢复人工审批")
+		log.Printf("[intercept] ワンクリック許可の期限が切れたため、手動承認に自動で戻します")
 		if err := i.SetAutoAllow(false, 0); err != nil {
-			log.Printf("[intercept] 一键放行到期自动关闭失败: %v", err)
+			log.Printf("[intercept] ワンクリック許可の期限切れによる自動オフに失敗しました：%v", err)
 		}
 		return AutoAllowState{}
 	}
 	return AutoAllowState{Enabled: true, ExpiresAt: s.ExpiresAt, RemainingSeconds: remaining}
 }
 
-// autoAllowApprove handles an "ask" decision while 一键放行 is active: record
-// the approval into history with decision_source = "auto_allow" (审计完整,可
-// 区分无人值守放行与人工/模型/规则裁决), then allow without creating a pending
-// record. deny 规则不经过这里(guard 的 deny 分支直接拦截,不受本开关影响)。
+// autoAllowApprove handles an "ask" decision while ワンクリック許可 is active: record
+// the approval into history with decision_source = "auto_allow" (監査は完全で、無人での
+// 許可と手動／モデル／ルールの判定を区別できる), then allow without creating a pending
+// record. deny ルールはここを通らない（guard の deny 分岐が直接ブロックし、このスイッチの影響を受けない）。
 func (i *Interceptor) autoAllowApprove(ctx context.Context, convID int64, dec Decision, toolName string, input []byte) {
 	taskID, agentName := taskInfoFromCtx(ctx)
 	audit := auditFor(ctx, dec, input, "allowed")
-	reason := fmt.Sprintf("一键放行自动批准: %s", dec.Message)
+	reason := fmt.Sprintf("ワンクリック許可による自動承認: %s", dec.Message)
 	id, err := i.db.CreateDecidedInterceptWithSource(dec.RuleID, convID, taskID, agentName, toolName, input, "allowed", reason, "auto_allow", audit)
 	if err == nil {
 		i.bindResult(ctx, id, audit)

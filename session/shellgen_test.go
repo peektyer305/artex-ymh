@@ -1,8 +1,8 @@
 package session
 
-// shellgen_test.go 马体生成器测试:渲染完整性(无占位残留)、密钥嵌入、
-// 变量名随机化(两份不同)、混淆档语义(密钥整串被拆分、无 eval(base64)
-// 高特征形态)、PHP 模板 php -l 语法自检(环境无 php 则 skip)。
+// shellgen_test.go はシェル本体生成器のテスト: レンダリングの完全性(プレースホルダの残留なし)、鍵の埋め込み、
+// 変数名のランダム化(2 つが異なる)、難読化モードの意味論(鍵の全体文字列が分割され、eval(base64)
+// の高特徴形態がない)、PHP テンプレートの php -l 構文自己検査(環境に php がなければ skip)。
 
 import (
 	"os"
@@ -12,12 +12,12 @@ import (
 	"testing"
 )
 
-// phpLint 对生成的 PHP 马体做 php -l 语法检查;环境无 php 时 skip。
+// phpLint は生成した PHP シェル本体に php -l の構文検査を行う。環境に php がなければ skip。
 func phpLint(t *testing.T, content string) {
 	t.Helper()
 	php, err := exec.LookPath("php")
 	if err != nil {
-		t.Skip("环境无 php，跳过 php -l 语法检查（模板已人工核对）")
+		t.Skip("環境に php がないため、php -l の構文検査をスキップします(テンプレートは人手で確認済み)")
 	}
 	f := filepath.Join(t.TempDir(), "shell.php")
 	if err := os.WriteFile(f, []byte(content), 0o600); err != nil {
@@ -25,11 +25,11 @@ func phpLint(t *testing.T, content string) {
 	}
 	out, err := exec.Command(php, "-l", f).CombinedOutput()
 	if err != nil {
-		t.Fatalf("php -l 语法检查失败： %v\n%s", err, out)
+		t.Fatalf("php -l の構文検査に失敗しました: %v\n%s", err, out)
 	}
 }
 
-// TestGenerateShellPHP:PHP 马体渲染完整、密钥嵌入、占位清零、形态合规。
+// TestGenerateShellPHP: PHP シェル本体のレンダリング完全性、鍵の埋め込み、プレースホルダの消去、形態の適合。
 func TestGenerateShellPHP(t *testing.T) {
 	gen, err := GenerateShell("php", false, "")
 	if err != nil {
@@ -42,28 +42,28 @@ func TestGenerateShellPHP(t *testing.T) {
 		t.Fatalf("filename = %q", gen.Filename)
 	}
 	if strings.Contains(gen.Content, "{{") || strings.Contains(gen.Content, "<no value>") {
-		t.Fatal("模板占位未全部渲染")
+		t.Fatal("テンプレートのプレースホルダがすべてレンダリングされていない")
 	}
 	if !strings.Contains(gen.Content, "'"+gen.KeyB64+"'") {
-		t.Fatal("密钥未嵌入马体")
+		t.Fatal("鍵がシェル本体に埋め込まれていない")
 	}
 	if len(gen.KeyDigest) != 16 {
 		t.Fatalf("key_digest = %q", gen.KeyDigest)
 	}
-	// 形态底线:不做 eval(base64(...)) 高特征形态。
+	// 形態の下限: eval(base64(...)) の高特徴形態は行わない。
 	if strings.Contains(gen.Content, "eval(base64") {
-		t.Fatal("马体不应出现 eval(base64) 高特征形态")
+		t.Fatal("シェル本体に eval(base64) の高特徴形態を出してはいけない")
 	}
-	// 双路径都在:GCM 与 CBC+HMAC。
+	// 両経路がそろう: GCM と CBC+HMAC。
 	for _, want := range []string{"aes-256-gcm", "aes-256-cbc", "hash_hmac", "hash_equals"} {
 		if !strings.Contains(gen.Content, want) {
-			t.Fatalf("马体缺少 %s 路径", want)
+			t.Fatalf("シェル本体に %s 経路がない", want)
 		}
 	}
 	phpLint(t, gen.Content)
 }
 
-// TestGenerateShellRandomizedNames:两份马体变量/函数名随机化（静态特征最小化）。
+// TestGenerateShellRandomizedNames: 2 つのシェル本体で変数/関数名がランダム化される(静的シグネチャの最小化)。
 func TestGenerateShellRandomizedNames(t *testing.T) {
 	a, err := GenerateShell("php", false, "")
 	if err != nil {
@@ -74,42 +74,42 @@ func TestGenerateShellRandomizedNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	if a.Content == b.Content {
-		t.Fatal("两份马体不应逐字节相同（密钥与变量名都应随机）")
+		t.Fatal("2 つのシェル本体はバイト単位で同一であってはならない(鍵も変数名もランダムであるべき)")
 	}
 	if a.KeyB64 == b.KeyB64 {
-		t.Fatal("两份马体密钥应独立随机")
+		t.Fatal("2 つのシェル本体の鍵は独立にランダムであるべき")
 	}
 	if a.Filename == b.Filename {
-		t.Fatal("建议文件名应随机化")
+		t.Fatal("推奨ファイル名はランダム化されるべき")
 	}
 }
 
-// TestGenerateShellPHPObfuscated:混淆档——密钥整串被拆分，仍是合法 PHP。
+// TestGenerateShellPHPObfuscated: 難読化モード——鍵の全体文字列が分割され、それでも正当な PHP である。
 func TestGenerateShellPHPObfuscated(t *testing.T) {
 	gen, err := GenerateShell("php", true, "")
 	if err != nil {
 		t.Fatalf("GenerateShell: %v", err)
 	}
 	if strings.Contains(gen.Content, gen.KeyB64) {
-		t.Fatal("混淆档应拆分密钥整串（整串常量特征是签名点）")
+		t.Fatal("難読化モードでは鍵の全体文字列を分割するべき(全体定数はシグネチャの当たり所)")
 	}
 	if strings.Contains(gen.Content, "'aes-256-gcm'") {
-		t.Fatal("混淆档应拆分算法名整串")
+		t.Fatal("難読化モードではアルゴリズム名の全体文字列を分割するべき")
 	}
 	if !strings.Contains(gen.Content, "'.'") {
-		t.Fatal("混淆档应含字符串拼接")
+		t.Fatal("難読化モードでは文字列連結を含むべき")
 	}
 	if strings.Contains(gen.Content, "{{") {
-		t.Fatal("模板占位未全部渲染")
+		t.Fatal("テンプレートのプレースホルダがすべてレンダリングされていない")
 	}
 	if strings.Contains(gen.Content, "eval(base64") {
-		t.Fatal("混淆不做 eval(base64) 高特征形态")
+		t.Fatal("難読化では eval(base64) の高特徴形態を行わない")
 	}
 	phpLint(t, gen.Content)
 }
 
-// TestGenerateShellJSP:JSP 马体渲染完整、密钥嵌入（JSP 模板人工核对，无本机
-// 语法检查器）。
+// TestGenerateShellJSP: JSP シェル本体のレンダリング完全性、鍵の埋め込み(JSP テンプレートは人手で確認済み、
+// ローカルに構文チェッカーなし)。
 func TestGenerateShellJSP(t *testing.T) {
 	gen, err := GenerateShell("jsp", false, "")
 	if err != nil {
@@ -119,24 +119,24 @@ func TestGenerateShellJSP(t *testing.T) {
 		t.Fatalf("lang/filename = %q/%q", gen.Lang, gen.Filename)
 	}
 	if strings.Contains(gen.Content, "{{") || strings.Contains(gen.Content, "<no value>") {
-		t.Fatal("模板占位未全部渲染")
+		t.Fatal("テンプレートのプレースホルダがすべてレンダリングされていない")
 	}
 	if !strings.Contains(gen.Content, "\""+gen.KeyB64+"\"") {
-		t.Fatal("密钥未嵌入马体")
+		t.Fatal("鍵がシェル本体に埋め込まれていない")
 	}
 	if gen.Mode != "gcm" {
 		t.Fatalf("mode = %q, want gcm", gen.Mode)
 	}
 	for _, want := range []string{"AES/GCM/NoPadding", "GCMParameterSpec", "SecureRandom"} {
 		if !strings.Contains(gen.Content, want) {
-			t.Fatalf("JSP 马体缺少 %s", want)
+			t.Fatalf("JSP シェル本体に %s がない", want)
 		}
 	}
 }
 
-// TestGenerateShellBadLang:不支持的语言明确报错。
+// TestGenerateShellBadLang: 非対応の言語では明確にエラーを返す。
 func TestGenerateShellBadLang(t *testing.T) {
 	if _, err := GenerateShell("aspx", false, ""); err == nil {
-		t.Fatal("aspx 加密马未实现，应报错")
+		t.Fatal("aspx の暗号化シェルは未実装なので、エラーになるべき")
 	}
 }

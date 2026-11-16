@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// writeManifest 在临时目录写一份清单并返回路径。
+// writeManifest は一時ディレクトリにマニフェストを書き、そのパスを返す。
 func writeManifest(t *testing.T, entries []Entry) string {
 	t.Helper()
 	b, err := json.Marshal(Manifest{Tools: entries})
@@ -27,7 +27,7 @@ func writeManifest(t *testing.T, entries []Entry) string {
 func TestLoadMissing(t *testing.T) {
 	_, err := Load(filepath.Join(t.TempDir(), "nope.json"))
 	if !os.IsNotExist(err) {
-		t.Fatalf("缺失清单应满足 os.IsNotExist,得到 %v", err)
+		t.Fatalf("マニフェスト不在は os.IsNotExist を満たすべきです, got %v", err)
 	}
 }
 
@@ -61,7 +61,7 @@ func TestCheckStatuses(t *testing.T) {
 	}
 	for name, ws := range want {
 		if got[name] != ws {
-			t.Errorf("%s: 期望状态 %v,得到 %v", name, ws, got[name])
+			t.Errorf("%s: 期待するステータス %v, got %v", name, ws, got[name])
 		}
 	}
 }
@@ -75,6 +75,6 @@ func TestCheckEnvOverride(t *testing.T) {
 	t.Setenv("ARTEX_SUO5_PATH", alt)
 	r := CheckEntry(Entry{Name: "suo5", Path: "tools/suo5", Env: "ARTEX_SUO5_PATH"}, dataDir)
 	if r.Status != StatusUnpinned || r.Path != alt {
-		t.Fatalf("env 覆盖未生效: status=%v path=%s", r.Status, r.Path)
+		t.Fatalf("env の上書きが反映されていません: status=%v path=%s", r.Status, r.Path)
 	}
 }

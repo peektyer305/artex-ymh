@@ -19,7 +19,7 @@ var hostTools = map[string]bool{
 }
 
 // valueFlags take a non-host value as the next token; that token must not be
-// mistaken for a target. 保守取向:宁缺勿滥。
+// mistaken for a target. 保守的方針:過剰より不足を選ぶ。
 var valueFlags = map[string]bool{
 	"-p": true, "-o": true, "-oA": true, "-oX": true, "-oN": true, "-oG": true,
 	"-iL": true, "-i": true, "-e": true, "-w": true, "-t": true, "-c": true,
@@ -33,14 +33,14 @@ var valueFlags = map[string]bool{
 
 var (
 	reScheme = regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^\s'"<>|\\^` + "`" + `]+`)
-	// 主机名:至少一段点分且以字母 TLD 结尾(file.txt 这类误判由 valueFlags 兜住)。
+	// ホスト名:少なくとも 1 つのドット区切りがあり、英字 TLD で終わる（file.txt のような誤判定は valueFlags で吸収）。
 	reHostName   = regexp.MustCompile(`^(?i)[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$`)
 	reShellSplit = regexp.MustCompile(`[\s|;&<>]+`)
 )
 
 // ExtractHosts extracts likely interaction targets from a shell command line:
 // hosts of URLs (scheme://...), host:port / IP literals following common tool
-// names, and standalone IP literals. 保守取向:提取不出 = 无目标(不拦截)。
+// names, and standalone IP literals. 保守的方針:抽出できなければターゲットなし（ブロックしない）。
 // Returned hosts are lowercased, port-stripped, deduplicated, in first-seen order.
 func ExtractHosts(command string) []string {
 	var out []string
@@ -62,7 +62,7 @@ func ExtractHosts(command string) []string {
 	}
 
 	// Pass 2: token scan — tool positional args + standalone IP literals.
-	curTool := false // 上一个词是 hostTools 工具名
+	curTool := false // 直前の語が hostTools のツール名
 	skipNext := false
 	for _, tok := range reShellSplit.Split(command, -1) {
 		tok = strings.Trim(tok, `"'`)
@@ -99,7 +99,7 @@ func ExtractHosts(command string) []string {
 			}
 			continue
 		}
-		// 非工具参数位置:只收独立 IP 字面量(裸主机名歧义太大,宁缺勿滥)。
+		// ツール引数の位置ではない場合:独立した IP リテラルのみ採用（裸のホスト名は曖昧すぎるため、過剰より不足を選ぶ）。
 		if ip := parseBareIP(tok); ip != "" {
 			add(ip)
 		}

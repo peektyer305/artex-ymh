@@ -1,11 +1,13 @@
 package agent
 
-// 本文件把内置 agent 的「默认提示词正文」(段 [A]) 变成可枚举、可被服务端幂等
-// 播种进 agent_prompts 表的目录 —— 镜像 toolcatalog.go 的 BuiltinToolSeeds()。
+// 本ファイルは、組み込みエージェントの「デフォルトプロンプト本文」（段 [A]）を列挙でき、
+// サーバー側から冪等に agent_prompts テーブルへシードできるカタログにする ——
+// toolcatalog.go の BuiltinToolSeeds() を踏襲する。
 //
-// 只包含【可编辑正文】：段 [B] trafficTool 与段 [C] 中间产物输出规约 是代码固定
-// 注入(见 worker.go 的 workerTrafficBlock/artifactSpec)，不入库、不可编辑，因此
-// 不在种子里。种子文本用 Go 模板占位({{.Goal}} 等)，渲染时按运行期变量填充。
+// 含むのは【編集可能な本文】のみ。段 [B] trafficTool と段 [C] 中間生成物の出力規約は
+// コードが固定注入する（worker.go の workerTrafficBlock/artifactSpec を参照）ため、
+// DB に入らず編集もできず、シードには含めない。シードのテキストは Go テンプレートの
+// プレースホルダ（{{.Goal}} など）を使い、レンダリング時に実行時の変数で埋める。
 
 // autoDefaultTmpl is the built-in "Auto" platform-operator agent's prompt. Auto
 // runs via the chat page and drives the platform through tools: task ops
@@ -24,7 +26,7 @@ const autoDefaultTmpl = `你是 **Auto**，这个渗透测试平台的「操作�
 - 用人话简洁汇报你做了什么、结果如何；只根据工具真实返回作答，不臆造。
 - 只在授权范围内操作。`
 
-// pentestDefaultTmpl is the built-in "渗透测试" (solo pentest) agent's prompt. Unlike
+// pentestDefaultTmpl is the built-in "ペネトレーションテスト" (solo pentest) agent's prompt. Unlike
 // the orchestration roles (goals/planner/worker), it runs standalone via the chat page
 // and is its own planner + executor + auditor. Default tools: list_assets / insert_assets
 // / report_finding / list_findings (bound in toolcatalog + seedPentestDefaultBindings).
@@ -69,7 +71,7 @@ const pentestDefaultTmpl = `你是一个授权渗透测试系统的"独立渗透
 // render fallback in RunChat when the DB prompt is somehow missing.
 const DefaultAssistantPrompt = `你是一个乐于助人的 AI 助手。请用简洁、准确的中文回答用户的问题；在需要时使用可用的工具来完成任务。只做用户要求的事，不臆造信息。`
 
-// ReporterDefaultPrompt is the seeded prompt for the "报告撰写"(reporter) custom
+// ReporterDefaultPrompt is the seeded prompt for the "レポート作成"(reporter) custom
 // agent — triggered when report_finding fires. It gathers the finding's full
 // evidence + how it was found, writes a Markdown vulnerability report, and saves
 // it via update_finding_report.
@@ -116,9 +118,10 @@ func BuiltinPromptSeeds() map[string]string {
 		"planner":   plannerDefaultTmpl,
 		"mainagent": mainAgentDefaultTmpl,
 		"worker":    workerDefaultTmpl,
-		// 期 4:内网期 worker 提示词变体(任务有立足点会话/活跃隧道时代替 worker
-		// 正文,见 worker.go workerSystem)。key 带 ".intranet" 后缀,seedBuiltins
-		// 里有同名 agents 行(db/db.go),seedPrompts 才能把正文种进 agent_prompts。
+		// 第 4 フェーズ：イントラネット期の worker プロンプト変種（タスクにフットホールド
+		// セッション／稼働中のトンネルがある場合、worker 本文の代わりに使う。worker.go の
+		// workerSystem を参照）。key は ".intranet" 接尾辞付きで、seedBuiltins に対応する
+		// agents 行（db/db.go）があるため、seedPrompts が本文を agent_prompts にシードできる。
 		"worker.intranet": workerIntranetDefaultTmpl,
 		"auto":      autoDefaultTmpl,
 		"pentest":   pentestDefaultTmpl,

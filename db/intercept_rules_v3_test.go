@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 纯单测(不需要 PG):F13 底线规则的正则必须命中常见变体、不误伤正常命令。
+// 純粋な単体テスト(PG 不要):F13 下限ルールの正規表現はよくある変種に一致し、通常のコマンドを誤検知してはならない。
 func TestBuiltinHTTPServerRulePatterns(t *testing.T) {
 	hits := map[string][]string{
 		"python": {
@@ -36,21 +36,21 @@ func TestBuiltinHTTPServerRulePatterns(t *testing.T) {
 		},
 	}
 	misses := []string{
-		"curl http://10.0.0.2:8787/s/abc/tool.sh -o /tmp/tool.sh", // stage_share 的正常拉取
-		"python3 exploit.py",                    // 普通脚本
-		"php -r 'echo 1;'",                      // php 单行
-		"php artisan serve",                     // 框架子命令,不是 php -S
-		"gem install httpd-tools",               // 含 httpd 字样
-		"ruby script.rb",                        // 普通 ruby
-		"npm install",                           // npm 不是 npx serve
-		"cat httpd.conf",                        // 配置文件
-		"nmap -p 80,8000-9000 10.0.0.2",         // 常规扫描
+		"curl http://10.0.0.2:8787/s/abc/tool.sh -o /tmp/tool.sh", // stage_share の正常な取得
+		"python3 exploit.py",                    // 通常のスクリプト
+		"php -r 'echo 1;'",                      // php ワンライナー
+		"php artisan serve",                     // フレームワークのサブコマンドで、php -S ではない
+		"gem install httpd-tools",               // httpd の文字列を含む
+		"ruby script.rb",                        // 通常の ruby
+		"npm install",                           // npm は npx serve ではない
+		"cat httpd.conf",                        // 設定ファイル
+		"nmap -p 80,8000-9000 10.0.0.2",         // 通常のスキャン
 	}
 	var rules []*regexp.Regexp
 	for _, r := range builtinHTTPServerRules {
 		re, err := regexp.Compile(r.pattern)
 		if err != nil {
-			t.Fatalf("规则 %q 正则编译失败: %v", r.name, err)
+			t.Fatalf("ルール %q の正規表現コンパイルに失敗しました: %v", r.name, err)
 		}
 		rules = append(rules, re)
 	}
@@ -65,13 +65,13 @@ func TestBuiltinHTTPServerRulePatterns(t *testing.T) {
 	for group, cmds := range hits {
 		for _, c := range cmds {
 			if !matchAny(c) {
-				t.Errorf("[%s] 应命中但未命中: %s", group, c)
+				t.Errorf("[%s] 一致すべきだが一致しません: %s", group, c)
 			}
 		}
 	}
 	for _, c := range misses {
 		if matchAny(c) {
-			t.Errorf("误伤正常命令: %s", c)
+			t.Errorf("正常なコマンドを誤検知しました: %s", c)
 		}
 	}
 }

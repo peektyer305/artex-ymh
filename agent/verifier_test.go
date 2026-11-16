@@ -6,8 +6,8 @@ import (
 	"github.com/Autumn-27/artex/db"
 )
 
-// C4:只有 confirmed 的漏洞才算"已突破";pending 占位/误报不能作 prove_goal
-// 证据、不计入确认漏洞数;无独立 findings 行("")保持原行为。
+// C4: confirmed の脆弱性だけが「突破済み」とみなされる。pending のプレースホルダ/誤検知は prove_goal の
+// 証拠にできず、確認済み脆弱性数にも数えない。独立した findings 行がない場合（""）は従来の挙動を保つ。
 func TestProvenFinding(t *testing.T) {
 	if !provenFinding("") {
 		t.Error("empty status (no standalone row) should stay countable")

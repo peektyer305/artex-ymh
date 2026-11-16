@@ -1,13 +1,13 @@
 package agent
 
-// 批 6 L1(设计文档 HONEYPOT-DETECTION-DESIGN.md 二·L1 + 「处置策略」表):
-// 蜜罐静态签名识别层在 agent 侧的挂点与 planner 处置纪律。
-// - evaluateHoneypot:service 资产落库后跑 honeydetect 签名评估,score>0 时
-//   回写资产 honeypot_score/evidence(db.SetHoneypotScore,取更高分+证据去重),
-//   并写一条 fact 进探索图锚定该资产(planner 每轮态势可见)。全部 best-effort,
-//   失败不影响资产登记主流程。
-// - plannerHoneypotRules:处置纪律,与批 5 红线同风格的代码固定尾(不可被 DB
-//   正文覆盖),plannerSystem 统一追加。
+// バッチ 6 L1（設計ドキュメント HONEYPOT-DETECTION-DESIGN.md 二・L1 +「処置戦略」表）:
+// ハニーポットの静的シグネチャ識別層を agent 側に組み込むフックと、planner の処置規律。
+// - evaluateHoneypot: service アセットの登録後に honeydetect のシグネチャ評価を実行し、score>0 なら
+//   アセットの honeypot_score/evidence を書き戻し（db.SetHoneypotScore、高いスコアを採用し証拠を重複排除）、
+//   当該アセットをアンカーする fact を探索グラフへ 1 件書き込む（planner は毎ターンの状況で参照可）。すべて best-effort で、
+//   失敗してもアセット登録の主処理には影響しない。
+// - plannerHoneypotRules: 処置規律。バッチ 5 のレッドラインと同方式のコード固定テール（DB 本文で
+//   上書き不可）で、plannerSystem が一律で追加する。
 
 import (
 	"fmt"
@@ -18,8 +18,8 @@ import (
 	"github.com/Autumn-27/artex/honeydetect"
 )
 
-// plannerHoneypotRules 是 planner 的蜜罐处置纪律(设计文档「处置策略」表):
-// 双信号才封锁,单信号只降级,疑似蜜罐上不投递/不爆破/不利用。
+// plannerHoneypotRules は planner のハニーポット処置規律（設計ドキュメント「処置戦略」表）:
+// 二重シグナルでのみ封鎖し、単一シグナルでは降格のみ。ハニーポットの疑いがある先には投下も突破も悪用もしない。
 const plannerHoneypotRules = `
 
 **蜜罐处置纪律(不可编辑)**:
@@ -28,7 +28,7 @@ const plannerHoneypotRules = `
 3. 疑似蜜罐资产上已有意图在跑的,让它以最低交互收尾,不追加高价值动作;侦察与利用资源优先投向无蜜罐信号的方向。
 4. 全阴性【不等于】非蜜罐(高交互/加固蜜罐对自动化识别免疫):对无信号目标同样不投放高价值 exploit、控制噪声。`
 
-// honeypotConfidence 把评分映射到处置档:≥0.9 high、≥0.6 medium(其余不记录)。
+// honeypotConfidence はスコアを処置段階へ対応付ける: ≥0.9 high、≥0.6 medium（それ未満は記録しない）。
 func honeypotConfidence(score float64) string {
 	if score >= 0.9 {
 		return "high"
@@ -36,8 +36,8 @@ func honeypotConfidence(score float64) string {
 	return "medium"
 }
 
-// evaluateHoneypot 是 service 资产落库后的 L1 签名评分挂点(insert_assets 与
-// httpx 回写同路径)。best-effort:任何失败都只影响蜜罐标记,不影响资产登记。
+// evaluateHoneypot は service アセット登録後の L1 シグネチャ評価フック（insert_assets と
+// httpx の書き戻しが同じ経路）。best-effort: 失敗はハニーポットのマークだけに影響し、アセット登録には影響しない。
 func (t *ToolSet) evaluateHoneypot(assetID int64, v honeydetect.ServiceView) {
 	if assetID <= 0 {
 		return
@@ -54,10 +54,10 @@ func (t *ToolSet) evaluateHoneypot(assetID int64, v honeydetect.ServiceView) {
 	}
 	conf := honeypotConfidence(score)
 	payload := map[string]any{
-		"summary": fmt.Sprintf("疑似蜜罐资产 #%d:静态签名命中(score=%.2f, %s)", assetID, score, conf),
-		"detail":  "命中签名: " + strings.Join(evidence, "; ") + "。处置:单信号只降级交互(被动/只读),不投递/不爆破/不利用;双信号命中才封锁方向。",
-		// 签名匹配是对 banner/title/证书的直接观察 → observed;
-		// honeypot_confidence 另记处置档(high/medium,评分映射)。
+		"summary": fmt.Sprintf("ハニーポットの疑いがあるアセット #%d: 静的シグネチャ命中（score=%.2f, %s）", assetID, score, conf),
+		"detail":  "命中シグネチャ: " + strings.Join(evidence, "; ") + "。処置: 単一シグナルでは対話を降格（受動/読み取り専用）し、投下/突破/悪用はしない。二重シグナル命中でのみ方向を封鎖する。",
+		// シグネチャ一致は banner/title/証明書への直接観測 → observed。
+		// honeypot_confidence は別途処置段階を記録する（high/medium、スコア対応）。
 		"confidence":          FactConfidenceObserved,
 		"honeypot_score":      score,
 		"honeypot_confidence": conf,
@@ -66,7 +66,7 @@ func (t *ToolSet) evaluateHoneypot(assetID int64, v honeydetect.ServiceView) {
 	_, _ = t.ts.AddNode(db.KindFact, payload, 5, "confirmed", t.worker, []int64{assetID})
 }
 
-// urlPort 从 URL 取端口(缺省按 scheme),取不到返回 0。
+// urlPort は URL からポートを取る（省略時は scheme による）。取れなければ 0 を返す。
 func urlPort(raw string) int {
 	u, err := url.Parse(raw)
 	if err != nil {

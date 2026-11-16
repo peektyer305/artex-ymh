@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// RoE 集成测试(无 interceptor 的可测部分):strict+Out 无审批通道 → 硬拦;
-// warn → 放行但写审计;In / Unknown / off / 无目标 / 无 taskID → 放行。
+// RoE 統合テスト（interceptor なしで試験可能な部分）:strict+Out で承認チャネルなし → ハードブロック;
+// warn → 通過するが監査を記録。In / Unknown / off / ターゲットなし / taskID なし → 通過。
 
 func roeGuard(mode string, rules []ScopeRule) *Guard {
 	g := New()
@@ -31,10 +31,10 @@ func TestRoEStrictBlocksOutOfScope(t *testing.T) {
 	g := roeGuard("strict", []ScopeRule{{Kind: "domain", Value: "target.com"}})
 	blocked, msg := bashBlocked(t, g, `curl https://evil.com/`)
 	if !blocked {
-		t.Fatal("strict 模式下范围外目标应被拦截")
+		t.Fatal("strict モードでは範囲外のターゲットをブロックすべきです")
 	}
 	if !strings.Contains(msg, "evil.com") || !strings.Contains(msg, "roe_enforcement") {
-		t.Errorf("拦截消息应写明 host 与关闭/降级方式, got: %s", msg)
+		t.Errorf("ブロックメッセージには host と無効化/降格の方法を明記すべきです, got: %s", msg)
 	}
 }
 
@@ -42,28 +42,28 @@ func TestRoEStrictAllowsInScope(t *testing.T) {
 	g := roeGuard("strict", []ScopeRule{{Kind: "domain", Value: "target.com"}})
 	for _, cmd := range []string{
 		`curl https://api.target.com/`,
-		`nmap 127.0.0.1`,           // 本机操作放行
-		`ls -la`,                   // 无目标
+		`nmap 127.0.0.1`,           // 本機操作は通過
+		`ls -la`,                   // ターゲットなし
 		`curl https://target.com/`, //
 	} {
 		if blocked, _ := bashBlocked(t, g, cmd); blocked {
-			t.Errorf("strict 模式下 %q 不应被拦截", cmd)
+			t.Errorf("strict モードでは %q をブロックすべきではありません", cmd)
 		}
 	}
 }
 
 func TestRoEUnknownScopeAllows(t *testing.T) {
-	// 未登记范围(空规则)→ Unknown → 放行,保持现状语义。
+	// 未登録範囲（空ルール）→ Unknown → 通過。現行セマンティクスを維持。
 	g := roeGuard("strict", nil)
 	if blocked, _ := bashBlocked(t, g, `curl https://anything.com/`); blocked {
-		t.Error("未登记范围不应拦截")
+		t.Error("未登録の範囲はブロックすべきではありません")
 	}
 }
 
 func TestRoEWarnAllowsButAudits(t *testing.T) {
 	g := roeGuard("warn", []ScopeRule{{Kind: "cidr", Value: "10.0.0.0/8"}})
 	if blocked, _ := bashBlocked(t, g, `nmap 172.16.0.5`); blocked {
-		t.Fatal("warn 模式应放行")
+		t.Fatal("warn モードでは通過させるべきです")
 	}
 	var found bool
 	for _, e := range g.Audit() {
@@ -72,14 +72,14 @@ func TestRoEWarnAllowsButAudits(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("warn 放行应写 guard 审计(注明 RoE 与 host)")
+		t.Error("warn の通過は guard 監査に記録すべきです(RoE と host を明記)")
 	}
 }
 
 func TestRoEOffDisables(t *testing.T) {
 	g := roeGuard("off", []ScopeRule{{Kind: "domain", Value: "target.com"}})
 	if blocked, _ := bashBlocked(t, g, `curl https://evil.com/`); blocked {
-		t.Error("off 模式不应拦截")
+		t.Error("off モードではブロックすべきではありません")
 	}
 }
 
@@ -88,10 +88,10 @@ func TestRoENoTaskIDAllows(t *testing.T) {
 	g.SetRoE(RoEConfig{
 		Mode:     func() string { return "strict" },
 		Scope:    func(int64) []ScopeRule { return []ScopeRule{{Kind: "domain", Value: "target.com"}} },
-		TaskIDOf: func(context.Context) int64 { return 0 }, // chat 等非任务运行
+		TaskIDOf: func(context.Context) int64 { return 0 }, // chat などタスク実行以外
 	})
 	if blocked, _ := bashBlocked(t, g, `curl https://evil.com/`); blocked {
-		t.Error("无 taskID 应放行")
+		t.Error("taskID なしは通過させるべきです")
 	}
 }
 
@@ -100,6 +100,6 @@ func TestRoEWebFetch(t *testing.T) {
 	input, _ := json.Marshal(map[string]string{"url": "https://evil.com/x"})
 	blocked, _, _ := g.Hooks().PreToolUse(context.Background(), "WebFetch", input)
 	if !blocked {
-		t.Error("WebFetch 的 URL host 同样受 RoE 检查")
+		t.Error("WebFetch の URL host も同様に RoE チェックを受けるべきです")
 	}
 }

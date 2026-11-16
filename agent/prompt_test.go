@@ -17,11 +17,11 @@ func TestRenderSystemOverrideAndFallback(t *testing.T) {
 	// override → rendered with vars
 	PromptOverride = func(k string) (string, bool) {
 		if k == "planner" {
-			return "目标:{{.Goal}} 范围:{{.Scope}}", true
+			return "目標:{{.Goal}} 範囲:{{.Scope}}", true
 		}
 		return "", false
 	}
-	if got := renderSystem("planner", "DEFAULT", PlannerVars{Goal: "拿下X", Scope: "*.x.com"}); got != "目标:拿下X 范围:*.x.com" {
+	if got := renderSystem("planner", "DEFAULT", PlannerVars{Goal: "X を攻略", Scope: "*.x.com"}); got != "目標：X を攻略 範囲：*.x.com" {
 		t.Fatalf("override render: %q", got)
 	}
 
@@ -32,10 +32,10 @@ func TestRenderSystemOverrideAndFallback(t *testing.T) {
 	}
 
 	// full plannerSystem path: DB body [A] is honored, then the code-owned tail
-	// [C] (中间产物输出规约) is ALWAYS appended — editing the body can't drop it.
+	// [C]（中間成果物の出力規約）is ALWAYS appended — editing the body can't drop it.
 	PromptOverride = func(k string) (string, bool) { return "PLANNER {{.Goal}}", true }
-	got := plannerSystem("拿下X", "/data", "/data")
-	if !strings.HasPrefix(got, "PLANNER 拿下X") {
+	got := plannerSystem("X を攻略", "/data", "/data")
+	if !strings.HasPrefix(got, "PLANNER X を攻略") {
 		t.Fatalf("plannerSystem body not honored: %q", got)
 	}
 	if !strings.Contains(got, "中间产物输出规约") || !strings.Contains(got, "/data") {
@@ -48,10 +48,10 @@ func TestRenderSystemOverrideAndFallback(t *testing.T) {
 	// block is gated on the CA (arg 2), NOT on ProxyAddr — a global egress proxy
 	// with capture off routes traffic but records nothing.
 	PromptOverride = func(k string) (string, bool) {
-		return "{{if .ProxyAddr}}走代理 {{.ProxyAddr}}{{else}}手动{{end}}", true
+		return "{{if .ProxyAddr}}プロキシ経由 {{.ProxyAddr}}{{else}}手動{{end}}", true
 	}
 	recording := workerSystem("127.0.0.1:8080", "/ca.pem", "/data", "/data", false)
-	if !strings.HasPrefix(recording, "走代理 127.0.0.1:8080") {
+	if !strings.HasPrefix(recording, "プロキシ経由 127.0.0.1:8080") {
 		t.Fatalf("worker proxy branch body: %q", recording)
 	}
 	if !strings.Contains(recording, "traffic_search") {
@@ -66,14 +66,14 @@ func TestRenderSystemOverrideAndFallback(t *testing.T) {
 	// Egress proxy set but capture OFF (no CA): the ProxyAddr template branch still
 	// renders, but the trafficTool block must NOT — those tools are not registered.
 	egressOnly := workerSystem("127.0.0.1:8080", "", "/data", "/data", false)
-	if !strings.HasPrefix(egressOnly, "走代理 127.0.0.1:8080") {
+	if !strings.HasPrefix(egressOnly, "プロキシ経由 127.0.0.1:8080") {
 		t.Fatalf("worker egress-only branch body: %q", egressOnly)
 	}
 	if strings.Contains(egressOnly, "traffic_search") {
 		t.Fatalf("worker without recording must NOT inject trafficTool: %q", egressOnly)
 	}
 	noProxy := workerSystem("", "", "/data", "/data", false)
-	if !strings.HasPrefix(noProxy, "手动") {
+	if !strings.HasPrefix(noProxy, "手動") {
 		t.Fatalf("worker no-proxy branch body: %q", noProxy)
 	}
 	if strings.Contains(noProxy, "traffic_search") {
@@ -81,46 +81,46 @@ func TestRenderSystemOverrideAndFallback(t *testing.T) {
 	}
 }
 
-// 期 4:intranet=true 时正文换 worker.intranet 变体(DB 覆盖优先,缺失退回
-// worker 链),代码固定内网红线尾 ALWAYS 追加,编辑正文删不掉。
+// フェーズ 4: intranet=true のとき本文を worker.intranet の変種へ差し替える（DB 上書きが優先、なければ
+// worker のチェーンへ戻す）。コード固定のイントラネット・レッドラインテールは ALWAYS 追加され、本文編集では消せない。
 func TestWorkerSystemIntranetVariant(t *testing.T) {
 	t.Cleanup(func() { PromptOverride = nil })
 
-	// 无 DB 覆盖:退回 worker 默认正文 + 内网红线尾。
+	// DB 上書きなし: worker のデフォルト本文 + イントラネット・レッドラインテールへ戻る。
 	PromptOverride = nil
 	got := workerSystem("", "", "/data", "/data", true)
 	if !strings.Contains(got, "内网红线") {
-		t.Fatalf("intranet run missing code-owned 内网红线尾: %q", got)
+		t.Fatalf("intranet run missing code-owned intranet redline tail: %q", got)
 	}
 
-	// worker.intranet 覆盖优先于 worker 覆盖。
+	// worker.intranet の上書きは worker の上書きより優先される。
 	PromptOverride = func(k string) (string, bool) {
 		switch k {
 		case "worker.intranet":
-			return "内网正文 {{.Intranet}}", true
+			return "イントラネット本文 {{.Intranet}}", true
 		case "worker":
-			return "外网正文", true
+			return "外部ネットワーク本文", true
 		}
 		return "", false
 	}
-	if got = workerSystem("", "", "/data", "/data", true); !strings.HasPrefix(got, "内网正文 true") {
+	if got = workerSystem("", "", "/data", "/data", true); !strings.HasPrefix(got, "イントラネット本文 true") {
 		t.Fatalf("worker.intranet override should win: %q", got)
 	}
 	if !strings.Contains(got, "内网红线") {
-		t.Fatalf("edited variant body must not drop code-owned 内网红线尾: %q", got)
+		t.Fatalf("edited variant body must not drop the code-owned intranet redline tail: %q", got)
 	}
-	// 变体缺失时退回 worker 本身的覆盖。
+	// 変種がないときは worker 自身の上書きへ戻る。
 	PromptOverride = func(k string) (string, bool) {
 		if k == "worker" {
-			return "外网正文", true
+			return "外部ネットワーク本文", true
 		}
 		return "", false
 	}
-	if got = workerSystem("", "", "/data", "/data", true); !strings.HasPrefix(got, "外网正文") {
+	if got = workerSystem("", "", "/data", "/data", true); !strings.HasPrefix(got, "外部ネットワーク本文") {
 		t.Fatalf("missing variant should fall back to worker key: %q", got)
 	}
-	// intranet=false 不追加红线尾。
+	// intranet=false ではレッドラインテールを追加しない。
 	if got = workerSystem("", "", "/data", "/data", false); strings.Contains(got, "内网红线") {
-		t.Fatalf("non-intranet run must not append 内网红线尾: %q", got)
+		t.Fatalf("non-intranet run must not append the intranet redline tail: %q", got)
 	}
 }

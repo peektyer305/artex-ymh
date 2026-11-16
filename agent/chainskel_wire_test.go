@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// add_intent 的 chain_tags:合法值写入意图 payload(不破坏原有契约),非法值/超 2 个报错。
+// add_intent の chain_tags: 正当な値はインテントの payload に書き込み（既存の契約を壊さない）、不正な値/2 個超はエラー。
 func TestAddOneIntentChainTags(t *testing.T) {
 	d := testDB(t)
 	defer d.Close()
@@ -19,42 +19,42 @@ func TestAddOneIntentChainTags(t *testing.T) {
 	tools := NewToolSet(d.Exploration(task.ExplorationID), "planner")
 	tools.SetTaskID(task.ID)
 
-	id, err := tools.addOneIntent(intentItem{Summary: "对 example.com 登录口做 sql 注入测试", ChainTags: []string{" Web ", "sqli?"}})
+	id, err := tools.addOneIntent(intentItem{Summary: "example.com のログイン画面で SQL インジェクションを試す", ChainTags: []string{" Web ", "sqli?"}})
 	_ = id
 	if err == nil || !strings.Contains(err.Error(), "chain_tags") {
-		t.Fatalf("非法 tag 应报 chain_tags 错, got err=%v", err)
+		t.Fatalf("不正な tag は chain_tags エラーになるべき, got err=%v", err)
 	}
 
 	if _, err := tools.addOneIntent(intentItem{Summary: "x", ChainTags: []string{"web", "ad", "priv"}}); err == nil {
-		t.Fatal("超过 2 个 tag 应报错")
+		t.Fatal("2 個を超える tag はエラーになるべき")
 	}
 
-	id, err = tools.addOneIntent(intentItem{Summary: "对 example.com 登录口做 sql 注入测试", ChainTags: []string{"web", "PRIV"}})
+	id, err = tools.addOneIntent(intentItem{Summary: "example.com のログイン画面で SQL インジェクションを試す", ChainTags: []string{"web", "PRIV"}})
 	if err != nil {
-		t.Fatalf("合法 tags 不应报错: %v", err)
+		t.Fatalf("正当な tags はエラーにならないはず: %v", err)
 	}
 	n, err := tools.ts.GetNode(id)
 	if err != nil || n == nil {
-		t.Fatalf("取意图节点: %v", err)
+		t.Fatalf("インテントノードの取得: %v", err)
 	}
 	payload := string(n.Payload)
 	if !strings.Contains(payload, `"chain_tags":["web","priv"]`) {
-		t.Fatalf("payload 应含规整后的 chain_tags, got: %s", payload)
+		t.Fatalf("payload は正規化後の chain_tags を含むべき, got: %s", payload)
 	}
-	// 原有字段不受影响
+	// 既存フィールドは影響を受けない
 	if !strings.Contains(payload, `"summary"`) {
-		t.Fatalf("payload 缺 summary: %s", payload)
+		t.Fatalf("payload に summary がない: %s", payload)
 	}
 }
 
-// L2 meta 铁律:静态常量追加在 planner/worker system 的代码固定尾。
+// L2 の meta 鉄則: 静的定数を planner/worker system のコード固定テールに追加する。
 func TestSystemPromptMetaRules(t *testing.T) {
-	p := plannerSystem("拿下X", "/data", "/data")
+	p := plannerSystem("X を攻略", "/data", "/data")
 	if !strings.Contains(p, "meta 铁律(反问纪律,全程在场)") {
-		t.Fatal("plannerSystem 缺 planner 版 meta 铁律")
+		t.Fatal("plannerSystem に planner 版 meta 鉄則がない")
 	}
 	w := workerSystem("", "", "/data", "/data", false)
 	if !strings.Contains(w, "meta 铁律(观测真伪与卡住自检)") {
-		t.Fatal("workerSystem 缺 worker 版 meta 铁律")
+		t.Fatal("workerSystem に worker 版 meta 鉄則がない")
 	}
 }

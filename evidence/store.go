@@ -25,9 +25,9 @@ type Store struct {
 	Traffic *traffic.Traffic
 	Dir     string
 
-	// OnMerged, if set, is invoked once after Record commits a 档 A merge into an
+	// OnMerged, if set, is invoked once after Record commits a グレード A merge into an
 	// existing confirmed finding. The db layer cannot import server, so the caller
-	// (server 装配处) injects the C2 增量重验 hook here — same injection pattern
+	// (server の組み立て箇所) injects the C2 増分再検証 hook here — same injection pattern
 	// as the agent ToolSet's notifyFinding. Errors inside the callback must not
 	// fail the already-committed record; implementors should log instead.
 	OnMerged func(findingID int64)
@@ -59,7 +59,7 @@ func verifyFile(path, hash string, length int64) error {
 		return err
 	}
 	if n != length || hex.EncodeToString(h.Sum(nil)) != hash {
-		return fmt.Errorf("证据正文校验失败: %s", hash)
+		return fmt.Errorf("エビデンス本文の検証に失敗しました: %s", hash)
 	}
 	return nil
 }
@@ -83,10 +83,10 @@ func (s *Store) writeBody(r io.Reader, expectedLength int64, expectedHash string
 	}
 	hash = hex.EncodeToString(h.Sum(nil))
 	if n != expectedLength {
-		return "", fmt.Errorf("正文不完整: 预期 %d 字节，读取 %d 字节", expectedLength, n)
+		return "", fmt.Errorf("本文が不完全です: 想定 %d バイト、読み取り %d バイト", expectedLength, n)
 	}
 	if expectedHash != "" && expectedHash != hash {
-		return "", errors.New("原始流量正文哈希不匹配")
+		return "", errors.New("元トラフィック本文のハッシュが一致しません")
 	}
 	if err = f.Sync(); err != nil {
 		return "", err
@@ -198,7 +198,7 @@ func (s *Store) Record(ctx context.Context, in db.RecordFindingInput, refs []db.
 		out, err = db.RecordFindingTx(tx, in, prepared)
 		return err
 	})
-	// C2:合并成功后触发对该 finding 的增量重验(事务已提交,回调失败不影响主流程)。
+	// C2:マージ成功後にこの finding の増分再検証をトリガーする（トランザクションはコミット済み、コールバック失敗は主処理に影響しない）。
 	if err == nil && out != nil && out.Merged && s.OnMerged != nil {
 		s.OnMerged(out.FindingID)
 	}
@@ -260,7 +260,7 @@ func (s *Store) OpenBody(snapshot db.TrafficEvidenceSnapshot, side string) (*os.
 	if side == "response" {
 		hash, length = snapshot.RespHash, snapshot.RespLen
 	} else if side != "request" {
-		return nil, 0, errors.New("side 必须为 request 或 response")
+		return nil, 0, errors.New("side は request または response である必要があります")
 	}
 	path, err := hashPath(s.Dir, hash)
 	if err != nil {
@@ -328,7 +328,7 @@ func (s *Store) WithInstalledSnapshots(ctx context.Context, snapshots []db.Traff
 	return s.DB.WithEvidenceTx(ctx, func(*sql.Tx) error {
 		for _, v := range snapshots {
 			if v.ID != db.TrafficSnapshotID(v) {
-				return errors.New("归档证据快照元数据哈希不匹配")
+				return errors.New("アーカイブ済みエビデンススナップショットのメタデータハッシュが一致しません")
 			}
 			for _, body := range []struct {
 				hash   string

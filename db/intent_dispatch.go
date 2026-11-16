@@ -6,13 +6,13 @@ import (
 	"fmt"
 )
 
-// 本文件是意图调度的 db 支撑(红日 3 复盘 R2):
-//   - CountOpenIntents:frontier 的 open 计数,供「frontier 硬上限」判定(planner
-//     的 add_intent 拒派)使用——比 Frontier(limit) 拉全量节点再数数便宜。
-//   - CancelOpenIntent:作废一条【未开始(open)】的意图(mainagent/planner 的
-//     cancel_intent 工具)。与 CancelIntent(删 running/paused 及其产出)不同:
-//     open 意图尚无 worker、无产出,只需状态落 stopped + 把作废原因挂图留痕,
-//     语义对齐 StopIntentWithReason 的「不销毁数据」原则。
+// 本ファイルは意図スケジューリングの db サポート(红日 3 の振り返り R2):
+//   - CountOpenIntents:frontier の open 数。「frontier のハード上限」判定(planner
+//     の add_intent 派遣拒否)に使う——Frontier(limit) で全ノードを取って数えるより安い。
+//   - CancelOpenIntent:【未開始(open)】の意図を 1 件取り消す(mainagent/planner の
+//     cancel_intent ツール)。CancelIntent(running/paused とその産出を削除)とは異なり:
+//     open の意図にはまだ worker も産出も無いので、状態を stopped にして取り消し理由を
+//     グラフに残すだけでよい。意味は StopIntentWithReason の「データを破棄しない」原則に揃える。
 
 // CountOpenIntents returns the number of this exploration's intents still in
 // state 'open' (the frontier backlog size). Parameterized; no row materialization.
@@ -48,7 +48,7 @@ func (s *ExplorationStore) CancelOpenIntent(id int64, reason, origin string) (in
 		return 0, err
 	}
 	if state != "open" {
-		return 0, fmt.Errorf("%w: intent state %s cannot be cancelled (仅 open 可作废,运行中的用 kill_work)", ErrIntentStateConflict, state)
+		return 0, fmt.Errorf("%w: intent state %s cannot be cancelled (取り消せるのは open のみ。実行中は kill_work を使用)", ErrIntentStateConflict, state)
 	}
 	ip := map[string]any{}
 	_ = json.Unmarshal(rawPayload, &ip)
@@ -65,8 +65,8 @@ func (s *ExplorationStore) CancelOpenIntent(id int64, reason, origin string) (in
 		origin = "mainagent"
 	}
 	raw, _ := json.Marshal(map[string]any{
-		"summary":     "该意图已被作废",
-		"detail":      "作废原因：" + reason,
+		"summary":     "この意図は取り消されました",
+		"detail":      "取り消し理由：" + reason,
 		"confidence":  "observed",
 		"user_cancel": true,
 	})

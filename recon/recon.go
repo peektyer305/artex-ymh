@@ -1,16 +1,19 @@
-// Package recon 是内网被动侦察输出的解析层(内网渗透期 2,INTRANET-PIVOT-DESIGN.md
-// §5 期 2;语义移植自 PivotHub pivothub/service/recon.py,Go 重写非照抄)。
-// 全部解析器与推断规则都是纯函数,不碰 DB/网络,直接以真实命令输出样例单测。
+// Package recon はイントラネット受動偵察の出力を解析するレイヤー（イントラネットペネトレーションの
+// フェーズ 2、INTRANET-PIVOT-DESIGN.md §5 フェーズ 2。意味は PivotHub の pivothub/service/recon.py
+// から移植し、Go で書き直したもので丸写しではない）。
+// パーサーと推論ルールはすべて純粋関数で、DB にもネットワークにも触れず、実際のコマンド出力の
+// サンプルでそのまま単体テストする。
 //
-// 覆盖命令(Linux 为主,Windows 各备一个变体):
-//   - ip addr / ifconfig / ipconfig /all      → 网卡 + IP + 掩码
-//   - ip route / route -n / route print       → 路由(标出非默认静态路由)
-//   - arp -a / ip neigh                       → 邻居
-//   - cat /etc/hosts(含 Windows hosts)      → 静态主机映射
-//   - netstat -an / ss -an / netstat -ano     → 监听端口 + 已建立连接对端
+// 対象コマンド（Linux が中心、Windows は各 1 変種）:
+//   - ip addr / ifconfig / ipconfig /all      → NIC + IP + マスク
+//   - ip route / route -n / route print       → ルート（非デフォルトの静的ルートを明示）
+//   - arp -a / ip neigh                       → ネイバー
+//   - cat /etc/hosts（Windows の hosts を含む） → 静的なホストマッピング
+//   - netstat -an / ss -an / netstat -ano     → リスニングポート + 確立済み接続の対向先
 //
-// 高价值推断照 chains pivot 骨架「被动六表」判据(agent/chainskel/pivot.md):
-// 非默认静态路由必通有价值段;established 对端是已证明可通主机;多网卡=潜在跳板。
+// 価値の高い推論は chains の pivot 骨格「受動六表」の判定基準に従う（agent/chainskel/pivot.md）:
+// 非デフォルトの静的ルートは疎通確実な価値あるセグメント、established の対向先は疎通が証明済みの
+// ホスト、複数 NIC = 潜在的な踏み台。
 package recon
 
 import (
@@ -23,48 +26,48 @@ import (
 	"strings"
 )
 
-// NIC 是一张网卡的一个 IPv4 地址。
+// NIC は 1 枚の NIC の IPv4 アドレス 1 件。
 type NIC struct {
 	Iface  string `json:"iface"`
 	IP     string `json:"ip"`
-	Prefix int    `json:"prefix"` // CIDR 前缀长度(如 24)
+	Prefix int    `json:"prefix"` // CIDR プレフィックス長（例: 24）
 }
 
-// Route 是一条路由。IsStatic 标记非默认静态路由(高价值:静态路由指向的网段
-// 管理员显式配置过,必通且通常有业务价值)。
+// Route は 1 本のルート。IsStatic は非デフォルトの静的ルートを示す（価値が高い: 静的ルートの
+// 指すセグメントは管理者が明示的に設定したもので、疎通が確実で通常は業務上の価値がある）。
 type Route struct {
-	Dest     string `json:"dest"` // CIDR("default" 表示默认路由)
+	Dest     string `json:"dest"` // CIDR（"default" はデフォルトルート）
 	Via      string `json:"via,omitempty"`
 	Iface    string `json:"iface,omitempty"`
 	IsStatic bool   `json:"is_static"`
 }
 
-// Neighbor 是 ARP/邻居表的一项(同网段存活主机的被动证据)。
+// Neighbor は ARP／ネイバーテーブルの 1 項目（同一セグメントの稼働ホストの受動的なエビデンス）。
 type Neighbor struct {
 	IP    string `json:"ip"`
 	MAC   string `json:"mac,omitempty"`
 	Iface string `json:"iface,omitempty"`
 }
 
-// HostEntry 是 /etc/hosts 的一行。
+// HostEntry は /etc/hosts の 1 行。
 type HostEntry struct {
 	IP    string   `json:"ip"`
 	Names []string `json:"names"`
 }
 
-// Listener 是一个监听端口。
+// Listener は 1 つのリスニングポート。
 type Listener struct {
 	Port  int    `json:"port"`
 	Proto string `json:"proto"` // tcp | udp
 }
 
-// Peer 是一个已建立连接的对端。
+// Peer は確立済み接続の対向先 1 件。
 type Peer struct {
 	IP   string `json:"ip"`
 	Port int    `json:"port"`
 }
 
-// ReconReport 是一次被动侦察的结构化结果。
+// ReconReport は受動偵察 1 回分の構造化された結果。
 type ReconReport struct {
 	NICs         []NIC       `json:"nics"`
 	Routes       []Route     `json:"routes"`
@@ -74,7 +77,7 @@ type ReconReport struct {
 	Peers        []Peer      `json:"peers"`
 }
 
-// Inference 是一条高价值推断(照 pivot 骨架判据)。
+// Inference は価値の高い推論 1 件（pivot 骨格の判定基準に従う）。
 type Inference struct {
 	Kind    string `json:"kind"` // multi_nic | static_route | proven_peer | arp_neighbors
 	Summary string `json:"summary"`
@@ -85,7 +88,7 @@ var ipRe = regexp.MustCompile(`^\d{1,3}(?:\.\d{1,3}){3}$`)
 
 func isIPv4(s string) bool { return ipRe.MatchString(s) && net.ParseIP(s) != nil }
 
-// SegmentOf 计算 ip/prefix 的网段 CIDR(如 "10.0.0.0/24");非法输入返回 ""。
+// SegmentOf は ip/prefix のセグメント CIDR（例 "10.0.0.0/24"）を計算する。不正な入力は "" を返す。
 func SegmentOf(ip string, prefix int) string {
 	addr, err := netip.ParseAddr(ip)
 	if err != nil || !addr.Is4() {
@@ -118,19 +121,19 @@ func maskToPrefix(mask string) int {
 }
 
 // ---------------------------------------------------------------------------
-// 网卡:ip addr(Linux 新旧两种布局)/ ifconfig / ipconfig /all
+// NIC:ip addr（Linux の新旧 2 レイアウト）/ ifconfig / ipconfig /all
 // ---------------------------------------------------------------------------
 
-// ParseIPAddr 解析 `ip addr` / `ip -o -4 addr show` 输出。
+// ParseIPAddr は `ip addr` / `ip -o -4 addr show` の出力を解析する。
 func ParseIPAddr(text string) []NIC {
 	out := []NIC{}
 	iface := ""
 	for _, line := range strings.Split(text, "\n") {
-		// "2: eth0: <BROADCAST,...>" / "5: eth0@if2: <...>" / ip -o 的 "2: eth0 inet ..."
+		// "2: eth0: <BROADCAST,...>" / "5: eth0@if2: <...>" / ip -o の "2: eth0 inet ..."
 		if m := regexp.MustCompile(`^\d+:\s+([^:@\s]+)[:@ ]`).FindStringSubmatch(line); m != nil {
 			iface = m[1]
 		}
-		// inet 10.0.0.5/24(可能带 brd/scope 后缀;ip -o 与多行布局同此)
+		// inet 10.0.0.5/24（brd/scope の接尾辞が付く場合あり。ip -o と複数行レイアウトで共通）
 		if m := regexp.MustCompile(`\binet\s+(\d{1,3}(?:\.\d{1,3}){3})/(\d{1,2})\b`).FindStringSubmatch(line); m != nil {
 			prefix, _ := strconv.Atoi(m[2])
 			out = append(out, NIC{Iface: iface, IP: m[1], Prefix: prefix})
@@ -139,8 +142,8 @@ func ParseIPAddr(text string) []NIC {
 	return dedupNICs(out)
 }
 
-// ParseIfconfig 解析 `ifconfig` / `ifconfig -a` 输出(新式 flags 布局与老式
-// Link encap 布局都认)。
+// ParseIfconfig は `ifconfig` / `ifconfig -a` の出力を解析する（新方式の flags レイアウトと
+// 旧方式の Link encap レイアウトの両方に対応）。
 func ParseIfconfig(text string) []NIC {
 	out := []NIC{}
 	iface := ""
@@ -153,8 +156,8 @@ func ParseIfconfig(text string) []NIC {
 			iface = m[1]
 			continue
 		}
-		// 新式: "inet 192.168.1.10  netmask 255.255.255.0  broadcast ..."
-		// 老式: "inet addr:10.0.0.5  Bcast:10.0.0.255  Mask:255.255.255.0"
+		// 新方式: "inet 192.168.1.10  netmask 255.255.255.0  broadcast ..."
+		// 旧方式: "inet addr:10.0.0.5  Bcast:10.0.0.255  Mask:255.255.255.0"
 		m := regexp.MustCompile(`inet\s+(?:addr:)?(\d{1,3}(?:\.\d{1,3}){3})(?:\s+(?:Bcast|broadcast)[:=]?\s*\d{1,3}(?:\.\d{1,3}){3})?\s+(?:netmask\s*[:=]?\s*|Mask:\s*)(\d{1,3}(?:\.\d{1,3}){3})`).FindStringSubmatch(line)
 		if m != nil && iface != "" {
 			out = append(out, NIC{Iface: iface, IP: m[1], Prefix: maskToPrefix(m[2])})
@@ -163,8 +166,8 @@ func ParseIfconfig(text string) []NIC {
 	return dedupNICs(out)
 }
 
-// ParseIPConfigAll 解析 Windows `ipconfig /all`(中英文输出都认:IPv4 Address /
-// IPv4 地址,Subnet Mask / 子网掩码;地址后可能带 "(首选)" 后缀)。
+// ParseIPConfigAll は Windows の `ipconfig /all` を解析する（中国語・英語どちらの出力にも対応:
+// IPv4 アドレスとサブネットマスクの各表記。アドレスの後ろに優先の接尾辞が付く場合がある）。
 func ParseIPConfigAll(text string) []NIC {
 	out := []NIC{}
 	iface := ""
@@ -192,7 +195,7 @@ func ParseIPConfigAll(text string) []NIC {
 	return dedupNICs(out)
 }
 
-// ParseNICsAuto 先按 ip addr 解析,空则 ifconfig,再空则 ipconfig /all。
+// ParseNICsAuto はまず ip addr として解析し、空なら ifconfig、さらに空なら ipconfig /all で解析する。
 func ParseNICsAuto(text string) []NIC {
 	if n := ParseIPAddr(text); len(n) > 0 {
 		return n
@@ -218,11 +221,11 @@ func dedupNICs(in []NIC) []NIC {
 }
 
 // ---------------------------------------------------------------------------
-// 路由:ip route / route -n / route print
+// ルート：ip route / route -n / route print
 // ---------------------------------------------------------------------------
 
-// ParseIPRoute 解析 Linux `ip route`。非默认且经网关(via)且非直连(scope link)
-// 的路由标为静态路由。
+// ParseIPRoute は Linux の `ip route` を解析する。非デフォルトでゲートウェイ（via）を経由し、
+// 直結（scope link）でないルートを静的ルートとして示す。
 func ParseIPRoute(text string) []Route {
 	out := []Route{}
 	for _, raw := range strings.Split(text, "\n") {
@@ -234,7 +237,7 @@ func ParseIPRoute(text string) []Route {
 		dest := fields[0]
 		isDefault := dest == "default"
 		if !isDefault && !strings.Contains(dest, "/") {
-			continue // 非路由行
+			continue // ルート行ではない
 		}
 		r := Route{Dest: dest}
 		if m := regexp.MustCompile(`\bvia\s+(\S+)`).FindStringSubmatch(line); m != nil {
@@ -250,7 +253,7 @@ func ParseIPRoute(text string) []Route {
 	return dedupRoutes(out)
 }
 
-// ParseRouteN 解析 Linux `route -n`(Destination Gateway Genmask Flags ... Iface)。
+// ParseRouteN は Linux の `route -n`（Destination Gateway Genmask Flags ... Iface）を解析する。
 func ParseRouteN(text string) []Route {
 	out := []Route{}
 	for _, raw := range strings.Split(text, "\n") {
@@ -277,9 +280,9 @@ func ParseRouteN(text string) []Route {
 	return dedupRoutes(out)
 }
 
-// ParseRoutePrint 解析 Windows `route print` 的 IPv4 活动路由(Network Destination
-// Netmask Gateway Interface Metric;中文「网络目标/网络掩码/网关/接口/跃点数」同布局)。
-// On-link(在链路上)网关不算静态路由。
+// ParseRoutePrint は Windows の `route print` の IPv4 有効ルート（Network Destination
+// Netmask Gateway Interface Metric。中国語の見出しでも同じレイアウト）を解析する。
+// On-link（リンク上）のゲートウェイは静的ルートに数えない。
 func ParseRoutePrint(text string) []Route {
 	out := []Route{}
 	for _, raw := range strings.Split(text, "\n") {
@@ -294,7 +297,7 @@ func ParseRoutePrint(text string) []Route {
 		} else {
 			r.Dest = SegmentOf(dest, maskToPrefix(mask))
 		}
-		onLink := !isIPv4(gateway) // "On-link" / "在链路上"
+		onLink := !isIPv4(gateway) // "On-link" / リンク上（中国語出力）
 		if !onLink {
 			r.Via = gateway
 		}
@@ -304,7 +307,7 @@ func ParseRoutePrint(text string) []Route {
 	return dedupRoutes(out)
 }
 
-// ParseRoutesAuto 依次按 ip route / route -n / route print 解析。
+// ParseRoutesAuto は ip route / route -n / route print の順に解析する。
 func ParseRoutesAuto(text string) []Route {
 	if r := ParseIPRoute(text); len(r) > 0 {
 		return r
@@ -330,11 +333,11 @@ func dedupRoutes(in []Route) []Route {
 }
 
 // ---------------------------------------------------------------------------
-// 邻居:ip neigh / arp -a(Linux)/ arp -a(Windows)
+// ネイバー：ip neigh / arp -a（Linux）/ arp -a（Windows）
 // ---------------------------------------------------------------------------
 
-// ParseNeighbors 解析 `ip neigh`、`arp -a`(Linux 与 Windows 两种格式)。
-// FAILED/INCOMPLETE 项(无 MAC)不算存活证据,跳过。
+// ParseNeighbors は `ip neigh`、`arp -a`（Linux と Windows の 2 形式）を解析する。
+// FAILED／INCOMPLETE の項目（MAC なし）は稼働のエビデンスにならないためスキップする。
 func ParseNeighbors(text string) []Neighbor {
 	out := []Neighbor{}
 	seen := map[string]bool{}
@@ -368,7 +371,7 @@ func ParseNeighbors(text string) []Neighbor {
 			add(m[1], m[2], iface)
 			continue
 		}
-		// Windows arp -a: "  10.0.0.1           00-11-22-33-44-55     动态/dynamic"
+		// Windows arp -a: "  10.0.0.1           00-11-22-33-44-55     動的/dynamic"
 		if m := regexp.MustCompile(`^(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9a-fA-F]{2}(?:-[0-9a-fA-F]{2}){5})\s+\S+`).FindStringSubmatch(line); m != nil {
 			add(m[1], m[2], "")
 		}
@@ -377,10 +380,10 @@ func ParseNeighbors(text string) []Neighbor {
 }
 
 // ---------------------------------------------------------------------------
-// /etc/hosts(含 Windows hosts)
+// /etc/hosts（Windows の hosts を含む）
 // ---------------------------------------------------------------------------
 
-// ParseHosts 解析 hosts 文件(忽略注释与空行)。
+// ParseHosts は hosts ファイルを解析する（コメント行と空行は無視）。
 func ParseHosts(text string) []HostEntry {
 	out := []HostEntry{}
 	for _, raw := range strings.Split(text, "\n") {
@@ -398,7 +401,7 @@ func ParseHosts(text string) []HostEntry {
 }
 
 // ---------------------------------------------------------------------------
-// 连接表:netstat -an / ss -an / netstat -ano
+// 接続テーブル：netstat -an / ss -an / netstat -ano
 // ---------------------------------------------------------------------------
 
 var knownStates = map[string]bool{
@@ -408,8 +411,8 @@ var knownStates = map[string]bool{
 	"closing": true, "last_ack": true,
 }
 
-// splitHostPort 从 "10.0.0.5:22" / ":::8080" / "[::1]:3306" / "*:*" 拆 host/port。
-// port 非数字("*")时 ok=false。
+// splitHostPort は "10.0.0.5:22" / ":::8080" / "[::1]:3306" / "*:*" を host/port に分割する。
+// port が数字でない（"*"）場合は ok=false。
 func splitHostPort(s string) (host string, port int, ok bool) {
 	i := strings.LastIndex(s, ":")
 	if i < 0 {
@@ -427,9 +430,10 @@ func splitHostPort(s string) (host string, port int, ok bool) {
 	return host, n, true
 }
 
-// ParseConnTable 解析 netstat/ss 连接表,返回监听端口与已建立连接对端。
-// 三种布局同一条解析路径:proto 在首列;state 与地址对的位置依工具不同,
-// 靠「已知 state 词表 + addr:port 形态」识别,不依赖固定列位。
+// ParseConnTable は netstat／ss の接続テーブルを解析し、リスニングポートと確立済み接続の
+// 対向先を返す。3 種類のレイアウトを同じ解析経路で扱う: proto は先頭列。state とアドレス対の
+// 位置はツールによって異なるため、「既知の state 語彙 + addr:port の形」で識別し、固定の列位置に
+// 依存しない。
 func ParseConnTable(text string) (listening []Listener, peers []Peer) {
 	seenL := map[string]bool{}
 	seenP := map[string]bool{}
@@ -443,7 +447,7 @@ func ParseConnTable(text string) (listening []Listener, peers []Peer) {
 		if base != "tcp" && base != "udp" {
 			continue
 		}
-		// state 与地址对:netstat 布局 state 在地址后,ss 布局 state 在 proto 后。
+		// state とアドレス対：netstat レイアウトでは state がアドレスの後、ss では proto の後。
 		state := ""
 		addrs := []string{}
 		for _, f := range fields[1:] {
@@ -464,7 +468,7 @@ func ParseConnTable(text string) (listening []Listener, peers []Peer) {
 		foreignHost, foreignPort, foreignOK := splitHostPort(foreign)
 
 		isListen := state == "listen" || state == "listening" || state == "unconn" ||
-			(state == "" && base == "udp") // udp netstat 常无 state 列
+			(state == "" && base == "udp") // udp の netstat は state 列がないことが多い
 		if isListen && localOK {
 			key := base + "|" + strconv.Itoa(localPort)
 			if !seenL[key] {
@@ -498,18 +502,18 @@ func ParseConnTable(text string) (listening []Listener, peers []Peer) {
 }
 
 // ---------------------------------------------------------------------------
-// 高价值推断(照 pivot 骨架「被动六表」判据)
+// 価値の高い推論（pivot 骨格「受動六表」の判定基準に従う）
 // ---------------------------------------------------------------------------
 
-// Infer 从结构化报告推导高价值情报:
-//   - 多网卡跨段 = 潜在跳板(multi_nic)
-//   - 非默认静态路由指向的网段 = 必通的有价值段(static_route)
-//   - established 对端里非本机网段 IP = 已证明可通的活主机(proven_peer)
-//   - ARP 邻居 = 同网段被动可得的存活主机(arp_neighbors)
+// Infer は構造化レポートから価値の高い情報を導出する:
+//   - 複数 NIC でセグメントをまたぐ = 潜在的な踏み台（multi_nic）
+//   - 非デフォルトの静的ルートが指すセグメント = 疎通確実な価値あるセグメント（static_route）
+//   - established の対向先で自ホストのセグメント外にある IP = 疎通が証明済みの稼働ホスト（proven_peer）
+//   - ARP ネイバー = 同一セグメントで受動的に得られる稼働ホスト（arp_neighbors）
 func Infer(r *ReconReport) []Inference {
 	out := []Inference{}
 
-	// 本机网段集合(排除回环/链路本地)。
+	// 自ホストのセグメント集合（ループバック／リンクローカルを除外）。
 	segments := map[string][]NIC{}
 	for _, n := range r.NICs {
 		if isLoopbackOrLinkLocal(n.IP) {
@@ -526,13 +530,13 @@ func Infer(r *ReconReport) []Inference {
 		parts := []string{}
 		for seg, nics := range segments {
 			for _, n := range nics {
-				parts = append(parts, fmt.Sprintf("%s %s/%d(网段 %s)", n.Iface, n.IP, n.Prefix, seg))
+				parts = append(parts, fmt.Sprintf("%s %s/%d（セグメント %s）", n.Iface, n.IP, n.Prefix, seg))
 			}
 		}
 		sort.Strings(parts)
 		out = append(out, Inference{
 			Kind:    "multi_nic",
-			Summary: fmt.Sprintf("主机有 %d 个非回环网段(%d 张网卡),是潜在跳板", len(segments), len(parts)),
+			Summary: fmt.Sprintf("ホストは非ループバックのセグメントを %d 個持ち（NIC %d 枚）、潜在的な踏み台です", len(segments), len(parts)),
 			Detail:  strings.Join(parts, ";"),
 		})
 	}
@@ -543,11 +547,11 @@ func Infer(r *ReconReport) []Inference {
 		}
 		out = append(out, Inference{
 			Kind:    "static_route",
-			Summary: fmt.Sprintf("非默认静态路由 %s via %s(%s)——管理员显式配置,该网段必通,属高价值侦察目标", rt.Dest, rt.Via, rt.Iface),
+			Summary: fmt.Sprintf("非デフォルトの静的ルート %s via %s（%s）— 管理者が明示的に設定したもので疎通は確実、価値の高い偵察対象です", rt.Dest, rt.Via, rt.Iface),
 		})
 	}
 
-	// 已建立连接对端:不在本机任何网段的 = 已证明可通的外段活主机。
+	// 確立済み接続の対向先: 自ホストのどのセグメントにもない = 疎通が証明済みの外部セグメントの稼働ホスト。
 	inLocalSegment := func(ip string) bool {
 		addr, err := netip.ParseAddr(ip)
 		if err != nil {
@@ -570,7 +574,7 @@ func Infer(r *ReconReport) []Inference {
 	if len(proven) > 0 {
 		out = append(out, Inference{
 			Kind:    "proven_peer",
-			Summary: fmt.Sprintf("%d 个已建立连接的对端不在本机网段——已证明可通的活主机(高成功率横向目标)", len(proven)),
+			Summary: fmt.Sprintf("確立済み接続の対向先のうち %d 件が自ホストのセグメント外にあります — 疎通が証明済みの稼働ホスト（横展開の成功率が高い対象）", len(proven)),
 			Detail:  strings.Join(proven, ";"),
 		})
 	}
@@ -582,11 +586,11 @@ func Infer(r *ReconReport) []Inference {
 		}
 		detail := strings.Join(ips, ";")
 		if len(ips) > 20 {
-			detail = strings.Join(ips[:20], ";") + fmt.Sprintf("…(共 %d 个)", len(ips))
+			detail = strings.Join(ips[:20], ";") + fmt.Sprintf("…（全 %d 件）", len(ips))
 		}
 		out = append(out, Inference{
 			Kind:    "arp_neighbors",
-			Summary: fmt.Sprintf("ARP 邻居表有 %d 个同网段存活主机(被动可得,无需发包)", len(r.Neighbors)),
+			Summary: fmt.Sprintf("ARP ネイバーテーブルに同一セグメントの稼働ホストが %d 件（受動的に取得でき、パケット送信は不要）", len(r.Neighbors)),
 			Detail:  detail,
 		})
 	}

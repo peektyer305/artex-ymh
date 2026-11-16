@@ -4,8 +4,8 @@ import (
 	"testing"
 )
 
-// /proc/net/tcp fixture:header + 已知端口(8787 loopback)+ 台账外 0.0.0.0:9999
-// + 非 loopback 10.0.0.5:8080 + 非 LISTEN 行。
+// /proc/net/tcp fixture:ヘッダー + 既知ポート(8787 loopback)+ 台帳外の 0.0.0.0:9999
+// + 非 loopback の 10.0.0.5:8080 + 非 LISTEN 行。
 const procNetTCPFixture = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
    0: 0100007F:2217 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 12345 1 0000000000000000 100 0 0 10 0
    1: 00000000:270F 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 12346 1 0000000000000000 100 0 0 10 0
@@ -14,7 +14,7 @@ const procNetTCPFixture = `  sl  local_address rem_address   st tx_queue rx_queu
    4: 0100007F:2217 0100007F:9C40 01 00000000:00000000 00:00000000 00000000     0        0 12349 1 0000000000000000 100 0 0 10 0
 `
 
-// /proc/net/tcp6 fixture:::1:8787(loopback,跳过)+ :::8081(全接口,台账外)。
+// /proc/net/tcp6 fixture:::1:8787(loopback なのでスキップ)+ :::8081(全インターフェース、台帳外)。
 const procNetTCP6Fixture = `  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
    0: 00000000000000000000000001000000:2217 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 22345 1 0000000000000000 100 0 0 10 0
    1: 00000000000000000000000000000000:1F91 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 22346 1 0000000000000000 100 0 0 10 0
@@ -22,10 +22,10 @@ const procNetTCP6Fixture = `  sl  local_address                         remote_a
 
 func TestParseProcNetTCP(t *testing.T) {
 	socks := parseProcNetTCP(procNetTCPFixture)
-	if len(socks) != 4 { // 只有 0A(LISTEN)行,established(01)被跳过
+	if len(socks) != 4 { // 0A(LISTEN)行のみ、established(01)はスキップされる
 		t.Fatalf("listeners = %d, want 4: %+v", len(socks), socks)
 	}
-	// 0100007F:2217 → 127.0.0.1:8727? 0x2217 = 8727... 用断言锚定真实换算。
+	// 0100007F:2217 → 127.0.0.1:8727? 0x2217 = 8727... 実際の換算はアサーションで固定する。
 	if got := socks[0]; got.IP.String() != "127.0.0.1" || got.Port != 0x2217 {
 		t.Fatalf("sock[0] = %s:%d", got.IP, got.Port)
 	}

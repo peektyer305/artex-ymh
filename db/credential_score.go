@@ -1,6 +1,6 @@
-// credential_score.go 是凭据复用打分(服务端版,INTRANET-PIVOT-DESIGN.md §4.4)。
-// 参考 PivotHub cred.js:44-50 的前端 naive 打分,这里做成纯函数 + 数据表驱动规则:
-// 每条规则一个分值与可读 reason,扩充规则只改表,不动逻辑。零 DB 依赖,直接单测。
+// credential_score.go は認証情報の再利用スコアリング（サーバ側版、INTRANET-PIVOT-DESIGN.md §4.4）。
+// PivotHub cred.js:44-50 のフロントエンドの naive なスコアリングを参考に、ここでは純関数 + データ表駆動のルールにした:
+// ルールごとに 1 つの点数と可読な reason を持ち、ルール追加は表の変更だけで済み、ロジックには触れない。DB 依存ゼロで直接単体テストできる。
 package db
 
 import (
@@ -9,15 +9,15 @@ import (
 	"strings"
 )
 
-// ReuseCandidate 是复用打分的候选主机资产视图(调用方从 assets 表投影)。
+// ReuseCandidate は再利用スコアリングの候補ホストアセットのビュー（呼び出し側が assets 表から射影する）。
 type ReuseCandidate struct {
 	AssetID  int64    `json:"asset_id"`
 	IP       string   `json:"ip"`
-	CSegment string   `json:"c_segment"` // 如 "10.0.0.0/24"
-	Services []string `json:"services"`  // 资产上已发现的服务名(大小写不敏感)
+	CSegment string   `json:"c_segment"` // 例 "10.0.0.0/24"
+	Services []string `json:"services"`  // アセット上で検出済みのサービス名（大文字小文字を区別しない）
 }
 
-// ReuseSuggestion 是一条复用建议:目标资产 + 得分 + 每条加分的可读理由。
+// ReuseSuggestion は 1 件の再利用提案:対象アセット + スコア + 各加点の可読な理由。
 type ReuseSuggestion struct {
 	AssetID int64    `json:"asset_id"`
 	IP      string   `json:"ip"`
@@ -25,8 +25,8 @@ type ReuseSuggestion struct {
 	Reasons []string `json:"reasons"`
 }
 
-// sourceServiceHints 是「凭据来源描述关键词 → 服务名」的数据表:source 里出现
-// 关键词即认为该凭据可能适用于对应服务(如 "ssh 私钥" → SSH)。扩充只加行。
+// sourceServiceHints は「認証情報のソース記述のキーワード → サービス名」のデータ表：source に
+// キーワードが現れれば、その認証情報が対応サービスに使える可能性があるとみなす（例 "ssh 私钥" → SSH）。追加は行を足すだけ。
 var sourceServiceHints = []struct {
 	Keyword string
 	Service string
@@ -47,7 +47,7 @@ var sourceServiceHints = []struct {
 	{"http", "HTTP"},
 }
 
-// sourceServices 从 source 描述提取命中的服务名(去重,保序)。
+// sourceServices は source の記述からヒットしたサービス名を抽出する（重複排除、順序維持）。
 func sourceServices(source string) []string {
 	lower := strings.ToLower(source)
 	out := []string{}
@@ -62,14 +62,14 @@ func sourceServices(source string) []string {
 	return out
 }
 
-// reuseRule 是一条打分规则:check 返回命中时的可读 reason(空串 = 不命中)。
-// 规则表驱动:加分项扩充只改 reuseRules,不动 ScoreReuse 主流程。
+// reuseRule は 1 つのスコアリングルール：check はヒット時の可読な reason を返す（空文字列 = 非ヒット）。
+// ルール表駆動:加点項目の追加は reuseRules の変更だけで済み、ScoreReuse の主処理には触れない。
 type reuseRule struct {
 	points int
 	check  func(cred *CredentialRecord, src, cand *ReuseCandidate) string
 }
 
-// reuseRules 打分规则表(分值来自设计 §4.4/任务约定):
+// reuseRules はスコアリングルール表（点数は設計 §4.4/タスクの取り決めによる）:
 var reuseRules = []reuseRule{
 	{40, func(_ *CredentialRecord, src, cand *ReuseCandidate) string {
 		if src != nil && src.CSegment != "" && src.CSegment == cand.CSegment {
@@ -113,15 +113,15 @@ var reuseRules = []reuseRule{
 	}},
 }
 
-// ScoreReuse 对一条凭据 × 候选主机资产列表打分,返回按得分降序的建议(同分按
-// asset_id 升序保证确定性)。src 是凭据来源主机的资产视图(可 nil——未知来源
-// 主机时同网段规则自然不命中)。来源主机自身(score 无意义)与零分候选被过滤。
+// ScoreReuse は 1 件の認証情報 × 候補ホストアセットの一覧を採点し、スコア降順の提案を返す（同点は
+// asset_id 昇順で決定性を保証）。src は認証情報のソースホストのアセットビュー（nil 可——ソース
+// ホストが不明なら同セグメントのルールは自然に非ヒット）。ソースホスト自身（スコアに意味がない）と 0 点の候補は除外する。
 func ScoreReuse(cred *CredentialRecord, src *ReuseCandidate, cands []ReuseCandidate) []ReuseSuggestion {
 	out := []ReuseSuggestion{}
 	for i := range cands {
 		cand := &cands[i]
 		if cand.AssetID == cred.HostAssetID && cred.HostAssetID != 0 {
-			continue // 来源主机自身不构成横向目标
+			continue // ソースホスト自身は横展開の対象にならない
 		}
 		score := 0
 		reasons := []string{}

@@ -31,7 +31,7 @@ import { fmtBytes } from "./format";
 
 const TIMEOUT_OPTIONS = [10, 30, 60, 120];
 
-// UTF-8 安全的 base64 编解码（btoa/atob 只认 Latin-1）。
+// UTF-8 セーフな base64 エンコード・デコード（btoa/atob は Latin-1 のみ対応）。
 function toBase64(s: string): string {
   return btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 }
@@ -40,7 +40,7 @@ function fromBase64(b64: string): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
-// 命令终端：历史保留在组件态（会话切换时随 key 重置），输出等宽字体。
+// コマンドターミナル：履歴はコンポーネント状態に保持（セッション切替時は key でリセット）、出力は等幅フォント。
 // ---------------------------------------------------------------------------
 interface TermEntry {
   seq: number;
@@ -49,9 +49,9 @@ interface TermEntry {
   stderr?: string;
   ms?: number;
   timedOut?: boolean;
-  /** HTTP 请求本身失败（网络/鉴权等）。 */
+  /** HTTP リクエスト自体の失敗（ネットワーク・認証など）。 */
   error?: string;
-  /** 通道级错误：HTTP 成功但后端在响应里带 error（如会话已断）。 */
+  /** チャネル単位のエラー：HTTP は成功したがレスポンスに error が含まれる場合（セッション切断など）。 */
   execError?: string;
 }
 
@@ -63,7 +63,7 @@ function Terminal({ session }: { session: ShellSession }) {
   const seqRef = React.useRef(0);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
-  // 新输出落地后滚到底部。
+  // 新しい出力が来たら最下部までスクロールします。
   React.useEffect(() => {
     const el = scrollRef.current;
     if (el && history.length > 0) el.scrollTop = el.scrollHeight;
@@ -95,7 +95,7 @@ function Terminal({ session }: { session: ShellSession }) {
         seqRef.current += 1;
         setHistory((h) => [
           ...h,
-          { seq: seqRef.current, cmd: command, error: e instanceof Error ? e.message : "执行失败" },
+          { seq: seqRef.current, cmd: command, error: e instanceof Error ? e.message : "実行に失敗しました" },
         ]);
       })
       .finally(() => setRunning(false));
@@ -104,22 +104,22 @@ function Terminal({ session }: { session: ShellSession }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto bg-neutral-950 p-3 font-mono text-xs">
-        {history.length === 0 && <div className="text-neutral-500">输入命令开始执行（经当前 webshell 通道）。</div>}
+        {history.length === 0 && <div className="text-neutral-500">コマンドを入力して実行します（現在の WebShell チャネル経由）。</div>}
         {history.map((e) => (
           <div key={e.seq} className="mb-3 last:mb-0">
             <div className="text-emerald-400">$ {e.cmd}</div>
             {e.error ? (
-              <pre className="text-red-400 break-all whitespace-pre-wrap">请求失败：{e.error}</pre>
+              <pre className="text-red-400 break-all whitespace-pre-wrap">リクエストに失敗しました：{e.error}</pre>
             ) : (
               <>
                 {e.execError && (
-                  <pre className="text-red-400 break-all whitespace-pre-wrap">执行错误：{e.execError}</pre>
+                  <pre className="text-red-400 break-all whitespace-pre-wrap">実行エラー：{e.execError}</pre>
                 )}
                 {e.stdout && <pre className="text-neutral-200 break-all whitespace-pre-wrap">{e.stdout}</pre>}
                 {e.stderr && <pre className="text-red-400 break-all whitespace-pre-wrap">{e.stderr}</pre>}
-                {!e.execError && !e.stdout && !e.stderr && <div className="text-neutral-600">（无输出）</div>}
+                {!e.execError && !e.stdout && !e.stderr && <div className="text-neutral-600">（出力なし）</div>}
                 <div className={cn("text-[10px]", e.timedOut ? "text-amber-400" : "text-neutral-600")}>
-                  {e.timedOut ? `超时（>${e.ms ?? 0}ms，可能被截断）` : `${e.ms ?? 0}ms`}
+                  {e.timedOut ? `タイムアウト（>${e.ms ?? 0}ms、切り捨ての可能性）` : `${e.ms ?? 0}ms`}
                 </div>
               </>
             )}
@@ -142,20 +142,20 @@ function Terminal({ session }: { session: ShellSession }) {
           disabled={running}
         />
         <Select value={String(timeoutSec)} onValueChange={(v) => setTimeoutSec(Number(v))}>
-          <SelectTrigger size="sm" className="w-24" title="超时">
+          <SelectTrigger size="sm" className="w-24" title="タイムアウト">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {TIMEOUT_OPTIONS.map((n) => (
               <SelectItem key={n} value={String(n)}>
-                {n}s 超时
+                {n}s タイムアウト
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Button type="submit" size="sm" className="h-8 gap-1" disabled={running || !cmd.trim()}>
           {running ? <Loader2Icon className="size-3.5 animate-spin" /> : <PlayIcon className="size-3.5" />}
-          执行
+          実行
         </Button>
       </form>
     </div>
@@ -163,10 +163,10 @@ function Terminal({ session }: { session: ShellSession }) {
 }
 
 // ---------------------------------------------------------------------------
-// 文件管理器：路径输入 + 列目录 / 读 / 写。
+// ファイルマネージャ：パス入力 + ディレクトリ一覧 / 読み取り / 書き込み。
 // ---------------------------------------------------------------------------
 
-// joinPath 按现有路径风格（\ 或 /）拼接子路径。
+// joinPath は既存のパス形式（\ または /）で子パスを結合します。
 function joinPath(base: string, name: string): string {
   const sep = base.includes("\\") ? "\\" : "/";
   const trimmed = base.endsWith(sep) ? base.slice(0, -1) : base;
@@ -178,7 +178,7 @@ function FileManager({ session }: { session: ShellSession }) {
   const [entries, setEntries] = React.useState<SessionFsEntry[] | null>(null);
   const [listing, setListing] = React.useState(false);
 
-  // 读/写面板：选中文件后加载内容到编辑器，可直接改后写回。
+  // 読み取り・書き込みパネル：ファイルを選ぶと内容をエディタに読み込み、編集してそのまま書き戻せます。
   const [filePath, setFilePath] = React.useState("");
   const [fileContent, setFileContent] = React.useState("");
   const [fileMeta, setFileMeta] = React.useState<{ truncated: boolean; binary: boolean } | null>(null);
@@ -195,7 +195,7 @@ function FileManager({ session }: { session: ShellSession }) {
         setEntries(es);
         setPath(target);
       })
-      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "列目录失败"))
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "ディレクトリ一覧の取得に失敗しました"))
       .finally(() => setListing(false));
   };
 
@@ -210,7 +210,7 @@ function FileManager({ session }: { session: ShellSession }) {
         if (typeof r.content === "string") {
           setFileContent(r.content);
         } else if (r.content_base64) {
-          // 二进制：尝试按 UTF-8 解码展示，失败则提示为二进制。
+          // バイナリ：UTF-8 でデコードして表示を試み、失敗した場合はバイナリとして扱います。
           try {
             setFileContent(new TextDecoder("utf-8", { fatal: true }).decode(fromBase64(r.content_base64)));
           } catch {
@@ -220,7 +220,7 @@ function FileManager({ session }: { session: ShellSession }) {
           setFileContent("");
         }
       })
-      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "读取失败"))
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "読み取りに失敗しました"))
       .finally(() => setFileBusy(false));
   };
 
@@ -230,14 +230,14 @@ function FileManager({ session }: { session: ShellSession }) {
     setWriting(true);
     api
       .sessionWrite(session.id, target, toBase64(fileContent))
-      .then((r) => toast.success(`已写入 ${r.bytes} 字节 → ${target}`))
-      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "写入失败"))
+      .then((r) => toast.success(`書き込みました：${r.bytes} バイト → ${target}`))
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "書き込みに失敗しました"))
       .finally(() => setWriting(false));
   };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col divide-y">
-      {/* 目录浏览 */}
+      {/* ディレクトリ閲覧 */}
       <div className="flex min-h-0 flex-1 flex-col">
         <form
           className="flex items-center gap-2 p-2"
@@ -249,25 +249,25 @@ function FileManager({ session }: { session: ShellSession }) {
           <Input
             value={path}
             onChange={(e) => setPath(e.target.value)}
-            placeholder="路径，如 C:\inetpub\wwwroot 或 /var/www/html"
+            placeholder="パス（例：C:\inetpub\wwwroot または /var/www/html）"
             className="h-8 flex-1 font-mono text-xs"
           />
           <Button type="submit" size="sm" className="h-8 gap-1" disabled={listing || !path.trim()}>
             {listing ? <Loader2Icon className="size-3.5 animate-spin" /> : <RefreshCwIcon className="size-3.5" />}
-            列目录
+            一覧表示
           </Button>
         </form>
         <div className="min-h-0 flex-1 overflow-auto">
           {entries === null ? (
-            <div className="py-10 text-center text-xs text-muted-foreground">输入路径后点「列目录」。</div>
+            <div className="py-10 text-center text-xs text-muted-foreground">パスを入力して「一覧表示」を押します。</div>
           ) : entries.length === 0 ? (
-            <div className="py-10 text-center text-xs text-muted-foreground">空目录</div>
+            <div className="py-10 text-center text-xs text-muted-foreground">空のディレクトリ</div>
           ) : (
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead className="w-[90px] text-right">大小</TableHead>
+                  <TableHead>名前</TableHead>
+                  <TableHead className="w-[90px] text-right">サイズ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -300,13 +300,13 @@ function FileManager({ session }: { session: ShellSession }) {
         </div>
       </div>
 
-      {/* 读 / 写 */}
+      {/* 読み取り / 書き込み */}
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
         <div className="flex items-center gap-2">
           <Input
             value={filePath}
             onChange={(e) => setFilePath(e.target.value)}
-            placeholder="文件路径（点上面文件自动填入，也可手输）"
+            placeholder="ファイルパス（上の一覧をクリックで自動入力、手入力も可）"
             className="h-8 flex-1 font-mono text-xs"
           />
           <Button
@@ -316,24 +316,24 @@ function FileManager({ session }: { session: ShellSession }) {
             disabled={fileBusy || !filePath.trim()}
             onClick={() => read(filePath.trim())}
           >
-            {fileBusy ? <Loader2Icon className="size-3.5 animate-spin" /> : "读取"}
+            {fileBusy ? <Loader2Icon className="size-3.5 animate-spin" /> : "読み取り"}
           </Button>
           <Button size="sm" className="h-8" disabled={writing || !filePath.trim()} onClick={write}>
-            {writing ? <Loader2Icon className="size-3.5 animate-spin" /> : "写入"}
+            {writing ? <Loader2Icon className="size-3.5 animate-spin" /> : "書き込み"}
           </Button>
         </div>
         {fileMeta?.binary && (
           <p className="text-[11px] text-amber-600 dark:text-amber-400">
-            二进制文件：无法按文本展示时编辑器为空；直接写入会覆盖原文件，谨慎操作。
+            バイナリファイル：テキストで表示できない場合はエディタが空になります。直接書き込むと元ファイルを上書きするため注意してください。
           </p>
         )}
         {fileMeta?.truncated && (
-          <p className="text-[11px] text-amber-600 dark:text-amber-400">内容过长已被后端截断，写入前请确认完整性。</p>
+          <p className="text-[11px] text-amber-600 dark:text-amber-400">内容が長すぎるためバックエンドで切り捨てられました。書き込み前に完全性を確認してください。</p>
         )}
         <Textarea
           value={fileContent}
           onChange={(e) => setFileContent(e.target.value)}
-          placeholder="文件内容（读取后可编辑，点「写入」保存到目标）"
+          placeholder="ファイル内容（読み取り後に編集し、「書き込み」でターゲットへ保存）"
           className="min-h-0 flex-1 resize-none font-mono text-xs"
         />
       </div>
@@ -342,7 +342,7 @@ function FileManager({ session }: { session: ShellSession }) {
 }
 
 // ---------------------------------------------------------------------------
-// 工作台 Sheet：终端 / 文件两个页签 + 删除会话。历史等状态靠 key=session.id 随会话重置。
+// ワークベンチ Sheet：ターミナル / ファイルの 2 タブ + セッション削除。履歴などの状態は key=session.id でセッションごとにリセットされます。
 // ---------------------------------------------------------------------------
 export function SessionWorkbench({
   session,
@@ -362,12 +362,12 @@ export function SessionWorkbench({
     api
       .deleteSession(session.id)
       .then(() => {
-        toast.success(`会话 #${session.id} 已删除`);
+        toast.success(`セッション #${session.id} を削除しました`);
         setConfirming(false);
         onOpenChange(false);
         onDeleted();
       })
-      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "删除失败"))
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "削除に失敗しました"))
       .finally(() => setDeleting(false));
   };
 
@@ -377,7 +377,7 @@ export function SessionWorkbench({
         {session && (
           <>
             <SheetHeader className="border-b px-5 py-4">
-              <SheetTitle className="pr-8">会话工作台 #{session.id}</SheetTitle>
+              <SheetTitle className="pr-8">セッションワークベンチ #{session.id}</SheetTitle>
               <SheetDescription className="truncate font-mono text-xs">{session.url}</SheetDescription>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <Badge variant="secondary" className="font-mono text-xs">
@@ -403,14 +403,14 @@ export function SessionWorkbench({
                   onClick={() => setConfirming(true)}
                 >
                   <Trash2Icon className="size-3.5" />
-                  删除会话
+                  セッションを削除
                 </Button>
               </div>
             </SheetHeader>
             <Tabs defaultValue="terminal" className="flex min-h-0 flex-1 flex-col gap-0">
               <TabsList className="mx-5 mt-3 w-fit">
-                <TabsTrigger value="terminal">命令终端</TabsTrigger>
-                <TabsTrigger value="files">文件管理</TabsTrigger>
+                <TabsTrigger value="terminal">コマンドターミナル</TabsTrigger>
+                <TabsTrigger value="files">ファイル管理</TabsTrigger>
               </TabsList>
               <TabsContent value="terminal" className="flex min-h-0 flex-1 flex-col px-5 pt-3 pb-5">
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
@@ -427,13 +427,13 @@ export function SessionWorkbench({
             <AlertDialog open={confirming} onOpenChange={setConfirming}>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>删除会话 #{session.id}？</AlertDialogTitle>
+                  <AlertDialogTitle>セッション #{session.id} を削除しますか？</AlertDialogTitle>
                   <AlertDialogDescription>
-                    将断开并移除该 webshell 会话，目标上的马文件不会被清除。此操作不可撤销。
+                    この WebShell セッションを切断して削除します。ターゲット上のマルウェアファイルは消去されません。この操作は取り消せません。
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+                  <AlertDialogCancel disabled={deleting}>キャンセル</AlertDialogCancel>
                   <AlertDialogAction
                     variant="destructive"
                     disabled={deleting}
@@ -442,7 +442,7 @@ export function SessionWorkbench({
                       doDelete();
                     }}
                   >
-                    {deleting ? "删除中…" : "确认删除"}
+                    {deleting ? "削除中…" : "削除の確認"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

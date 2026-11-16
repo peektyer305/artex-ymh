@@ -40,7 +40,7 @@ type Member struct {
 const RankActive = int(^uint(0)>>1) - 1
 
 // ErrExhausted is returned when every member of the chain failed.
-var ErrExhausted = errors.New("LLM 轮询：所有配置均不可用")
+var ErrExhausted = errors.New("LLM ポーリング：すべての設定が利用できません")
 
 // Pool is an llm.Provider that fails over across an ordered chain of members.
 // It is safe for concurrent use: members are immutable after construction and
@@ -106,18 +106,18 @@ func (p *Pool) Stream(ctx context.Context, req llm.CompletionRequest) iter.Seq2[
 			lastErr = failed
 			hard := isHardFailure(failed)
 			if p.health.Trip(m.ID, trimErr(failed), hard) {
-				log.Printf("[llmpool] 配置 %q(%s) 已熔断：%s", m.Name, m.Model, trimErr(failed))
+				log.Printf("[llmpool] 設定 %q(%s) を遮断しました：%s", m.Name, m.Model, trimErr(failed))
 			}
 			if i+1 < len(order) {
 				n := order[i+1]
-				log.Printf("[llmpool] LLM 故障转移：%q(%s) → %q(%s)，原因：%s",
+				log.Printf("[llmpool] LLM フェイルオーバー：%q(%s) → %q(%s)、理由：%s",
 					m.Name, m.Model, n.Name, n.Model, trimErr(failed))
 			}
 		}
 		if lastErr == nil {
 			lastErr = ErrExhausted
 		}
-		log.Printf("[llmpool] 轮询链已耗尽(%d 个配置全部失败)，最后错误：%s", len(order), trimErr(lastErr))
+		log.Printf("[llmpool] ポーリングチェーンを使い切りました（%d 個の設定がすべて失敗）、最後のエラー：%s", len(order), trimErr(lastErr))
 		yield(llm.StreamEvent{}, fmt.Errorf("%w：%v", ErrExhausted, lastErr))
 	}
 }
@@ -145,18 +145,18 @@ func (p *Pool) Complete(ctx context.Context, req llm.CompletionRequest) (llm.Mes
 		lastErr = err
 		hard := isHardFailure(err)
 		if p.health.Trip(m.ID, trimErr(err), hard) {
-			log.Printf("[llmpool] 配置 %q(%s) 已熔断：%s", m.Name, m.Model, trimErr(err))
+			log.Printf("[llmpool] 設定 %q(%s) を遮断しました：%s", m.Name, m.Model, trimErr(err))
 		}
 		if i+1 < len(order) {
 			n := order[i+1]
-			log.Printf("[llmpool] LLM 故障转移：%q(%s) → %q(%s)，原因：%s",
+			log.Printf("[llmpool] LLM フェイルオーバー：%q(%s) → %q(%s)、理由：%s",
 				m.Name, m.Model, n.Name, n.Model, trimErr(err))
 		}
 	}
 	if lastErr == nil {
 		lastErr = ErrExhausted
 	}
-	log.Printf("[llmpool] 轮询链已耗尽(%d 个配置全部失败)，最后错误：%s", len(order), trimErr(lastErr))
+	log.Printf("[llmpool] ポーリングチェーンを使い切りました（%d 個の設定がすべて失敗）、最後のエラー：%s", len(order), trimErr(lastErr))
 	return llm.Message{}, "", llm.Usage{}, fmt.Errorf("%w：%v", ErrExhausted, lastErr)
 }
 
@@ -231,10 +231,12 @@ func statusOf(err error) int {
 //
 // The one nuance is DeadlineExceeded: if the CALLER's ctx is still alive, the
 // deadline came from a derived context below us — the per-call hard wall clock
-// (agent 包 ARTEX_LLM_CALL_TIMEOUT,归一化为 call_timeout 类)或 SDK 内部
-// per-attempt 超时。那是一次挂死/瞬时的传输失败,与 reset/DNS 同类,归「可转移
-// 的瞬时失败」(软熔断计数,非 hard)。若调用方 ctx 自己也已到期(用户停止 /
-// 任务级截止),第一个分支已经拦下,永不转移。
+// (agent パッケージの ARTEX_LLM_CALL_TIMEOUT を call_timeout 種別に正規化)また
+// は SDK 内部の per-attempt タイムアウト。これはハング/一時的な転送失敗で、
+// reset/DNS と同類の「フェイルオーバー可能な一時失敗」（ソフト遮断のカウント
+// 対象、hard ではない）に分類する。呼び出し側の ctx 自体も期限切れの場合
+// （ユーザー停止 / タスクレベルの締め切り）は、先頭の分岐で既に弾かれており、
+// 決してフェイルオーバーしない。
 func shouldFailover(ctx context.Context, err error) bool {
 	if err == nil {
 		return false
@@ -243,7 +245,7 @@ func shouldFailover(ctx context.Context, err error) bool {
 		return false
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return true // call_timeout:调用方未到期,超时来自下层派生 ctx,瞬时,可转移
+		return true // call_timeout:呼び出し側は期限内、タイムアウトは下層の派生 ctx 由来、一時的、フェイルオーバー可
 	}
 	switch code := statusOf(err); {
 	case code == 0:

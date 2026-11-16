@@ -1,13 +1,13 @@
 "use client";
 
-// LLM 重试配置的共用件：五层重试各自的「次数 + 间隔」。
+// LLM 再試行設定の共用部品：5 層の再試行それぞれの「回数 + 間隔」。
 //
-// 五层从内到外：建连(SDK) → 空响应(SDK) → 同 provider 安全窗口 → 轮询熔断 → 意图重跑。
-// 前三层跟着端点走，所以每个模型配置都能覆盖全局默认；后两层是进程级的，只有全局一份。
+// 5 層を内側から外側へ：接続確立(SDK) → 空レスポンス(SDK) → 同一 provider 安全ウィンドウ → ポーリング遮断 → 意図の再実行。
+// 内側 3 層はエンドポイントに紐づくため、モデル設定ごとにグローバル既定を上書きできる。外側 2 層はプロセス単位で、グローバルに 1 つだけ。
 //
-// 所有输入都遵循同一套「留空 = 不配置」语义，与后端 db.RetryRule 一致：
-//   次数   空/0 = 用内置默认 | -1 = 关闭这层重试 | >0 = 用这个次数
-//   间隔   空/0 = 用这层原本的指数退避 | >0 = 改用这个固定毫秒间隔
+// すべての入力は「空欄 = 未設定」という同じ意味論に従い、バックエンドの db.RetryRule と一致する：
+//   回数   空/0 = 組み込み既定 | -1 = この層の再試行をオフ | >0 = この回数
+//   間隔   空/0 = この層本来の指数バックオフ | >0 = この固定ミリ秒間隔に変更
 
 import * as React from "react";
 
@@ -34,89 +34,89 @@ const ZERO_POLICY: LLMRetryPolicy = {
 
 type LayerMeta = {
   title: string;
-  /** 这层重试发生在哪、由谁执行 */
+  /** この層の再試行がどこで誰によって実行されるか */
   where: string;
-  /** 什么样的错误会走到这层——具体到状态码，别让人猜 */
+  /** どんなエラーがこの層に来るか——ステータスコードまで具体的に、推測させない */
   trigger: string;
-  /** 长得像但【不】走这层的错误，省得填了没反应还以为是 bug */
+  /** 似ているが【この層に来ない】エラー。設定しても効かずバグだと誤解しないように */
   skips?: string;
   desc: string;
   attemptsLabel: string;
-  /** 次数留空时的默认值，用于占位符 */
+  /** 回数が空欄のときの既定値（プレースホルダ用） */
   defAttempts: number;
-  /** 间隔留空时的默认策略，用于占位符 */
+  /** 間隔が空欄のときの既定ポリシー（プレースホルダ用） */
   defInterval: string;
-  /** 次数填 -1 的含义 */
+  /** 回数に -1 を入れた意味 */
   offHint: string;
 };
 
 export const RETRY_LAYERS = {
   connect: {
-    title: "建连重试",
-    where: "SDK · 拿到 200 之前",
+    title: "接続確立の再試行",
+    where: "SDK · 200 を受け取るまで",
     trigger:
-      "连不上或还没拿到 200：连接重置 / 读写超时 / DNS 失败等网络层错误，以及 HTTP 408、429、500、502、503、504。",
-    skips: "其余状态码（400 / 401 / 403 / 404 / 413 / 422 等）都是确定性拒绝，重发也一样失败，直接上抛。",
-    desc: "原样重发同一个请求。流一旦开始（已经拿到 200），中途断开就不归这层管了。",
-    attemptsLabel: "重试次数",
+      "接続できない、またはまだ 200 を受け取っていない：接続リセット / 読み書きタイムアウト / DNS 失敗などのネットワーク層エラー、および HTTP 408、429、500、502、503、504。",
+    skips: "その他のステータスコード（400 / 401 / 403 / 404 / 413 / 422 など）は確定的な拒否で、再送しても同じく失敗するためそのまま上位へ送出します。",
+    desc: "同じリクエストをそのまま再送します。ストリームが始まった後（200 受信済み）の途中切断はこの層の対象外です。",
+    attemptsLabel: "再試行回数",
     defAttempts: 3,
-    defInterval: "0.5s→1s→2s 指数（封顶 8s）",
-    offHint: "-1 = 一次都不重试，失败立刻上抛",
+    defInterval: "0.5s→1s→2s 指数（上限 8s）",
+    offHint: "-1 = 一度も再試行せず、失敗は即座に上位へ",
   },
   empty: {
-    title: "空响应重试",
-    where: "SDK · 仅 openai 格式",
+    title: "空レスポンスの再試行",
+    where: "SDK · openai 形式のみ",
     trigger:
-      "HTTP 200、finish_reason 是正常 stop，但整条响应一个内容块都没有——网关空帧、思考字段丢帧、采样打嗝都会长这样。",
-    skips: "因 max_tokens 截断而没有内容的不算（那要靠调高输出上限解决，重发只会再撞一次）。",
-    desc: "重发整个 prompt，所以在长上下文上比较贵，次数不宜给大。",
-    attemptsLabel: "重试次数",
+      "HTTP 200、finish_reason は正常な stop なのに、レスポンス全体にコンテンツブロックが 1 つもない——ゲートウェイの空フレーム、思考フィールドのフレーム欠落、サンプリングの一時的な不調がこの形になります。",
+    skips: "max_tokens による打ち切りで内容がない場合は対象外（出力上限を上げて解決するもので、再送しても同じ所で止まるだけ）。",
+    desc: "prompt 全体を再送するため、長いコンテキストではコストが高い。回数は大きくしない方がよい。",
+    attemptsLabel: "再試行回数",
     defAttempts: 2,
-    defInterval: "0.5s→1s→2s 指数（封顶 8s）",
-    offHint: "-1 = 空响应直接原样交出",
+    defInterval: "0.5s→1s→2s 指数（上限 8s）",
+    offHint: "-1 = 空レスポンスをそのまま返す",
   },
   stream: {
-    title: "同 provider 安全窗口重试",
-    where: "本项目 · 未交付输出前",
+    title: "同一 provider 安全ウィンドウの再試行",
+    where: "本プロジェクト · 出力を渡す前",
     trigger:
-      "流已经建立（拿到 200）之后才出问题：连接中途断开、供应商 overloaded、流内的 429 / 5xx 错误事件——且一个 token 都还没交给调用方。",
+      "ストリーム確立（200 受信）後に問題が出た場合：接続の途中切断、プロバイダの overloaded、ストリーム内の 429 / 5xx エラーイベント——しかも token を 1 つも呼び出し元へ渡していないとき。",
     skips:
-      "额度耗尽（402 / insufficient_quota，交给轮询换配置）、上下文过长（413 / context length，交给压缩）、400 / 401 / 403 / 404 / 422 确定性拒绝，都不重试。",
-    desc: "在同一个配置上重放同一个请求。因为还没交付任何输出，重放不会重复模型输出或工具执行。",
-    attemptsLabel: "重试次数",
+      "クォータ枯渇（402 / insufficient_quota、ポーリングによる設定切替へ）、コンテキスト長超過（413 / context length、圧縮へ）、400 / 401 / 403 / 404 / 422 の確定的な拒否は、いずれも再試行しません。",
+    desc: "同じ設定で同じリクエストを再生します。まだ出力を渡していないため、再生でモデル出力やツール実行が重複することはありません。",
+    attemptsLabel: "再試行回数",
     defAttempts: 2,
-    defInterval: "0.5s→1s 指数（封顶 4s）",
-    offHint: "-1 = 断流直接交给外层的意图重跑",
+    defInterval: "0.5s→1s 指数（上限 4s）",
+    offHint: "-1 = 断流は外側の意図再実行に委ねる",
   },
   breaker: {
-    title: "轮询熔断",
-    where: "本项目 · 进程级，全局一份",
+    title: "ポーリング遮断",
+    where: "本プロジェクト · プロセス単位、グローバルに 1 つ",
     trigger:
-      "瞬时失败（429、5xx、网络错误）连续累计到阈值时熔断；余额不足（402）、密钥失效（401 / 403）、模型不存在（404）这类确定性失败不看阈值，第一次就熔断。",
-    skips: "成功一次即清零，所以偶尔抽风的配置不会被慢慢攒到熔断。",
-    desc: "熔断后进入冷却，冷却期内轮询直接跳过这个配置。状态落库，重启不丢。",
-    attemptsLabel: "连续失败几次熔断",
+      "一時的な失敗（429、5xx、ネットワークエラー）が連続してしきい値に達すると遮断。残高不足（402）、キー失効（401 / 403）、モデル不在（404）といった確定的な失敗はしきい値を見ず、1 回目で遮断します。",
+    skips: "1 回成功すれば 0 に戻るため、たまに不調になる程度の設定が積み上がって遮断されることはありません。",
+    desc: "遮断後はクールダウンに入り、その間ポーリングはこの設定を飛ばします。状態は DB に保存され、再起動しても失われません。",
+    attemptsLabel: "連続失敗が何回で遮断",
     defAttempts: 3,
-    defInterval: "1min→5min→30min 梯度",
-    offHint: "-1 = 瞬时失败永不熔断（确定性失败仍然熔断）",
+    defInterval: "1min→5min→30min の段階",
+    offHint: "-1 = 一時的な失敗では遮断しない（確定的な失敗は遮断）",
   },
   intent: {
-    title: "意图重跑",
-    where: "本项目 · 进程级，全局一份",
+    title: "意図の再実行",
+    where: "本プロジェクト · プロセス単位、グローバルに 1 つ",
     trigger:
-      "前面几层都没兜住：worker 以 model_error 收场——内层重试全部用尽，或者流已经开始交付输出后才断掉（那时重放不安全，只能整条重来）。",
-    skips: "额度耗尽已经由轮询换配置处理，不在这里重跑；任务被暂停 / 终止 / 进入收尾时立即让位，不占用退避时间。",
-    desc: "整条意图从头再跑一遍。它是最外层，一次重跑意味着里面几层的次数会再乘一遍。",
-    attemptsLabel: "重跑次数",
+      "内側の層で受け止めきれなかった場合：worker が model_error で終了——内側の再試行をすべて使い切った、またはストリームが出力を渡し始めてから切れた（その時点の再生は安全でなく、全体をやり直すしかない）。",
+    skips: "クォータ枯渇はポーリングの設定切替で処理済みのため、ここでは再実行しません。タスクが一時停止 / 終了 / 終盤処理に入ったら即座に譲り、バックオフ時間を占有しません。",
+    desc: "意図全体を最初からやり直します。最外層なので、1 回の再実行で内側の層の回数がさらに掛け算になります。",
+    attemptsLabel: "再実行回数",
     defAttempts: 2,
     defInterval: "固定 3s",
-    offHint: "-1 = 不重跑，该意图直接判为 blocked",
+    offHint: "-1 = 再実行せず、その意図は blocked と判定",
   },
 } satisfies Record<string, LayerMeta>;
 
 type LayerKey = keyof typeof RETRY_LAYERS;
 
-/** 毫秒的人话，只用于在输入框旁边回显，免得数零。 */
+/** ミリ秒を人が読める表記に。入力欄の横に表示するだけで、ゼロを数えなくて済むように。 */
 function humanMs(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) return "";
   if (ms < 1000) return `${ms}ms`;
@@ -124,7 +124,7 @@ function humanMs(ms: number) {
   return `${Number((ms / 60_000).toFixed(2))}min`;
 }
 
-/** 受控数字输入：空串 ↔ 0，中间态（"-"、"1e"）原样留在本地，不打扰父级。 */
+/** 制御された数値入力：空文字 ↔ 0、中間状態（"-"、"1e"）はそのままローカルに保持し、親を煩わせない。 */
 function NumField({
   id,
   value,
@@ -139,8 +139,8 @@ function NumField({
   min: number;
 }) {
   const [text, setText] = React.useState(value === 0 ? "" : String(value));
-  // 父级换了一整套值（读取到策略、切换配置）时跟上；自己敲字时不会走到这里，
-  // 因为那时 value 已经等于本地文本 parse 后的结果。
+  // 親が値一式を入れ替えたとき（ポリシー読み込み、設定切替）は追従する。自分で入力しているときはここに来ない。
+  // そのとき value はローカルテキストを parse した結果と既に等しいため。
   React.useEffect(() => {
     const incoming = value === 0 ? "" : String(value);
     setText((cur) => (Number(cur || 0) === value ? cur : incoming));
@@ -162,7 +162,7 @@ function NumField({
   );
 }
 
-/** 一层重试的两个旋钮。idPrefix 用来在同一页出现多次时保住 label 的 htmlFor。 */
+/** 1 層の再試行の 2 つのつまみ。idPrefix は同一ページに複数出るとき label の htmlFor を保つために使う。 */
 export function RetryRuleFields({
   layer,
   idPrefix,
@@ -174,7 +174,7 @@ export function RetryRuleFields({
   idPrefix: string;
   value: LLMRetryRule;
   onChange: (r: LLMRetryRule) => void;
-  /** true = 配置抽屉里的紧凑版：省掉展开说明，只留「什么错误会走到这层」这一句 */
+  /** true = 設定ドロワー用のコンパクト版：展開説明を省き、「どんなエラーがこの層に来るか」の 1 文だけ残す */
   compact?: boolean;
 }) {
   const meta = RETRY_LAYERS[layer];
@@ -186,13 +186,13 @@ export function RetryRuleFields({
           <Label className="text-sm">{meta.title}</Label>
           <span className="text-muted-foreground text-xs">{meta.where}</span>
         </div>
-        {/* 哪些错误会走到这层，具体到状态码——填了旋钮却看不到效果，多半是错误压根不落在这层。 */}
+        {/* どのエラーがこの層に来るか、ステータスコードまで具体的に——つまみを設定しても効かないときは、そもそもこの層に来ていないことが多い。 */}
         <p className="text-muted-foreground text-xs">
-          <span className="font-medium text-foreground">触发</span>：{meta.trigger}
+          <span className="font-medium text-foreground">トリガー</span>：{meta.trigger}
         </p>
         {!compact && meta.skips && (
           <p className="text-muted-foreground text-xs">
-            <span className="font-medium text-foreground">不走这层</span>：{meta.skips}
+            <span className="font-medium text-foreground">この層に来ない</span>：{meta.skips}
           </p>
         )}
         {!compact && <p className="text-muted-foreground text-xs">{meta.desc}</p>}
@@ -206,30 +206,30 @@ export function RetryRuleFields({
             id={`${idPrefix}-${layer}-n`}
             min={-1}
             value={value.attempts}
-            placeholder={`默认 ${meta.defAttempts}`}
+            placeholder={`既定 ${meta.defAttempts}`}
             onChange={(n) => onChange({ ...value, attempts: n })}
           />
         </div>
         <div className="flex items-center gap-2">
           <Label htmlFor={`${idPrefix}-${layer}-ms`} className="text-muted-foreground text-xs">
-            间隔 ms
+            間隔 ms
           </Label>
           <NumField
             id={`${idPrefix}-${layer}-ms`}
             min={0}
             value={value.interval_ms}
-            placeholder="默认退避"
+            placeholder="既定のバックオフ"
             onChange={(n) => onChange({ ...value, interval_ms: n })}
           />
           <span className="text-muted-foreground text-xs">{human ? `固定 ${human}` : meta.defInterval}</span>
         </div>
       </div>
-      {!compact && <p className="text-muted-foreground text-xs">留空 = 用默认；{meta.offHint}。</p>}
+      {!compact && <p className="text-muted-foreground text-xs">空欄 = 既定値、{meta.offHint}。</p>}
     </div>
   );
 }
 
-/** 模型配置抽屉里的三层覆盖（跟着端点走的那三层）。 */
+/** モデル設定ドロワー内の 3 層の上書き（エンドポイントに紐づく 3 層）。 */
 export function ProfileRetryFields({
   value,
   onChange,
@@ -240,10 +240,10 @@ export function ProfileRetryFields({
   return (
     <div className="grid gap-3 rounded-lg border p-3">
       <div className="grid gap-0.5">
-        <Label className="text-sm">重试覆盖</Label>
+        <Label className="text-sm">再試行の上書き</Label>
         <p className="text-muted-foreground text-xs">
-          只对这个配置生效，覆盖「重试与退避」里的全局默认。每格留空 = 跟随全局；次数填 -1 = 关掉这层重试；
-          间隔填了就用固定间隔取代指数退避。熔断与意图重跑是进程级的，只能在全局那页调。
+          この設定にのみ適用され、「再試行とバックオフ」のグローバル既定を上書きします。各欄が空欄 = グローバルに従う、回数に -1 = この層の再試行をオフ、
+          間隔を入れると指数バックオフの代わりに固定間隔を使います。遮断と意図の再実行はプロセス単位で、グローバルのページでのみ調整できます。
         </p>
       </div>
       {(["connect", "empty", "stream"] as const).map((k) => (
@@ -261,7 +261,7 @@ export function ProfileRetryFields({
   );
 }
 
-/** 「重试与退避」tab：五层的全局默认值。 */
+/** 「再試行とバックオフ」タブ：5 層のグローバル既定値。 */
 export function RetryPolicyPanel() {
   const [policy, setPolicy] = React.useState<LLMRetryPolicy>(ZERO_POLICY);
   const [loading, setLoading] = React.useState(true);
@@ -273,7 +273,7 @@ export function RetryPolicyPanel() {
       const p = await api.llmRetryPolicy();
       setPolicy({ ...ZERO_POLICY, ...p });
     } catch (e) {
-      toast.error(`读取重试策略失败：${(e as Error).message}`);
+      toast.error(`再試行ポリシーの読み込みに失敗しました：${(e as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -287,12 +287,12 @@ export function RetryPolicyPanel() {
     if (saving) return;
     setSaving(true);
     try {
-      // 后端会把越界值夹回区间并回传，直接用回传值刷新，所见即所存。
+      // バックエンドは範囲外の値を範囲内に丸めて返すため、返却値をそのまま使って更新する（見たままが保存内容）。
       const saved = await api.saveLLMRetryPolicy(policy);
       setPolicy({ ...ZERO_POLICY, ...saved });
-      toast.success("已保存，即时生效（正在跑的这一轮调用仍用旧参数）");
+      toast.success("保存しました。即時反映されます（実行中の呼び出しは旧パラメータのまま）");
     } catch (e) {
-      toast.error(`保存失败：${(e as Error).message}`);
+      toast.error(`保存に失敗しました：${(e as Error).message}`);
     } finally {
       setSaving(false);
     }
@@ -303,7 +303,7 @@ export function RetryPolicyPanel() {
   if (loading) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-dashed p-10 text-muted-foreground text-sm">
-        <Loader2Icon className="size-4 animate-spin" /> 读取重试策略…
+        <Loader2Icon className="size-4 animate-spin" /> 再試行ポリシーを読み込み中…
       </div>
     );
   }
@@ -311,12 +311,12 @@ export function RetryPolicyPanel() {
   return (
     <div className="grid gap-4">
       <div className="rounded-lg border bg-muted/30 p-3 text-muted-foreground text-xs leading-relaxed">
-        一次模型调用的失败会依次经过五层重试，由内到外：
-        <span className="text-foreground"> 建连 → 空响应 → 同 provider 安全窗口 → 轮询熔断 → 意图重跑</span>
-        。内层用尽才轮到外层，所以次数是
-        <span className="text-foreground">相乘</span>
-        的——把每层都拉满，一次抖动能烧掉几十次请求。
-        全部留空即当前默认值，与没有这页时的行为完全一致。前三层可以在每个模型配置里单独覆盖。
+        1 回のモデル呼び出しの失敗は、内側から外側へ 5 層の再試行を順に通ります：
+        <span className="text-foreground"> 接続確立 → 空レスポンス → 同一 provider 安全ウィンドウ → ポーリング遮断 → 意図の再実行</span>
+        。内側を使い切ってから外側に回るため、回数は
+        <span className="text-foreground">掛け算</span>
+        になる——各層をすべて最大にすると、一度の不調で数十回のリクエストを消費します。
+        すべて空欄なら現在の既定値で、このページがないときの動作と完全に一致します。内側 3 層はモデル設定ごとに個別に上書きできます。
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -331,7 +331,7 @@ export function RetryPolicyPanel() {
           保存
         </Button>
         <Button variant="outline" onClick={() => setPolicy(ZERO_POLICY)} disabled={saving}>
-          全部恢复默认
+          すべて既定に戻す
         </Button>
       </div>
     </div>

@@ -1,18 +1,18 @@
-// safeHref 校验一个可进入 href 的 URL,只允许 http: / https: scheme。
+// safeHref は href に入れてよい URL かを検証し、http: / https: スキームのみを許可する。
 //
-// 背景:资产 URL、GitHub release 地址等数据来自后端/目标侧,直接塞进 <a href>
-// 会让 javascript:、data: 之类的伪协议变成可点链接(XSS 入口)。凡是非编译期
-// 常量的 href 都必须先过这道校验;返回 undefined 时调用方应降级渲染为纯文本。
+// 背景:アセット URL や GitHub release のアドレスなどはバックエンド/対象側から来るデータで、
+// そのまま <a href> に入れると javascript: や data: などの偽スキームがリンクになる(XSS の入口)。
+// コンパイル時定数でない href は必ずこの検証を通し、undefined なら呼び出し側はプレーンテキストで描画する。
 //
-// 注意:URL 构造器对相对串(如 "/path" 或空协议相对串 "//host")要求 base,
-// 这里故意不提供 base —— 相对/畸形输入一律视为不可信,返回 undefined。
+// 注意：URL コンストラクタは相対文字列(例 "/path" やスキーム相対の "//host")に base を要求するが、
+// ここではあえて base を渡さない —— 相対/不正な入力はすべて信頼できないものとして undefined を返す。
 export function safeHref(raw: string | null | undefined): string | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();
   if (!trimmed) return undefined;
-  // 控制字符与空白可嵌在 scheme 里绕过朴素前缀检查(如 "java\tscript:"),
-  // 浏览器解析 href 时会忽略它们,所以先剥掉再校验。
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: 刻意匹配控制字符以识别伪装 scheme
+  // 制御文字や空白は scheme に埋め込むと単純な前方一致チェックを回避できる(例 "java\tscript:")。
+  // ブラウザは href 解析時にこれらを無視するため、先に除去してから検証する。
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: 制御文字を意図的に照合して偽装 scheme を検出する
   const cleaned = trimmed.replace(/[\u0000-\u0020]+/g, "");
   let parsed: URL;
   try {

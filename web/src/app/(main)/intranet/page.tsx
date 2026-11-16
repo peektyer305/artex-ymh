@@ -35,7 +35,7 @@ export default function IntranetPage() {
   const [hostFilter, setHostFilter] = React.useState<HostFilter | null>(null);
   const [workbenchSession, setWorkbenchSession] = React.useState<ShellSession | null>(null);
 
-  // 任务过滤:"all" = 全局视图(后端不传 task_id);四个台账 + 拓扑共用同一选择。
+  // タスク絞り込み:"all" = 全体ビュー(バックエンドに task_id を渡さない);4 つの一覧 + トポロジで同じ選択を共有。
   const [taskId, setTaskId] = React.useState("all");
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const taskParam = taskId === "all" ? undefined : taskId;
@@ -45,7 +45,7 @@ export default function IntranetPage() {
       .tasks()
       .then((r) => setTasks(r.tasks))
       .catch(() => {
-        /* 任务列表拉取失败不阻塞台账 */
+        /* タスク一覧の取得失敗は一覧表示を妨げない */
       });
   }, []);
 
@@ -55,12 +55,12 @@ export default function IntranetPage() {
       .intranetTopology(taskParam)
       .then(setTopology)
       .catch(() => {
-        /* 保留上一次数据 */
+        /* 前回のデータを保持 */
       })
       .finally(() => setLoadingTopology(false));
   }, [taskParam]);
 
-  // 会话列表 10s 轮询；签名相同则跳过 setState，避免打开工作台时无谓重渲染。
+  // セッション一覧を 10 秒ごとにポーリング。シグネチャが同じなら setState をスキップし、ワークベンチを開いている間の無駄な再レンダリングを防ぐ。
   const sigRef = React.useRef("");
   const loadSessions = React.useCallback(
     (initial = false) => {
@@ -75,7 +75,7 @@ export default function IntranetPage() {
           }
         })
         .catch(() => {
-          /* 保留上一次数据 */
+          /* 前回のデータを保持 */
         })
         .finally(() => initial && setLoadingSessions(false));
     },
@@ -88,7 +88,7 @@ export default function IntranetPage() {
       .tunnels(taskParam)
       .then(setTunnels)
       .catch(() => {
-        /* 保留上一次数据 */
+        /* 前回のデータを保持 */
       })
       .finally(() => setLoadingTunnels(false));
   }, [taskParam]);
@@ -99,7 +99,7 @@ export default function IntranetPage() {
       .credentials(taskParam)
       .then(setCredentials)
       .catch(() => {
-        /* 保留上一次数据 */
+        /* 前回のデータを保持 */
       })
       .finally(() => setLoadingCreds(false));
   }, [taskParam]);
@@ -108,7 +108,7 @@ export default function IntranetPage() {
     loadTopology();
     loadTunnels();
     loadCreds();
-    sigRef.current = ""; // 切换任务后强制刷新会话列表
+    sigRef.current = ""; // タスク切り替え後はセッション一覧を強制更新
     loadSessions(true);
     const timer = setInterval(() => loadSessions(), SESSIONS_POLL_MS);
     return () => clearInterval(timer);
@@ -122,7 +122,7 @@ export default function IntranetPage() {
     loadSessions(true);
   };
 
-  // 拓扑节点点击 → 切到「会话」Tab 并按该主机过滤。
+  // トポロジノードをクリック → 「セッション」タブに切り替え、そのホストで絞り込む。
   const onSelectHost = React.useCallback(
     (nodeId: string) => {
       const node = topology?.nodes.find((n) => n.id === nodeId);
@@ -132,7 +132,7 @@ export default function IntranetPage() {
     [topology],
   );
 
-  // 轮询刷新后，工作台下那条会话可能已被删除/状态变化：同步最新记录。
+  // ポーリング更新後、ワークベンチのセッションは削除済み/状態変化の可能性があるため、最新のレコードに同期する。
   React.useEffect(() => {
     setWorkbenchSession((cur) => {
       if (!cur) return cur;
@@ -148,28 +148,28 @@ export default function IntranetPage() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <NetworkIcon className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-xl font-semibold tracking-tight">内网作战</h1>
+          <h1 className="text-xl font-semibold tracking-tight">イントラネット作戦</h1>
           <Badge variant="secondary" className="tabular-nums">
-            会话 {aliveSessions}/{sessions.length}
+            セッション {aliveSessions}/{sessions.length}
           </Badge>
           <Badge variant="secondary" className="tabular-nums">
-            隧道 {tunnels.length}
+            トンネル {tunnels.length}
           </Badge>
           <Badge variant="secondary" className="tabular-nums">
-            凭据 {credentials.length}
+            認証情報 {credentials.length}
           </Badge>
         </div>
         <div className="flex items-center gap-2">
-          {/* 任务过滤:照 findings 页下拉范式;选中值同时作用于拓扑与三台账(含 10s 轮询)。 */}
+          {/* タスク絞り込み：findings ページのドロップダウン方式に倣う;選択値はトポロジと 3 つの一覧(10 秒ポーリング含む)に作用する。 */}
           <Select value={taskId} onValueChange={setTaskId}>
             <SelectTrigger size="sm" className="w-48">
-              <SelectValue placeholder="任务" />
+              <SelectValue placeholder="タスク" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部任务</SelectItem>
+              <SelectItem value="all">すべてのタスク</SelectItem>
               {tasks.map((t) => {
                 const id = String(t.id);
-                const label = t.name || t.description || `任务 #${id}`;
+                const label = t.name || t.description || `タスク #${id}`;
                 return (
                   <SelectItem key={id} value={id}>
                     <span className="max-w-[14rem] truncate" title={label}>
@@ -182,12 +182,12 @@ export default function IntranetPage() {
           </Select>
           <Button variant="outline" size="sm" className="h-8 gap-1" onClick={refreshAll}>
             <RefreshCwIcon className={cn("size-3.5", loadingTopology && "animate-spin")} />
-            刷新
+            更新
           </Button>
         </div>
       </div>
 
-      {/* 上半部：内网拓扑 */}
+      {/* 上半部：イントラネットのトポロジ */}
       <Card>
         <CardContent className="p-0">
           <div className="h-[42vh] w-full overflow-hidden rounded-xl">
@@ -201,12 +201,12 @@ export default function IntranetPage() {
         </CardContent>
       </Card>
 
-      {/* 下半部：会话 / 隧道 / 凭据 */}
+      {/* 下半部：セッション / トンネル / 認証情報 */}
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
         <TabsList className="w-fit">
-          <TabsTrigger value="sessions">会话</TabsTrigger>
-          <TabsTrigger value="tunnels">隧道</TabsTrigger>
-          <TabsTrigger value="creds">凭据</TabsTrigger>
+          <TabsTrigger value="sessions">セッション</TabsTrigger>
+          <TabsTrigger value="tunnels">トンネル</TabsTrigger>
+          <TabsTrigger value="creds">認証情報</TabsTrigger>
         </TabsList>
         <TabsContent value="sessions" className="flex min-h-0 flex-1 flex-col pt-2">
           <SessionsTab

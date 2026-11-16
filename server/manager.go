@@ -34,23 +34,23 @@ import (
 type Task struct {
 	ID           string `json:"id"`
 	ExpID        int64  `json:"exploration_id"`
-	Name         string `json:"name"` // 可选任务名称;空=未命名
+	Name         string `json:"name"` // 任意のタスク名;空=名称未設定
 	CategoryID   *int64 `json:"category_id,omitempty"`
 	CategoryName string `json:"category_name,omitempty"`
 	PinnedAt     int64  `json:"pinned_at,omitempty"`
 	Description  string `json:"description"`
 	Goal         string `json:"goal"`
 	CreatedAt    int64  `json:"created_at"`
-	CompletedAt  int64  `json:"completed_at,omitempty"` // 进入终态的 unix 秒;0=未完成
+	CompletedAt  int64  `json:"completed_at,omitempty"` // 終了状態に入った unix 秒;0=未完了
 	Paused       bool   `json:"paused"`
-	Queued       bool   `json:"queued"` // 因并发上限被挂起、等待空位自动启动;true=尚未开跑
+	Queued       bool   `json:"queued"` // 並列上限で保留され、空きが出たら自動起動;true=まだ未実行
 	// QueuedAt is an internal Unix-nanosecond ordering key. It is deliberately
 	// finer than CreatedAt so several tasks enqueued in the same second retain
 	// their real FIFO order.
 	QueuedAt           int64   `json:"queued_at,omitempty"`
 	QueueMode          string  `json:"queue_mode,omitempty"`
-	ParentRef          string  `json:"parent_ref,omitempty"`     // 父任务 id(编排 spawn 记录)
-	LLMProfileID       *int64  `json:"llm_profile_id,omitempty"` // 指定运行本任务 planner/worker 的 LLM 配置;nil=用全局激活配置
+	ParentRef          string  `json:"parent_ref,omitempty"`     // 親タスク id(編成 spawn の記録)
+	LLMProfileID       *int64  `json:"llm_profile_id,omitempty"` // 本タスクの planner/worker を実行する LLM 設定;nil=グローバル有効設定を使う
 	LLMProfileIDs      []int64 `json:"llm_profile_ids,omitempty"`
 	ActiveLLMProfileID *int64  `json:"active_llm_profile_id,omitempty"`
 	LLMChainRevision   int64   `json:"-"`
@@ -58,11 +58,11 @@ type Task struct {
 	LLMFailoverReason  string  `json:"llm_failover_reason,omitempty"`
 	SourceTaskIDs      []int64 `json:"source_task_ids,omitempty"`
 	CompanyIDs         []int64 `json:"company_ids,omitempty"`
-	Status             string  `json:"status"` // persisted lifecycle status (done/failed/timeout 为终态；空/其它则由运行态推导)
-	// 任务级超时(见 docs/任务级超时与收尾设计.md)。DeadlineAt/FirstRunAt 为 unix 秒,0=未设/未运行。
+	Status             string  `json:"status"` // persisted lifecycle status (done/failed/timeout が終了状態；空/それ以外は実行状態から導出)
+	// タスク単位のタイムアウト(docs/任务级超时与收尾设计.md を参照)。DeadlineAt/FirstRunAt は unix 秒、0=未設定/未実行。
 	TimeoutSeconds       int                    `json:"timeout_seconds"`
-	PlanHeartbeatSeconds int                    `json:"plan_heartbeat_seconds"` // planner 心跳触发间隔(秒)
-	CoverageEnabled      bool                   `json:"coverage_enabled"`       // 资产覆盖度功能开关(创建时定,默认开)
+	PlanHeartbeatSeconds int                    `json:"plan_heartbeat_seconds"` // planner ハートビートの間隔(秒)
+	CoverageEnabled      bool                   `json:"coverage_enabled"`       // アセットカバレッジ機能のスイッチ(作成時に確定、デフォルト有効)
 	FirstRunAt           int64                  `json:"first_run_at,omitempty"`
 	DeadlineAt           int64                  `json:"deadline_at,omitempty"`
 	Store                *pgdb.ExplorationStore `json:"-"`
@@ -227,9 +227,9 @@ type Manager struct {
 	traffic     *traffic.Traffic       // process-wide recording proxy (may be nil)
 	enrich      *enrich.Engine         // engine-side asset auto-completion (DNS/HTTP)
 	interceptor *intercept.Interceptor // user-configured tool-call interception rules
-	// egress 是批 5 B2 出口审查的进程级敏感指纹集合(见 guard/egress.go):每任务
-	// 的 Guard 都引用这同一份(taskFromPG/agentGuard 装配),server 在启动与 LLM
-	// profile 变更时向它注册指纹,一次注册对全部任务生效。
+	// egress はバッチ 5 B2 出口審査のプロセス単位の機密フィンガープリント集合(guard/egress.go を参照):各タスク
+	// の Guard はすべてこの同じ集合を参照し(taskFromPG/agentGuard で組み立て)、server は起動時と LLM
+	// profile 変更時にフィンガープリントを登録する。一度の登録が全タスクに効く。
 	egress *guard.EgressGuard
 
 	companyMu sync.Mutex // serializes task/company-scope commits with live handle registration
@@ -240,10 +240,10 @@ type Manager struct {
 	mu          sync.RWMutex
 	tasks       map[string]*Task
 	active      string
-	trafficOn   bool // 流量捕获开关（默认关；settings.traffic_capture）
-	llmRecOn    bool // LLM 录制开关（默认关；settings.llm_record）
-	// 联网搜索开关与来源（默认关；settings.web_search_*）。brave-free 需要 braveKey；tavily 需要 tavilyKey。
-	// webSearchProxy 是独立出口代理(http/https/socks5)，与记录流量的 MITM 代理无关。
+	trafficOn   bool // トラフィックキャプチャのスイッチ（デフォルト無効；settings.traffic_capture）
+	llmRecOn    bool // LLM レコードのスイッチ（デフォルト無効；settings.llm_record）
+	// ウェブ検索のスイッチとソース（デフォルト無効；settings.web_search_*）。brave-free は braveKey、tavily は tavilyKey が必要。
+	// webSearchProxy は独立した出口プロキシ(http/https/socks5)で、トラフィックを記録する MITM プロキシとは無関係。
 	webSearchOn      bool
 	webSearchBackend string
 	braveKey         string
@@ -254,8 +254,8 @@ type Manager struct {
 	// capture is on it becomes the MITM's upstream; when capture is off it is
 	// injected into agent bash env / WebFetch directly. See ProxyAddr.
 	globalProxy string
-	// taskProxy 期 3b 按任务 MITM 实例管理器(见 taskproxy.go);nil = 关闭
-	// (ARTEX_TASK_PROXY=off 或端口池非法)。worker 流量经任务实例 → 任务隧道。
+	// taskProxy はフェーズ 3b のタスク別 MITM インスタンス管理(taskproxy.go を参照);nil = 無効
+	// (ARTEX_TASK_PROXY=off またはポートプールが不正)。worker のトラフィックはタスクインスタンス → タスクトンネルを通る。
 	taskProxy *taskProxyManager
 }
 
@@ -274,18 +274,18 @@ const (
 	settingGlobalProxy = "global_proxy"
 	settingWorkers     = "workers"
 	settingLLMRecord   = "llm_record"
-	// settingLLMRecordsRetentionDays 是 llm_records 的按天保留期:默认 30 天,
-	// 0 = 不清理。见 startLLMRecordsRetention 的每日清理。
+	// settingLLMRecordsRetentionDays は llm_records の日数単位の保持期間:デフォルト 30 日、
+	// 0 = クリーンアップしない。日次クリーンアップは startLLMRecordsRetention を参照。
 	settingLLMRecordsRetentionDays = "llm_records_retention_days"
 	// defaultLLMRecordsRetentionDays is the retention when the setting is unset.
 	defaultLLMRecordsRetentionDays = 30
-	// LLM 轮询(故障转移)。默认关闭——开启后走「全局激活配置」的 agent 在当前配置
-	// 不可用(余额不足/key 失效/限流/服务异常)时自动切到下一个配置。
-	// settingLLMPoolBindFallback 仅在轮询开启时有意义:默认关闭,即 agent/任务显式
-	// 绑定了某个配置就只用它、失败即失败;开启后绑定的配置失败也会回落到轮询链。
+	// LLM ポーリング(フェイルオーバー)。デフォルト無効——有効にすると「グローバル有効設定」を使う agent は現在の設定が
+	// 使えない(残高不足/key 失効/レート制限/サービス障害)ときに自動で次の設定へ切り替える。
+	// settingLLMPoolBindFallback はポーリング有効時のみ意味を持つ:デフォルト無効、つまり agent/タスクが明示的に
+	// ある設定を紐付けたらそれだけを使い、失敗は失敗のまま;有効にすると紐付けた設定の失敗もポーリングチェーンに落ちる。
 	settingLLMPoolOn           = "llm_pool_enabled"
 	settingLLMPoolBindFallback = "llm_pool_bind_fallback"
-	// 任务并发上限:开关 + 上限数。默认关闭;开启后默认上限 5(见 defaultConcurrencyLimit)。
+	// タスク並列上限:スイッチ + 上限数。デフォルト無効;有効時のデフォルト上限は 5(defaultConcurrencyLimit を参照)。
 	settingConcurrencyOn    = "task_concurrency_enabled"
 	settingConcurrencyLimit = "task_concurrency_limit"
 	// defaultWebSearchBackend is used when web search is on but no backend was picked.
@@ -298,9 +298,9 @@ const (
 	// defaultConcurrencyLimit is the simultaneous-running-task cap when the feature
 	// is enabled but no explicit limit was saved.
 	defaultConcurrencyLimit = 5
-	// settingTarpitFetchBudget 是批 5 B3 tarpit 熔断的每 host 抓取预算(默认 40,
-	// 见 guard.defaultTarpitFetchBudget);settingWebUAPool 是批 5 B4 的客户端 UA 池
-	// (JSON 字符串数组,空则用 agent.DefaultUAPool)。
+	// settingTarpitFetchBudget はバッチ 5 B3 tarpit 遮断の host ごとの取得予算(デフォルト 40、
+	// guard.defaultTarpitFetchBudget を参照);settingWebUAPool はバッチ 5 B4 のクライアント UA プール
+	// (JSON 文字列配列、空なら agent.DefaultUAPool を使う)。
 	settingTarpitFetchBudget = "tarpit_fetch_budget"
 	settingWebUAPool         = "web_ua_pool"
 )
@@ -349,7 +349,7 @@ func (m *Manager) Workers() int {
 // SetWorkers persists the concurrent work-agent count. Values <=0 are rejected.
 func (m *Manager) SetWorkers(n int) error {
 	if n <= 0 {
-		return fmt.Errorf("workers 必须 >0")
+		return fmt.Errorf("workers は 0 より大きい必要があります")
 	}
 	return m.pg.SetSetting(settingWorkers, strconv.Itoa(n))
 }
@@ -412,14 +412,14 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	// 批 6 L1 蜜罐静态签名库:装配 dataDir 下的签名文件绝对路径(存在则优先并按
-	// mtime 热更新,便于不落盘发版地运营签名库;缺失时引擎回落包内嵌签名库,不空载)。
+	// バッチ 6 L1 ハニーポット静的シグネチャライブラリ：dataDir 配下の署名ファイルの絶対パスを組み立てる(存在すれば優先し、
+	// mtime でホットリロードするので、再リリースせずに署名ライブラリを運用できる;無ければエンジンは埋め込み署名ライブラリに落ちる)。
 	honeydetect.SetSignaturesPath(filepath.Join(dir, "signatures", "honeypot.json"))
 	dsn, source, err := pgdb.DSN()
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("[pg] 数据库配置来源: %s", source)
+	log.Printf("[pg] データベース設定のソース: %s", source)
 	pg, err := pgdb.Open(dsn)
 	if err != nil {
 		return nil, err
@@ -440,7 +440,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	}
 	m := &Manager{dir: dir, pg: pg, assets: pg.Assets(), tasks: map[string]*Task{}, interceptor: intercept.New(pg), egress: guard.NewEgressGuard()}
 	m.startLLMRecordsRetention()
-	m.startPortAudit() // F13 台账外监听端口审计(仅 Linux;只观测不处置)
+	m.startPortAudit() // F13 台帳外の待受ポート監査(Linux のみ;観測のみで対処しない)
 	if proxyAddr != "" {
 		tr, err := traffic.Open(filepath.Join(dir, "traffic"), proxyAddr)
 		if err != nil {
@@ -448,7 +448,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 		} else {
 			err = tr.RecoverHostDeleteStages(func(_ int64, taskID int64) (bool, error) {
 				if taskID <= 0 {
-					return false, errors.New("归档流量暂存日志缺少任务 ID")
+					return false, errors.New("アーカイブトラフィックの一時退避ログにタスク ID がありません")
 				}
 				task, taskErr := pg.GetTask(taskID)
 				if taskErr != nil {
@@ -467,7 +467,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 		if tr != nil {
 			m.traffic = tr
 			go func() {
-				log.Printf("[traffic] recording proxy on %s (set HTTP_PROXY=%s + trust _ca CA; 口令见 data/traffic/_auth, 不打日志)", proxyAddr, tr.ProxyAddrRedacted())
+				log.Printf("[traffic] recording proxy on %s (set HTTP_PROXY=%s + trust _ca CA; パスワードは data/traffic/_auth を参照、ログには出さない)", proxyAddr, tr.ProxyAddrRedacted())
 				if err := tr.Start(); err != nil {
 					log.Printf("[traffic] proxy stopped: %v", err)
 				}
@@ -477,7 +477,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	// Asset auto-completion engine (§5): HTTP probes routed through the recording
 	// proxy (via m.ProxyAddr, which honors the traffic-capture toggle).
 	m.trafficOn = pg.GetBool(settingTrafficCapture, false)
-	// LLM 录制开关（默认关）。录制器每次调用时读取此标志。
+	// LLM レコードのスイッチ（デフォルト無効）。レコーダーは呼び出しのたびにこのフラグを読む。
 	m.llmRecOn = pg.GetBool(settingLLMRecord, false)
 	// Load persisted web-search config (default: off, ddgs).
 	m.webSearchOn = pg.GetBool(settingWebSearchOn, false)
@@ -503,15 +503,15 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	}
 	if m.traffic != nil {
 		if err := m.traffic.SetUpstreamProxy(m.globalProxy); err != nil {
-			log.Printf("[proxy] 全局代理 %q 无效，已忽略: %v", m.globalProxy, err)
+			log.Printf("[proxy] グローバルプロキシ %q は無効なので無視しました: %v", m.globalProxy, err)
 		}
 	}
 	m.enrich = enrich.New(m.assets, m.ProxyAddr, 4)
-	// 期 3b:按任务懒建 MITM(worker 流量 → 任务实例 → 任务隧道 socks → 内网,
-	// 留痕链不断)。ARTEX_TASK_PROXY=off 关闭;端口池 ARTEX_TASK_PROXY_PORT_RANGE。
+	// フェーズ 3b:タスクごとに MITM を遅延生成(worker トラフィック → タスクインスタンス → タスクトンネルの socks → イントラネット、
+	// 記録の連鎖は途切れない)。ARTEX_TASK_PROXY=off で無効;ポートプールは ARTEX_TASK_PROXY_PORT_RANGE。
 	if config.TaskProxyEnabled() {
 		if pmin, pmax, err := tunnel.ParsePortRange(config.TaskProxyPortRange()); err != nil {
-			log.Printf("[taskproxy] 端口池非法,按任务 MITM 关闭: %v", err)
+			log.Printf("[taskproxy] ポートプールが不正、タスク別 MITM は無効: %v", err)
 		} else {
 			m.taskProxy = newTaskProxyManager(dir, pgdb.NewTunnelStore(pg), m.GlobalProxy, pmin, pmax)
 		}
@@ -548,7 +548,7 @@ func (m *Manager) SetTrafficEnabled(on bool) error {
 }
 
 // LLMRecordEnabled reports whether LLM request/response recording is on
-// (默认关；settings.llm_record). The recorder consults this per call, so the
+// (デフォルト無効；settings.llm_record). The recorder consults this per call, so the
 // toggle takes effect immediately without rebuilding agents.
 func (m *Manager) LLMRecordEnabled() bool {
 	m.mu.RLock()
@@ -568,7 +568,7 @@ func (m *Manager) SetLLMRecordEnabled(on bool) error {
 	return nil
 }
 
-// LLMPoolEnabled reports whether LLM failover ("轮询") is on (默认关；
+// LLMPoolEnabled reports whether LLM failover ("ポーリング") is on (デフォルト無効；
 // settings.llm_pool_enabled). Read when the provider chain is built (applyLLM),
 // so a change requires a rebuild — putSettings does that.
 func (m *Manager) LLMPoolEnabled() bool {
@@ -583,8 +583,8 @@ func (m *Manager) LLMPoolEnabled() bool {
 func (m *Manager) SetLLMPoolEnabled(on bool) error { return m.pg.SetBool(settingLLMPoolOn, on) }
 
 // LLMPoolBindFallback reports whether an agent/task that is BOUND to a specific
-// profile still falls back to the chain when that profile fails (默认关：绑定即
-// 独占，失败即失败). Only meaningful while LLMPoolEnabled.
+// profile still falls back to the chain when that profile fails (デフォルト無効:紐付けたら
+// 専用、失敗は失敗のまま). Only meaningful while LLMPoolEnabled.
 func (m *Manager) LLMPoolBindFallback() bool {
 	if m.pg == nil {
 		return false
@@ -634,7 +634,7 @@ func (m *Manager) WebSearchOpts() agent.WebSearchOpts {
 // profile can actually drive server-side search — DeepSeek exposes it only on
 // the Anthropic-format endpoint — is deliberately NOT validated here: the UI
 // states the requirement and the user decides. A profile that can't serve it
-// simply fails at search time (or at the settings page's 测试 button), which is
+// simply fails at search time (or at the settings page's テスト button), which is
 // the same feedback every other backend gives for a bad key.
 func (m *Manager) deepSeekSearchCreds() (baseURL, apiKey, model string) {
 	p, err := m.pg.ActiveProfile()
@@ -712,7 +712,7 @@ const browserMCPName = "browser"
 func (m *Manager) syncBrowserMCPProxy() {
 	servers, err := m.pg.ListMCP()
 	if err != nil {
-		log.Printf("[mcp] browser 代理同步: 读取 MCP 列表失败: %v", err)
+		log.Printf("[mcp] browser プロキシ同期: MCP 一覧の読み取りに失敗: %v", err)
 		return
 	}
 	var srv *pgdb.MCPServer
@@ -745,10 +745,10 @@ func (m *Manager) syncBrowserMCPProxy() {
 				// A user-supplied --config would be fully overridden by ours
 				// (commander keeps the last occurrence). Rather than silently
 				// dropping their settings, leave the proxy unattached and warn.
-				log.Printf("[mcp] browser MCP 自带 --config，无法注入代理认证凭据；浏览器流量将不经过录制代理。请在其 config 的 browser.launchOptions.proxy 中配置 server=%s 及 username/password（口令见 data/traffic/_auth）", u.String())
+				log.Printf("[mcp] browser MCP が独自の --config を持つため、プロキシ認証情報を注入できません。ブラウザのトラフィックは記録プロキシを通りません。その config の browser.launchOptions.proxy に server=%s と username/password（パスワードは data/traffic/_auth を参照）を設定してください", u.String())
 			default:
 				if err := writeBrowserMCPProxyConfig(cfgPath, u.String(), user, pass); err != nil {
-					log.Printf("[mcp] browser 代理同步: 写代理 config 失败: %v", err)
+					log.Printf("[mcp] browser プロキシ同期: プロキシ config の書き込みに失敗: %v", err)
 				} else {
 					args = append(args, "--config", cfgPath)
 				}
@@ -768,13 +768,13 @@ func (m *Manager) syncBrowserMCPProxy() {
 	srv.Args = encodeJSON(args)
 	srv.Env = encodeJSON(env)
 	if _, err := m.pg.SaveMCP(srv); err != nil {
-		log.Printf("[mcp] browser 代理同步失败: %v", err)
+		log.Printf("[mcp] browser プロキシ同期に失敗: %v", err)
 		return
 	}
 	if proxy != "" {
-		log.Printf("[mcp] browser MCP 已挂捕获代理 %s (CA %s)", redactURL(proxy), cert)
+		log.Printf("[mcp] browser MCP にキャプチャプロキシ %s を設定しました (CA %s)", redactURL(proxy), cert)
 	} else {
-		log.Printf("[mcp] browser MCP 已移除捕获代理配置")
+		log.Printf("[mcp] browser MCP からキャプチャプロキシ設定を削除しました")
 	}
 }
 
@@ -962,7 +962,7 @@ func (m *Manager) GlobalProxy() string {
 	return m.globalProxy
 }
 
-// TaskProxyForTask is the worker's per-task proxy resolver (期 3b): when capture
+// TaskProxyForTask is the worker's per-task proxy resolver (フェーズ 3b): when capture
 // is on and the task-proxy feature is enabled it lazily builds/returns the task's
 // own MITM instance (addr + CA); "" → the worker falls back to the global
 // SetProxy value. Runs on its own short-timeout context so a cancelled worker
@@ -1018,7 +1018,7 @@ func (m *Manager) SetGlobalProxy(raw string) error {
 			return err
 		}
 	}
-	// 无隧道任务的 MITM 实例以全局代理为回落上游——全局代理变了它们一起换。
+	// トンネルを持たないタスクの MITM インスタンスはグローバルプロキシをフォールバック上流にする——グローバルプロキシが変われば一緒に切り替わる。
 	if m.taskProxy != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		m.taskProxy.RefreshAll(ctx)
@@ -1060,16 +1060,16 @@ func unixNanoOrZero(t *time.Time) int64 {
 	return t.UnixNano()
 }
 
-// newTarpitConfig 装配批 5 B3 tarpit 熔断:预算读 settings 键 tarpit_fetch_budget
-// (每次调用现读,改设置即时生效;非法/<=0 由 guard 回落默认 40);熔断回调写一条
-// hint 节点进探索图——planner 每轮 graph overview 必读 hints(与停滞检测/P0 巡检
-// 的 hint 同一通道),提示停派该 host 方向。
+// newTarpitConfig はバッチ 5 B3 tarpit 遮断を組み立てる:予算は settings のキー tarpit_fetch_budget を
+// 呼び出しのたびに読む(設定変更は即時反映;不正/<=0 は guard がデフォルト 40 に落とす);遮断時はコールバックで
+// hint ノードを探索グラフに書き込む——planner は毎ターンの graph overview で必ず hints を読む(停滞検出/P0 巡回
+// の hint と同じチャネル)。その host 方向への割り当てを止めるよう促す。
 func newTarpitConfig(pg *pgdb.DB, store *pgdb.ExplorationStore) guard.TarpitConfig {
 	return guard.TarpitConfig{
 		Budget: func() int {
 			v, _, err := pg.GetSetting(settingTarpitFetchBudget)
 			if err != nil {
-				return 0 // 读取失败 → guard 回落默认预算
+				return 0 // 読み取り失敗 → guard がデフォルト予算に落とす
 			}
 			n, _ := strconv.Atoi(strings.TrimSpace(v))
 			return n
@@ -1079,10 +1079,10 @@ func newTarpitConfig(pg *pgdb.DB, store *pgdb.ExplorationStore) guard.TarpitConf
 				return
 			}
 			if _, err := store.AddNode(pgdb.KindHint, map[string]any{
-				"text": fmt.Sprintf("【tarpit 熔断】host %s 的抓取调用已达 %d 次,超过预算,疑似 tarpit 迷宫(Nepenthes/AI Labyrinth 类反爬虫陷阱)。请停止向该 host 派发抓取/爬虫类意图,改走其他侦察面;平台侧已对该 host 转为 warn 放行计数。", host, count),
+				"text": fmt.Sprintf("【tarpit 遮断】host %s の取得呼び出しが %d 回に達し、予算を超過しました。tarpit 迷路(Nepenthes/AI Labyrinth のようなクローラー罠)の疑いがあります。この host への取得/クロール系の意図の割り当てをやめ、他の偵察面に切り替えてください;プラットフォーム側はこの host を warn で通過するカウントに切り替えました。", host, count),
 				"kind": "tarpit", "host": host, "count": count,
 			}, 0, "active", "guard", nil); err != nil {
-				log.Printf("[guard][tarpit] 写 hint 失败: %v", err)
+				log.Printf("[guard][tarpit] hint の書き込みに失敗: %v", err)
 			}
 		},
 	}
@@ -1090,9 +1090,9 @@ func newTarpitConfig(pg *pgdb.DB, store *pgdb.ExplorationStore) guard.TarpitConf
 
 func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Interceptor, pg *pgdb.DB, eg *guard.EgressGuard) *Task {
 	g := guard.NewWithInterceptor(ic)
-	g.SetRoE(newRoEConfig(pg))          // RoE 范围强制(F5):worker 的 Bash/HTTP 目标与 task_scope 比对
-	g.SetEgress(eg)                     // 批 5 B2 出口审查:进程级共享指纹集合
-	g.SetTarpit(newTarpitConfig(pg, store)) // 批 5 B3 tarpit 熔断(每任务计数,重启清零)
+	g.SetRoE(newRoEConfig(pg))          // RoE 範囲の強制(F5):worker の Bash/HTTP ターゲットと task_scope を照合
+	g.SetEgress(eg)                     // バッチ 5 B2 出口審査:プロセス単位で共有するフィンガープリント集合
+	g.SetTarpit(newTarpitConfig(pg, store)) // バッチ 5 B3 tarpit 遮断(タスク単位のカウント、再起動でゼロ)
 	return &Task{
 		ID: strconv.FormatInt(pt.ID, 10), ExpID: pt.ExplorationID,
 		Name:       pt.Name,
@@ -1141,7 +1141,7 @@ func (m *Manager) UpdateTaskMetadata(taskID string, patch pgdb.TaskPatch) (*Task
 }
 
 // CreateTask creates a task + its exploration and makes it active.
-// timeoutSeconds is the task-level wall-clock budget (0 = 不限时).
+// timeoutSeconds is the task-level wall-clock budget (0 = 時間制限なし).
 func (m *Manager) CreateTask(description, goal string, llmProfileID *int64, timeoutSeconds, planHeartbeatSeconds int) (*Task, error) {
 	var ids []int64
 	if llmProfileID != nil {
@@ -1310,7 +1310,7 @@ func (m *Manager) DeleteCompanyWithAssets(id int64, deleteAssets bool) (int64, e
 
 // ReplaceTaskLLMProfiles resets a task's ordered provider chain and mirrors the
 // committed state onto the live task handle. Terminal tasks are editable too —
-// their 主 Agent 对话 keeps running on the chain after the task finishes.
+// their メイン Agent チャット keeps running on the chain after the task finishes.
 func (m *Manager) ReplaceTaskLLMProfiles(id string, profileIDs []int64, activeProfileID int64) (int64, error) {
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
@@ -1328,10 +1328,10 @@ func (m *Manager) ReplaceTaskLLMProfiles(id string, profileIDs []int64, activePr
 		task.setLLMState(pt.LLMProfileID, pt.ActiveLLMProfileID, pt.LLMProfileIDs, pt.LLMChainRevision, pt.LLMFailoverState, pt.LLMFailoverReason)
 	}
 	m.mu.Unlock()
-	// 终态任务不重开额度阻塞意图:任务已经没有 worker 在跑,重开只会把它们从
-	// blocked 挪到 open——那里既没人执行,也不再满足「重跑意图」的可重跑条件,
-	// 反而变成死状态。终态任务想接着跑,走重跑意图/新增目标,那条路会把任务重新
-	// admit 回运行态。
+	// 終了状態のタスクではクォータ起因のブロック意図を再オープンしない:既に worker が動いておらず、再オープンしても
+	// blocked から open に移すだけで——そこには実行する者もなく、「意図の再実行」の再実行条件も満たさず、
+	// かえって死んだ状態になる。終了状態のタスクを続行したい場合は意図の再実行/ゴール追加を使う。その経路ならタスクを
+	// 実行状態へ再 admit する。
 	if pgdb.IsTerminal(pt.Status) {
 		return 0, nil
 	}
@@ -1605,7 +1605,7 @@ func (m *Manager) TaskStatus(id string) string {
 }
 
 // StampTaskFirstRun stamps first_run_at + deadline_at on the first real run (idempotent
-// in DB) and mirrors deadline_at on the live handle. Returns the deadline unix (0 = 不限).
+// in DB) and mirrors deadline_at on the live handle. Returns the deadline unix (0 = 制限なし).
 func (m *Manager) StampTaskFirstRun(id string) (int64, error) {
 	m.taskStateMu.Lock()
 	defer m.taskStateMu.Unlock()
@@ -1992,8 +1992,8 @@ func (m *Manager) List() []*Task {
 	for _, t := range m.tasks {
 		out = append(out, t)
 	}
-	// 置顶任务优先，组内按置顶时间倒序；普通任务按 id 倒序。m.tasks 是 map，
-	// 每次轮询都必须重排，id 则为同刻创建任务提供稳定且唯一的兜底顺序。
+	// ピン留めタスクを優先し、グループ内はピン留め時刻の降順;通常タスクは id の降順。m.tasks は map なので、
+	// ポーリングのたびに並べ替える必要がある。同時刻に作成されたタスクには id が安定かつ一意な最終順序を与える。
 	sort.Slice(out, func(i, j int) bool {
 		iState := out[i].lifecycleSnapshot()
 		jState := out[j].lifecycleSnapshot()
@@ -2043,8 +2043,8 @@ func (t *Task) NotifyFinding(intentID int64, summary string) {
 
 // NotifyGoal records that one OR MORE goals were added in a single set_goals call —
 // by the human via the main agent — then wakes the planner, so the next round spells
-// out "人新增了 N 个目标：…" instead of the planner having to spot new open goals in
-// the overview. One call → one trigger event (set_goals 的一次批量算一条，不逐条刷屏).
+// out "人は N 個のゴールを追加した：…" instead of the planner having to spot new open goals in
+// the overview. One call → one trigger event (set_goals の一括指定は 1 件と数え、1 件ずつ連投しない).
 // The event survives an early-returning terminal round (drain happens after the gate),
 // so a set_goals that revives a done task still surfaces it once the task is running.
 func (t *Task) NotifyGoal(texts []string) {
@@ -2057,7 +2057,7 @@ func (t *Task) NotifyGoal(texts []string) {
 	t.Notify()
 }
 
-// NotifyGoalDeleted records that the human deleted a goal (via 总览的目标管理), then
+// NotifyGoalDeleted records that the human deleted a goal (via 概要のゴール管理), then
 // wakes the planner so the next round spells out which goal was removed. The event
 // survives an early-returning terminal round (drain happens after the gate).
 func (t *Task) NotifyGoalDeleted(text string) {
@@ -2071,7 +2071,7 @@ func (t *Task) NotifyGoalDeleted(text string) {
 	t.Notify()
 }
 
-// NotifyGoalEdited records that the human edited a goal (via 总览的目标管理), then wakes
+// NotifyGoalEdited records that the human edited a goal (via 概要のゴール管理), then wakes
 // the planner so the next round spells out the old→new change. The event survives an
 // early-returning terminal round (drain happens after the gate).
 func (t *Task) NotifyGoalEdited(oldText, newText string) {
@@ -2085,7 +2085,7 @@ func (t *Task) NotifyGoalEdited(oldText, newText string) {
 	t.Notify()
 }
 
-// NotifyCancelled records that the human deleted intentID (reason = 删除原因), then
+// NotifyCancelled records that the human deleted intentID (reason = 削除理由), then
 // wakes the planner so the next round spells out which intent was removed and why.
 // summary is the intent's text captured before deletion — needed for hard delete,
 // where the node is gone by the time the planner reads the trigger. Applies to both

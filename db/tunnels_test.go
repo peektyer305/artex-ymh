@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-// tunnels 表 CRUD 需要真实 dev PG(ARTEX_PG_DSN);无 DSN 时按包约定 skip。
+// tunnels テーブルの CRUD には実物の dev PG(ARTEX_PG_DSN)が必要。DSN が無い場合はパッケージの約束どおり skip する。
 func TestTunnelStoreCRUD(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("dev PG 不可用: %v", err)
+		t.Skipf("dev PG が利用できません: %v", err)
 	}
 	defer d.Close()
 	ctx := context.Background()
@@ -34,19 +34,19 @@ func TestTunnelStoreCRUD(t *testing.T) {
 		t.Fatalf("Get: %v rec=%v", err, rec)
 	}
 	if rec.State != TunnelDeploying || rec.ListenPort != 20001 || rec.Adapter != "chisel" {
-		t.Errorf("行内容不符: %+v", rec)
+		t.Errorf("行の内容が一致しません: %+v", rec)
 	}
 	var p map[string]any
 	if err := json.Unmarshal(rec.DeployParams, &p); err != nil || p["auth_pass"] != "deadbeef" {
-		t.Errorf("deploy_params 往返失败: %v %v", err, p)
+		t.Errorf("deploy_params の往復に失敗しました: %v %v", err, p)
 	}
 
-	// 状态机与 last_check 刷新
+	// 状態遷移と last_check の更新
 	if err := s.UpdateState(ctx, id, TunnelAlive, ""); err != nil {
 		t.Fatalf("UpdateState: %v", err)
 	}
 	if err := s.UpdateState(ctx, id, "bogus", ""); err == nil {
-		t.Error("非法状态应报错")
+		t.Error("不正な状態はエラーになるべきです")
 	}
 	alive, err := s.ListAlive(ctx)
 	if err != nil {
@@ -59,16 +59,16 @@ func TestTunnelStoreCRUD(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("ListAlive 未含新隧道")
+		t.Error("ListAlive に新しいトンネルが含まれていません")
 	}
 
 	// ListByTask
 	byTask, err := s.ListByTask(ctx, 999001)
 	if err != nil || len(byTask) != 1 {
-		t.Errorf("ListByTask = %d 行, %v", len(byTask), err)
+		t.Errorf("ListByTask = %d 件, %v", len(byTask), err)
 	}
 
-	// UpdateDeployParams 回填 remote_pid
+	// UpdateDeployParams で remote_pid を書き戻す
 	params2, _ := json.Marshal(map[string]any{"remote_pid": 4321})
 	if err := s.UpdateDeployParams(ctx, id, 4321, params2); err != nil {
 		t.Fatalf("UpdateDeployParams: %v", err)
@@ -78,9 +78,9 @@ func TestTunnelStoreCRUD(t *testing.T) {
 		t.Errorf("RemotePID = %d, want 4321", rec.RemotePID)
 	}
 
-	// 非法 kind
+	// 不正な kind
 	if _, err := s.Create(ctx, &TunnelRecord{TaskID: 999001, Kind: "gre"}); err == nil {
-		t.Error("非法 kind 应报错")
+		t.Error("不正な kind はエラーになるべきです")
 	}
 
 	// Delete
@@ -89,6 +89,6 @@ func TestTunnelStoreCRUD(t *testing.T) {
 	}
 	rec, _ = s.Get(ctx, id)
 	if rec != nil {
-		t.Error("Delete 后 Get 应为 nil")
+		t.Error("Delete 後の Get は nil になるべきです")
 	}
 }

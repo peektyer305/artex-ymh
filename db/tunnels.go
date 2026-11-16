@@ -1,9 +1,9 @@
-// tunnels.go 是多层代理隧道台账的落库层（schema.sql §L，内网渗透期 3a,
-// INTRANET-PIVOT-DESIGN.md §4.3/4.3a)。deploy_params 是完整部署参数 JSON
-// （含 auth、server_pid、stage_token、远端路径、验证目标）——断链自动重拉全靠它
-// (PivotHub 的教训：参数打散存列、不存会话引用，重拉名存实亡；这里必须存全）。
-// deploy_params 含隧道 auth token，属平台信任域内数据，明文 JSONB 存储
-// （与 sessions/credentials 的目标侧凭据不同：那是用户资产，这是平台自造的一次性令牌）。
+// tunnels.go は多段プロキシトンネルの台帳の永続化層（schema.sql §L、イントラネット侵入フェーズ 3a、
+// INTRANET-PIVOT-DESIGN.md §4.3/4.3a）。deploy_params は完全なデプロイパラメータの JSON
+// （auth、server_pid、stage_token、リモートパス、検証ターゲットを含む）——切断時の自動再デプロイはこれに依存する
+// （PivotHub の教訓:パラメータを列に分散して保存し、セッション参照を保存しなければ、再デプロイは有名無実;ここでは必ず全部保存する）。
+// deploy_params にはトンネルの auth token が含まれ、プラットフォームの信頼ドメイン内データなので平文 JSONB で保存する
+// （sessions/credentials のターゲット側の認証情報とは異なる:あれはユーザーの資産、これはプラットフォームが生成する使い捨てトークン）。
 package db
 
 import (
@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// 隧道状态机：deploying → alive → (error → 重拉 → alive)×N → stopped。
+// トンネルの状態遷移：deploying → alive → (error → 再デプロイ → alive)×N → stopped。
 const (
 	TunnelDeploying = "deploying"
 	TunnelAlive     = "alive"
@@ -22,8 +22,8 @@ const (
 	TunnelStopped   = "stopped"
 )
 
-// TunnelRecord 是 tunnels 表的一行。DeployParams 是完整部署参数 JSON
-// (tunnel.Plan 的序列化）。
+// TunnelRecord は tunnels 表の 1 行。DeployParams は完全なデプロイパラメータの JSON
+// （tunnel.Plan のシリアライズ）。
 type TunnelRecord struct {
 	ID           int64           `json:"id"`
 	TaskID       int64           `json:"task_id"`
@@ -42,20 +42,20 @@ type TunnelRecord struct {
 	CreatedAt    time.Time       `json:"created_at"`
 }
 
-// TunnelStore 是 tunnels 表的访问层。
+// TunnelStore は tunnels 表のアクセス層。
 type TunnelStore struct {
 	d *DB
 }
 
-// NewTunnelStore 构造访问层。
+// NewTunnelStore はアクセス層を生成する。
 func NewTunnelStore(d *DB) *TunnelStore {
 	return &TunnelStore{d: d}
 }
 
-// Create 插入一条隧道（初始 state 通常为 deploying）并返回主键。
+// Create はトンネルを 1 件挿入して主キーを返す（初期 state は通常 deploying）。
 func (s *TunnelStore) Create(ctx context.Context, rec *TunnelRecord) (int64, error) {
 	if rec.Kind != "socks" && rec.Kind != "portfwd" {
-		return 0, fmt.Errorf("非法隧道类型 %q（socks|portfwd)", rec.Kind)
+		return 0, fmt.Errorf("不正なトンネル種別 %q（socks|portfwd）", rec.Kind)
 	}
 	adapter := rec.Adapter
 	if adapter == "" {
@@ -95,7 +95,7 @@ func scanTunnel(row interface{ Scan(...any) error }) (*TunnelRecord, error) {
 	return &r, nil
 }
 
-// Get 取一条；不存在返回 (nil, nil)。
+// Get は 1 件取得する;存在しない場合は (nil, nil) を返す。
 func (s *TunnelStore) Get(ctx context.Context, id int64) (*TunnelRecord, error) {
 	r, err := scanTunnel(s.d.QueryRowContext(ctx,
 		`SELECT `+tunnelCols+` FROM tunnels WHERE id=$1`, id))
@@ -105,20 +105,20 @@ func (s *TunnelStore) Get(ctx context.Context, id int64) (*TunnelRecord, error) 
 	return r, err
 }
 
-// UpdateState 更新状态与错误信息，并刷新 last_check。
+// UpdateState はステータスとエラーメッセージを更新し、last_check を更新する。
 func (s *TunnelStore) UpdateState(ctx context.Context, id int64, state, errMsg string) error {
 	switch state {
 	case TunnelDeploying, TunnelAlive, TunnelError, TunnelStopped:
 	default:
-		return fmt.Errorf("非法隧道状态 %q", state)
+		return fmt.Errorf("不正なトンネル状態 %q", state)
 	}
 	_, err := s.d.ExecContext(ctx,
 		`UPDATE tunnels SET state=$2, error=$3, last_check=now() WHERE id=$1`, id, state, errMsg)
 	return err
 }
 
-// UpdateDeployParams 全量回写部署参数（部署推进时逐层补齐 pid/stage_token 等），
-// 可同时回填 remote_pid 列。
+// UpdateDeployParams はデプロイパラメータを全量書き戻す（デプロイ進行時に pid/stage_token などを段階的に補完）、
+// remote_pid 列も同時に書き戻せる。
 func (s *TunnelStore) UpdateDeployParams(ctx context.Context, id int64, remotePID int, params json.RawMessage) error {
 	if len(params) == 0 {
 		params = json.RawMessage("{}")
@@ -129,22 +129,22 @@ func (s *TunnelStore) UpdateDeployParams(ctx context.Context, id int64, remotePI
 	return err
 }
 
-// ListByTask 取某任务的全部隧道（按 id 升序）。
+// ListByTask はあるタスクの全トンネルを取得する（id 昇順）。
 func (s *TunnelStore) ListByTask(ctx context.Context, taskID int64) ([]*TunnelRecord, error) {
 	return s.list(ctx, ` WHERE task_id=$1`, taskID)
 }
 
-// ListAlive 取全部存活（alive）隧道——健康巡检与端口审计用。
+// ListAlive は生存中（alive）の全トンネルを取得する——ヘルスチェックとポート監査用。
 func (s *TunnelStore) ListAlive(ctx context.Context) ([]*TunnelRecord, error) {
 	return s.list(ctx, ` WHERE state='alive'`)
 }
 
-// ListActive 取全部未终结（deploying|alive|error）隧道。
+// ListActive は未終結（deploying|alive|error）の全トンネルを取得する。
 func (s *TunnelStore) ListActive(ctx context.Context) ([]*TunnelRecord, error) {
 	return s.list(ctx, ` WHERE state IN ('deploying','alive','error')`)
 }
 
-// List 取台账全部行（含 stopped)，按 id 升序——内网作战页台账视图用。
+// List は台帳の全行を取得する（stopped を含む）。id 昇順——イントラネット運用ページの台帳ビュー用。
 func (s *TunnelStore) List(ctx context.Context) ([]*TunnelRecord, error) {
 	return s.list(ctx, ``)
 }
@@ -166,7 +166,7 @@ func (s *TunnelStore) list(ctx context.Context, where string, args ...any) ([]*T
 	return out, rows.Err()
 }
 
-// Delete 删除台账行（部署失败逐层回滚的最后一步）。
+// Delete は台帳の行を削除する（デプロイ失敗時の段階的ロールバックの最後の一手）。
 func (s *TunnelStore) Delete(ctx context.Context, id int64) error {
 	_, err := s.d.ExecContext(ctx, `DELETE FROM tunnels WHERE id=$1`, id)
 	return err

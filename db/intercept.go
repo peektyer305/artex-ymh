@@ -23,7 +23,7 @@ type InterceptRule struct {
 	TimeoutEnabled bool      `json:"timeout_enabled"`
 	TimeoutSeconds int       `json:"timeout_seconds"`
 	TimeoutAction  string    `json:"timeout_action"`
-	// Builtin 是平台底线规则标记(F13 起):builtin=true 的规则禁止删除/禁用。
+	// Builtin はプラットフォーム下限ルールの印(F13 以降):builtin=true のルールは削除/無効化を禁止する。
 	Builtin   bool      `json:"builtin"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -40,7 +40,7 @@ type InterceptPending struct {
 	ToolInput      json.RawMessage `json:"tool_input"`
 	Status         string          `json:"status"`
 	DecisionSource string          `json:"decision_source"`
-	Reason         string          `json:"reason"` // 规则 message 或模型判定理由(前缀 [模型])
+	Reason         string          `json:"reason"` // ルールの message またはモデル判定理由(接頭辞 [模型])
 	DecidedAt      *time.Time      `json:"decided_at"`
 	CreatedAt      time.Time       `json:"created_at"`
 }
@@ -85,7 +85,7 @@ RETURNING `+interceptRuleCols,
 }
 
 // UpdateInterceptRule replaces all editable fields of an existing rule.
-// 与 Toggle 同一底线:builtin=true 的规则不允许借 update 禁用。
+// Toggle と同じ下限：builtin=true のルールは update 経由で無効化できない。
 func (d *DB) UpdateInterceptRule(id int64, name, matchTarget, matchType, pattern, action, message string, priority int, enabled bool, timeoutEnabled bool, timeoutSeconds int, timeoutAction string) (InterceptRule, error) {
 	if !enabled {
 		var builtin bool
@@ -104,11 +104,11 @@ RETURNING `+interceptRuleCols,
 	return scanInterceptRule(row)
 }
 
-// ErrBuiltinRule 表示试图删除/禁用 builtin=true 的平台底线规则(F13 起)。
-// server 层把该错误映射为 400 而非 500。
-var ErrBuiltinRule = errors.New("内置底线规则不可删除或禁用")
+// ErrBuiltinRule は builtin=true のプラットフォーム下限ルールを削除/無効化しようとしたことを表す(F13 以降)。
+// server 層はこのエラーを 500 ではなく 400 にマッピングする。
+var ErrBuiltinRule = errors.New("組み込みの下限ルールは削除も無効化もできません")
 
-// DeleteInterceptRule removes a rule. builtin=true 的底线规则拒绝删除。
+// DeleteInterceptRule removes a rule. builtin=true の下限ルールは削除を拒否する。
 func (d *DB) DeleteInterceptRule(id int64) error {
 	res, err := d.Exec(`DELETE FROM intercept_rules WHERE id=$1 AND builtin=false`, id)
 	if err != nil {
@@ -123,8 +123,8 @@ func (d *DB) DeleteInterceptRule(id int64) error {
 	return nil
 }
 
-// ToggleInterceptRule flips the enabled state of a rule. builtin=true 的底线规则
-// 可以被重新启用,但拒绝禁用。
+// ToggleInterceptRule flips the enabled state of a rule. builtin=true の下限ルール
+// は再有効化できるが、無効化は拒否する。
 func (d *DB) ToggleInterceptRule(id int64, enabled bool) error {
 	if !enabled {
 		var builtin bool

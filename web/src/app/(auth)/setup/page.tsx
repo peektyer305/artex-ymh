@@ -23,18 +23,18 @@ export default function SetupPage() {
       .then(({ initialized }) => {
         if (initialized) router.replace("/login");
       })
-      .catch(() => setError("无法连接到后端服务"))
+      .catch(() => setError("バックエンドサービスに接続できません"))
       .finally(() => setChecking(false));
   }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (password !== confirm) {
-      setError("两次输入的密码不一致");
+      setError("入力したパスワードが一致しません");
       return;
     }
     if (password.length < 8) {
-      setError("密码长度至少 8 位");
+      setError("パスワードは8桁以上にしてください");
       return;
     }
     setLoading(true);
@@ -44,7 +44,7 @@ export default function SetupPage() {
       auth.setToken(token);
       router.replace("/function/tasks");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "初始化失败");
+      setError(err instanceof Error ? err.message : "初期化に失敗しました");
     } finally {
       setLoading(false);
     }
@@ -75,36 +75,36 @@ export default function SetupPage() {
       <div className="flex w-full items-center justify-center bg-background p-8 lg:w-2/3">
         <div className="w-full max-w-md space-y-10 py-24 lg:py-32">
           <div className="space-y-4 text-center">
-            <h2 className="text-2xl font-medium tracking-tight">初始化密码</h2>
-            <p className="mx-auto max-w-xl text-muted-foreground">首次使用 ARTEX，请为账户设置一个登录密码（至少 8 位）</p>
+            <h2 className="text-2xl font-medium tracking-tight">パスワードの初期化</h2>
+            <p className="mx-auto max-w-xl text-muted-foreground">ARTEX の初回利用時は、アカウントのログインパスワード（8桁以上）を設定してください</p>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="password">新密码</Label>
+              <Label htmlFor="password">新しいパスワード</Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="至少 8 位"
+                placeholder="8桁以上"
                 autoFocus
                 autoComplete="new-password"
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="confirm">确认密码</Label>
+              <Label htmlFor="confirm">パスワードの確認</Label>
               <Input
                 id="confirm"
                 type="password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
-                placeholder="再次输入密码"
+                placeholder="パスワードを再入力"
                 autoComplete="new-password"
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading || !password || !confirm}>
-              {loading ? "保存中..." : "设置密码并登录"}
+              {loading ? "保存中..." : "パスワードを設定してログイン"}
             </Button>
           </form>
         </div>

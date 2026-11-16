@@ -29,9 +29,9 @@ type Config struct {
 	Database        Database `json:"database"`
 	SkillDir        string   `json:"skill_dir"`
 	CallbackAddr    string   `json:"callback_addr"`
-	TunnelPortRange string   `json:"tunnel_port_range"` // 隧道端口池 "min-max"(期 3a)
-	// TaskProxyPortRange 是按任务 MITM 实例(期 3b)的端口池 "min-max",
-	// 默认 21100-21199,与隧道池(20000-21000)错开。
+	TunnelPortRange string   `json:"tunnel_port_range"` // トンネルポートプール "min-max"（フェーズ 3a）
+	// TaskProxyPortRange はタスク単位の MITM インスタンス（フェーズ 3b）のポートプール "min-max" で、
+	// デフォルトは 21100-21199。トンネルプール（20000-21000）とは重ならない。
 	TaskProxyPortRange string `json:"task_proxy_port_range"`
 }
 
@@ -141,16 +141,16 @@ func SkillDir() string {
 // DSN came from (for startup logging).
 func PostgresDSN() (dsn, source string, err error) {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_PG_DSN")); v != "" {
-		return v, "环境变量 ARTEX_PG_DSN", nil
+		return v, "環境変数 ARTEX_PG_DSN", nil
 	}
 	db := Load().Database
 	if d := strings.TrimSpace(db.DSN); d != "" {
-		return d, "配置文件 " + Path() + " (database.dsn)", nil
+		return d, "設定ファイル " + Path() + "（database.dsn）", nil
 	}
 	if db.Host != "" || db.DBName != "" || db.User != "" {
-		return db.buildDSN(), "配置文件 " + Path() + " (database 字段)", nil
+		return db.buildDSN(), "設定ファイル " + Path() + "（database フィールド）", nil
 	}
-	return "", "", fmt.Errorf("未找到数据库配置：环境变量 ARTEX_PG_DSN 未设置，且配置文件 %s 未提供 database（dsn 或 host/user/dbname）。请创建该配置文件或设置环境变量后重试", Path())
+	return "", "", fmt.Errorf("データベース設定が見つかりません：環境変数 ARTEX_PG_DSN が未設定で、設定ファイル %s にも database（dsn または host/user/dbname）がありません。この設定ファイルを作成するか環境変数を設定して再試行してください", Path())
 }
 
 func (d Database) buildDSN() string {
@@ -186,8 +186,8 @@ func (d Database) buildDSN() string {
 //
 //	env ARTEX_CALLBACK_ADDR  >  config file (callback_addr)
 //
-// 反弹 shell / 隧道(内网渗透期 3/5)回连平台时用;期 1a(立足点)仅落配置,
-// 未设置时启动给提示,不阻断。
+// リバースシェル / トンネル（内部ネットワーク侵入フェーズ 3/5）がプラットフォームへコールバックする際に使用。
+// フェーズ 1a（フットホールド）は設定のみで、未設定時は起動時にヒントを出すだけで止めない。
 func CallbackAddr() string {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_CALLBACK_ADDR")); v != "" {
 		return v
@@ -199,8 +199,8 @@ func CallbackAddr() string {
 //
 //	env ARTEX_TUNNEL_PORT_RANGE  >  config file (tunnel_port_range)  >  "20000-21000"
 //
-// 多层代理隧道（内网渗透期 3a）平台侧监听端口都从该池分配；合法性由
-// tunnel.ParsePortRange 校验。
+// 多層プロキシトンネル（内部ネットワーク侵入フェーズ 3a）のプラットフォーム側リスンポートはすべてこのプールから割り当てる。
+// 妥当性は tunnel.ParsePortRange で検証する。
 func TunnelPortRange() string {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_TUNNEL_PORT_RANGE")); v != "" {
 		return v
@@ -211,7 +211,7 @@ func TunnelPortRange() string {
 	return "20000-21000"
 }
 
-// TaskProxyEnabled reports whether per-task MITM instances (期 3b) are on.
+// TaskProxyEnabled reports whether per-task MITM instances (phase 3b) are on.
 // Default on; env ARTEX_TASK_PROXY=off/0/false disables (worker traffic then
 // keeps using the single global recording proxy).
 func TaskProxyEnabled() bool {
@@ -224,8 +224,8 @@ func TaskProxyEnabled() bool {
 //
 //	env ARTEX_TASK_PROXY_PORT_RANGE  >  config file (task_proxy_port_range)  >  "21100-21199"
 //
-// 按任务懒建的 MITM 实例(期 3b)监听端口从该池分配;与隧道池错开,合法性由
-// tunnel.ParsePortRange 校验。
+// タスクごとに遅延生成する MITM インスタンス（フェーズ 3b）のリスンポートはこのプールから割り当てる。
+// トンネルプールとは重ならず、妥当性は tunnel.ParsePortRange で検証する。
 func TaskProxyPortRange() string {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_TASK_PROXY_PORT_RANGE")); v != "" {
 		return v

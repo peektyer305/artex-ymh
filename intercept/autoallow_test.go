@@ -68,7 +68,7 @@ func TestAutoAllowSetAndStatus(t *testing.T) {
 		t.Fatalf("remaining_seconds %d, want ~%d", st.RemainingSeconds, 4*3600)
 	}
 
-	// hours 被夹逼到 {2,4,8}:99 → 8h
+	// hours は {2,4,8} にクランプされる：99 → 8h
 	if err := ic.SetAutoAllow(true, 99); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestAutoAllowSetAndStatus(t *testing.T) {
 		t.Fatalf("hours=99 should clamp to 8h, got expires_at %d", st.ExpiresAt)
 	}
 
-	// enabled=false 忽略 hours,清空到期时间
+	// enabled=false のときは hours を無視し、失効時刻をクリアする
 	if err := ic.SetAutoAllow(false, 8); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestAutoAllowExpiryAutoDisables(t *testing.T) {
 	ic := New(d)
 	resetAutoAllow(t, ic)
 
-	// 写入一个已过期的开启状态,模拟到期时刻已过。
+	// 期限切れのオン状態を書き込み、失効時刻を過ぎた状況を再現する。
 	raw, _ := json.Marshal(autoAllowSetting{Enabled: true, ExpiresAt: time.Now().Unix() - 10})
 	if err := d.SetSetting(SettingAutoAllow, string(raw)); err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestAutoAllowExpiryAutoDisables(t *testing.T) {
 	if st := ic.AutoAllowStatus(); st.Enabled {
 		t.Fatal("expired auto-allow should report disabled")
 	}
-	// 惰性到期检查应把 settings 回写为关闭。
+	// 遅延失効チェックにより settings がオフに書き戻されるはず。
 	v, ok, err := d.GetSetting(SettingAutoAllow)
 	if err != nil || !ok {
 		t.Fatalf("setting should be rewritten: ok=%v err=%v", ok, err)
@@ -119,11 +119,11 @@ func TestHandleAskAutoAllowPassThrough(t *testing.T) {
 
 	marker := fmt.Sprintf("autoallow-test-%d", time.Now().UnixNano())
 	input := []byte(fmt.Sprintf(`{"command":%q}`, marker))
-	// 若 auto-allow 失效会退化为无限等待;用 ctx 超时兜底,超时即测试失败。
+	// auto-allow が効かないと無限待機になるため、ctx のタイムアウトで打ち切り、超えたらテスト失敗とする。
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	start := time.Now()
-	ok := ic.HandleAsk(ctx, 0, Decision{Action: "ask", Message: "需要审批"}, "Bash", input)
+	ok := ic.HandleAsk(ctx, 0, Decision{Action: "ask", Message: "承認が必要"}, "Bash", input)
 	if !ok {
 		t.Fatal("auto-allow enabled: ask should be approved without human decision")
 	}
@@ -131,7 +131,7 @@ func TestHandleAskAutoAllowPassThrough(t *testing.T) {
 		t.Fatal("auto-allow should approve immediately, not wait for a decision")
 	}
 
-	// 历史必须记录为 allowed + decision_source = auto_allow,且不留 pending 记录。
+	// 履歴には allowed + decision_source = auto_allow として記録され、pending レコードは残らないこと。
 	var status, source string
 	err := d.QueryRow(`SELECT status, decision_source FROM intercept_pending
 		WHERE tool_name='Bash' AND tool_input::text LIKE '%' || $1 || '%'`, marker).Scan(&status, &source)
@@ -161,9 +161,9 @@ func TestHandleAskAutoAllowOffUsesPendingFlow(t *testing.T) {
 
 	marker := fmt.Sprintf("autoallow-off-%d", time.Now().UnixNano())
 	input := []byte(fmt.Sprintf(`{"command":%q}`, marker))
-	dec := Decision{Action: "ask", Message: "需要审批", TimeoutEnabled: true, TimeoutSeconds: 1, TimeoutAction: "deny"}
+	dec := Decision{Action: "ask", Message: "承認が必要", TimeoutEnabled: true, TimeoutSeconds: 1, TimeoutAction: "deny"}
 	start := time.Now()
-	// 关闭状态必须走原 pending 流程:创建 pending 记录并按超时策略处置。
+	// オフ状態では従来の pending フローを通る：pending レコードを作成し、タイムアウトポリシーで処理する。
 	if ic.HandleAsk(context.Background(), 0, dec, "Bash", input) {
 		t.Fatal("auto-allow disabled: ask should not be auto-approved")
 	}
@@ -180,7 +180,7 @@ func TestHandleAskAutoAllowOffUsesPendingFlow(t *testing.T) {
 		_, _ = d.Exec(`DELETE FROM intercept_pending WHERE tool_input::text LIKE '%' || $1 || '%'`, marker)
 	})
 	if status != "timeout" {
-		t.Fatalf("status = %s, want timeout (ask 超时按策略拒绝)", status)
+		t.Fatalf("status = %s, want timeout (ask タイムアウトはポリシーに従い拒否)", status)
 	}
 	if source == "auto_allow" {
 		t.Fatal("manual flow must not be labelled auto_allow")

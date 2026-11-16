@@ -1,10 +1,10 @@
 package session
 
-// http_shell_enc_test.go 加密马(phpenc/jspenc)验收测试:httptest 起「模拟加密马
-// 服务器」,按协议实现加解密(直接复用驱动的 encCrypt/encDecrypt 原语,二者互为
-// 镜像)。覆盖:GCM/CBC 双模式、probe/exec/分块 write+read roundtrip、随机填充
-// 长度分布、nonce 不重复、篡改 tag 拒绝、坏 base64(WAF 页)错误语义、错密钥、
-// 404、Secret 恢复。全部为协议族级模拟,不含任何特定靶场值。
+// http_shell_enc_test.go は暗号化シェル(phpenc/jspenc)の受け入れテスト: httptest で「模擬暗号化シェル
+// サーバ」を立て、プロトコルどおりに暗号化/復号を実装する(ドライバの encCrypt/encDecrypt プリミティブを直接再利用し、
+// 両者は互いの鏡像)。対象: GCM/CBC の両モード、probe/exec/分割 write+read のラウンドトリップ、ランダムパディングの
+// 長さ分布、nonce の非重複、tag 改ざんの拒否、不正 base64(WAF ページ)のエラー意味論、誤った鍵、
+// 404、Secret の復元。すべてプロトコル族レベルの模擬で、特定の検証環境の値は含まない。
 
 import (
 	"context"
@@ -19,11 +19,11 @@ import (
 	"testing"
 )
 
-// ---------------- 模拟加密马服务器 ----------------
+// ---------------- 模擬暗号化シェルサーバ ----------------
 
-// encMock 模拟马体端:收 base64 密文 → 解密剥帧 → 按 op 分发 → 加密回帧。
-// php 非 nil 时按 phpenc 语义(exec 代码段交给 phpMock.eval);否则按 jspenc
-// 语义(exec 代码段是 sh 命令,交给 fakeFS.run)。
+// encMock は模擬シェル本体側: base64 暗号文を受け取り → 復号してフレームを剥がす → op で振り分け → 暗号化して返す。
+// php が nil でない場合は phpenc の意味論(exec のコード片は phpMock.eval に渡す)、そうでなければ jspenc の
+// 意味論(exec のコード片は sh コマンドで、fakeFS.run に渡す)。
 type encMock struct {
 	key  []byte
 	mode string // gcm | cbc
@@ -33,9 +33,9 @@ type encMock struct {
 	mu        sync.Mutex
 	nonces    map[string]int
 	padLens   []int
-	tamperTag bool // 响应帧最后一字节翻转(模拟 tag 被篡改)
-	garbage   bool // 返回 WAF 拦截页(非 base64)
-	status    int  // >0 直接返回该 HTTP 状态
+	tamperTag bool // 応答フレームの最終バイトを反転(tag 改ざんの模擬)
+	garbage   bool // WAF のブロックページを返す(base64 でない)
+	status    int  // >0 ならその HTTP ステータスを直接返す
 }
 
 func newEncMock(key []byte, mode string, php *phpMock) *encMock {
@@ -53,7 +53,7 @@ func (m *encMock) efs() *fakeFS {
 	return m.fs
 }
 
-// reply 加密一个响应 JSON 并写出(tamper 时翻转末字节模拟篡改)。
+// reply はレスポンス JSON を暗号化して書き出す(tamper 時は最終バイトを反転して改ざんを模擬)。
 func (m *encMock) reply(w http.ResponseWriter, resp encResponse, tamper bool) {
 	praw, _ := json.Marshal(resp)
 	blob, err := encCrypt(m.key, m.mode, encFrame(praw))
@@ -98,8 +98,8 @@ func (m *encMock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.mu.Unlock()
 	frame, err := encDecrypt(m.key, m.mode, raw)
 	if err != nil {
-		// 与真实马体一致:解密失败不回显明文细节,回一个加密错误帧
-		// (驱动密钥错时连这个帧也解不开 → tag 错误)。
+		// 実際のシェル本体と同じく、復号失敗時は平文の詳細を返さず、暗号化したエラーフレームを返す
+		// (ドライバの鍵が誤っているとこのフレームすら開けず tag エラーになる)。
 		m.reply(w, encResponse{Err: "decrypt failed", Mode: m.mode}, false)
 		return
 	}
@@ -133,7 +133,7 @@ func (m *encMock) dispatch(req *encRequest) encResponse {
 		code, _ := base64.StdEncoding.DecodeString(req.Code)
 		var out string
 		if m.php != nil {
-			out = m.php.eval(string(code)) // phpenc:eval PHP 代码段(复用期 1a 模拟)
+			out = m.php.eval(string(code)) // phpenc: PHP コード片を eval(フェーズ 1a の模擬を再利用)
 		} else {
 			out, _ = m.fs.run(string(code)) // jspenc:sh -c
 		}
@@ -168,9 +168,9 @@ func randKey(t *testing.T) []byte {
 	return k
 }
 
-// ---------------- 测试 ----------------
+// ---------------- テスト ----------------
 
-// TestEncPHPFullFlow:phpenc(GCM)全链路——加密探针/函数枚举/Exec/分块写读回环。
+// TestEncPHPFullFlow: phpenc(GCM)の全経路——暗号化プローブ/関数列挙/Exec/分割書き込み・読み取りの往復。
 func TestEncPHPFullFlow(t *testing.T) {
 	key := randKey(t)
 	mock := newEncMock(key, "gcm", newPHPMock("eval"))
@@ -192,7 +192,7 @@ func TestEncPHPFullFlow(t *testing.T) {
 	if !strings.Contains(stdout, "uid=33(www-data)") {
 		t.Fatalf("stdout = %q", stdout)
 	}
-	// 分块写读回环(1.2MB → 3 块)。
+	// 分割書き込み・読み取りの往復(1.2MB → 3 ブロック)。
 	data := make([]byte, 1_200_000)
 	if _, err := rand.Read(data); err != nil {
 		t.Fatal(err)
@@ -206,32 +206,32 @@ func TestEncPHPFullFlow(t *testing.T) {
 		t.Fatalf("ReadFile: %v", err)
 	}
 	if len(got) != len(data) {
-		t.Fatalf("读回长度 = %d, want %d", len(got), len(data))
+		t.Fatalf("読み戻し長 = %d, want %d", len(got), len(data))
 	}
 	for i := range got {
 		if got[i] != data[i] {
-			t.Fatalf("第 %d 字节不一致", i)
+			t.Fatalf("第 %d バイトが不一致", i)
 		}
 	}
-	// 模式锁存与 Secret 持久化。
+	// モードのラッチと Secret の永続化。
 	sec := sh.Secret()
 	if sec.Key == "" || sec.EncMode != "gcm" {
-		t.Fatalf("secret = %+v, 应带 key 与 gcm 模式", sec)
+		t.Fatalf("secret = %+v, 鍵と gcm モードを持つべき", sec)
 	}
 }
 
-// TestEncCBCModeFallback:目标只有 CBC(PHP 无 GCM 的降级路径)——驱动先试 gcm
-// 失败、自动锁存 cbc,之后全链路正常。
+// TestEncCBCModeFallback: 目標が CBC のみ(PHP に GCM がない場合のフォールバック経路)——ドライバはまず gcm を試して
+// 失敗し、自動的に cbc をラッチする。以降は全経路が正常。
 func TestEncCBCModeFallback(t *testing.T) {
 	key := randKey(t)
 	mock := newEncMock(key, "cbc", newPHPMock("eval"))
 	u := probeURL(t, mock)
 	sh, _, err := ProbeEnc(context.Background(), u, "phpenc", base64.StdEncoding.EncodeToString(key))
 	if err != nil {
-		t.Fatalf("ProbeEnc(cbc 目标): %v", err)
+		t.Fatalf("ProbeEnc(cbc の目標): %v", err)
 	}
 	if sh.enc.Mode() != "cbc" {
-		t.Fatalf("模式应锁存为 cbc, got %q", sh.enc.Mode())
+		t.Fatalf("モードは cbc にラッチされるべき, got %q", sh.enc.Mode())
 	}
 	stdout, _, err := sh.Exec(context.Background(), "whoami", 0)
 	if err != nil {
@@ -245,8 +245,8 @@ func TestEncCBCModeFallback(t *testing.T) {
 	}
 }
 
-// TestEncNonceUniqueAndPadding:nonce 每请求随机不重复;随机填充长度有足够分布
-// (杀定长/前缀流量签名的直接证据)。
+// TestEncNonceUniqueAndPadding: nonce はリクエストごとにランダムで重複しない。ランダムパディングの長さ分布が十分にある
+// (固定長/前方一致のトラフィックシグネチャを無効化する直接の証拠)。
 func TestEncNonceUniqueAndPadding(t *testing.T) {
 	key := randKey(t)
 	mock := newEncMock(key, "gcm", newPHPMock("eval"))
@@ -257,7 +257,7 @@ func TestEncNonceUniqueAndPadding(t *testing.T) {
 	}
 	for i := 0; i < 100; i++ {
 		if err := sh.Test(context.Background()); err != nil {
-			t.Fatalf("Test 第 %d 次: %v", i, err)
+			t.Fatalf("Test の %d 回目: %v", i, err)
 		}
 	}
 	mock.mu.Lock()
@@ -267,22 +267,22 @@ func TestEncNonceUniqueAndPadding(t *testing.T) {
 	for _, p := range mock.padLens {
 		distinct[p] = true
 		if p < 0 || p > encMaxPad {
-			t.Errorf("padLen %d 越界", p)
+			t.Errorf("padLen %d が範囲外", p)
 		}
 	}
 	mock.mu.Unlock()
-	if requests != 100 { // 100 次 Test(gcm 首发即中,锁存无重发)
-		t.Fatalf("请求数 = %d, want 100", requests)
+	if requests != 100 { // 100 回の Test(gcm が一発で成功し、ラッチ後の再送はない)
+		t.Fatalf("リクエスト数 = %d, want 100", requests)
 	}
 	if distinctNonce != requests {
-		t.Fatalf("nonce 重复:%d 个请求只有 %d 个不同 nonce", requests, distinctNonce)
+		t.Fatalf("nonce の重複: %d リクエストで異なる nonce は %d 個のみ", requests, distinctNonce)
 	}
 	if len(distinct) < 20 {
-		t.Fatalf("填充长度分布过窄:%d 个请求只有 %d 种 padLen(0~%d)", requests, len(distinct), encMaxPad)
+		t.Fatalf("パディング長の分布が狭すぎる: %d リクエストで padLen は %d 種のみ(0〜%d)", requests, len(distinct), encMaxPad)
 	}
 }
 
-// TestEncTamperedTagRejected:响应 tag 被篡改必须拒绝,不伪造成功。
+// TestEncTamperedTagRejected: レスポンスの tag が改ざんされたら必ず拒否し、成功を偽装しない。
 func TestEncTamperedTagRejected(t *testing.T) {
 	key := randKey(t)
 	mock := newEncMock(key, "gcm", newPHPMock("eval"))
@@ -296,14 +296,14 @@ func TestEncTamperedTagRejected(t *testing.T) {
 	mock.mu.Unlock()
 	_, _, err = sh.Exec(context.Background(), "id", 0)
 	if err == nil {
-		t.Fatal("tag 被篡改必须报错")
+		t.Fatal("tag を改ざんした場合は必ずエラーになる")
 	}
-	if !strings.Contains(err.Error(), "认证失败") && !strings.Contains(err.Error(), "tag") {
-		t.Fatalf("错误应带认证失败语义, got %v", err)
+	if !strings.Contains(err.Error(), "認証") && !strings.Contains(err.Error(), "tag") {
+		t.Fatalf("エラーは認証失敗の意味を持つべき, got %v", err)
 	}
 }
 
-// TestEncGarbageResponseWAF:WAF 拦截页(非 base64)要有明确错误语义。
+// TestEncGarbageResponseWAF: WAF のブロックページ(base64 でない)は明確なエラー意味論を持つこと。
 func TestEncGarbageResponseWAF(t *testing.T) {
 	key := randKey(t)
 	mock := newEncMock(key, "gcm", newPHPMock("eval"))
@@ -311,38 +311,38 @@ func TestEncGarbageResponseWAF(t *testing.T) {
 	u := probeURL(t, mock)
 	_, _, err := ProbeEnc(context.Background(), u, "phpenc", base64.StdEncoding.EncodeToString(key))
 	if err == nil {
-		t.Fatal("WAF 页必须报错")
+		t.Fatal("WAF ページでは必ずエラーになる")
 	}
 	if !strings.Contains(err.Error(), "base64") || !strings.Contains(err.Error(), "WAF") {
-		t.Fatalf("错误应识别 WAF/非 base64, got %v", err)
+		t.Fatalf("エラーは WAF/非 base64 を識別するべき, got %v", err)
 	}
 }
 
-// TestEncWrongKey:密钥不匹配 → 认证失败,不伪造成功。
+// TestEncWrongKey: 鍵の不一致 → 認証失敗。成功を偽装しない。
 func TestEncWrongKey(t *testing.T) {
 	mock := newEncMock(randKey(t), "gcm", newPHPMock("eval"))
 	u := probeURL(t, mock)
 	wrong := randKey(t)
 	_, _, err := ProbeEnc(context.Background(), u, "phpenc", base64.StdEncoding.EncodeToString(wrong))
 	if err == nil {
-		t.Fatal("错密钥必须报错")
+		t.Fatal("誤った鍵では必ずエラーになる")
 	}
-	if !strings.Contains(err.Error(), "tag") && !strings.Contains(err.Error(), "认证失败") {
-		t.Fatalf("错误应带 tag/认证语义, got %v", err)
+	if !strings.Contains(err.Error(), "tag") && !strings.Contains(err.Error(), "認証") {
+		t.Fatalf("エラーは tag/認証の意味を持つべき, got %v", err)
 	}
 }
 
-// TestEncBadKeyFormat:非 base64/非 32B 密钥在构造期即拒绝。
+// TestEncBadKeyFormat: base64 でない/32B でない鍵は構築時点で拒否する。
 func TestEncBadKeyFormat(t *testing.T) {
 	if _, err := NewEncShell("http://127.0.0.1/x.php", "phpenc", "not-base64!!!"); err == nil {
-		t.Fatal("非 base64 密钥应拒绝")
+		t.Fatal("base64 でない鍵は拒否するべき")
 	}
 	if _, err := NewEncShell("http://127.0.0.1/x.php", "phpenc", base64.StdEncoding.EncodeToString([]byte("short"))); err == nil {
-		t.Fatal("非 32B 密钥应拒绝")
+		t.Fatal("32B でない鍵は拒否するべき")
 	}
 }
 
-// TestEncHTTP404:马体缺失(404)给明确错误。
+// TestEncHTTP404: シェル本体が存在しない(404)場合は明確なエラーを返す。
 func TestEncHTTP404(t *testing.T) {
 	key := randKey(t)
 	mock := newEncMock(key, "gcm", newPHPMock("eval"))
@@ -350,14 +350,14 @@ func TestEncHTTP404(t *testing.T) {
 	u := probeURL(t, mock)
 	_, _, err := ProbeEnc(context.Background(), u, "phpenc", base64.StdEncoding.EncodeToString(key))
 	if err == nil || !strings.Contains(err.Error(), "404") {
-		t.Fatalf("404 应如实报错, got %v", err)
+		t.Fatalf("404 はそのままエラーとして報告するべき, got %v", err)
 	}
 }
 
-// TestEncJSPFullFlow:jspenc(GCM)全链路——探针/Exec/shell 路径分块写读回环。
+// TestEncJSPFullFlow: jspenc(GCM)の全経路——プローブ/Exec/shell 経路の分割書き込み・読み取りの往復。
 func TestEncJSPFullFlow(t *testing.T) {
 	key := randKey(t)
-	mock := newEncMock(key, "gcm", nil) // php == nil → jspenc 语义
+	mock := newEncMock(key, "gcm", nil) // php == nil → jspenc の意味論
 	u := probeURL(t, mock)
 	sh, info, err := ProbeEnc(context.Background(), u, "jspenc", base64.StdEncoding.EncodeToString(key))
 	if err != nil {
@@ -373,7 +373,7 @@ func TestEncJSPFullFlow(t *testing.T) {
 	if !strings.Contains(stdout, "uid=33(www-data)") {
 		t.Fatalf("stdout = %q", stdout)
 	}
-	data := make([]byte, 600_000) // 2 块
+	data := make([]byte, 600_000) // 2 ブロック
 	if _, err := rand.Read(data); err != nil {
 		t.Fatal(err)
 	}
@@ -386,17 +386,17 @@ func TestEncJSPFullFlow(t *testing.T) {
 		t.Fatalf("ReadFile: %v", err)
 	}
 	if len(got) != len(data) {
-		t.Fatalf("读回长度 = %d, want %d", len(got), len(data))
+		t.Fatalf("読み戻し長 = %d, want %d", len(got), len(data))
 	}
 	for i := range got {
 		if got[i] != data[i] {
-			t.Fatalf("第 %d 字节不一致", i)
+			t.Fatalf("第 %d バイトが不一致", i)
 		}
 	}
 }
 
-// TestEncRestoreRoundTrip:Secret 落库 → 进程重启恢复(不重新探测)→ 直接可用,
-// 模式从 EncMode 恢复(免双发重探)。
+// TestEncRestoreRoundTrip: Secret を DB に保存 → プロセス再起動後に復元(再プローブしない)→ そのまま利用可能。
+// モードは EncMode から復元される(二重送信での再プローブが不要)。
 func TestEncRestoreRoundTrip(t *testing.T) {
 	key := randKey(t)
 	mock := newEncMock(key, "cbc", newPHPMock("eval"))
@@ -415,18 +415,18 @@ func TestEncRestoreRoundTrip(t *testing.T) {
 		t.Fatalf("id/kind = %d/%s", got.ID(), got.Kind())
 	}
 	if got.enc.Mode() != "cbc" {
-		t.Fatalf("恢复后模式 = %q, want cbc(免重探)", got.enc.Mode())
+		t.Fatalf("復元後のモード = %q, want cbc(再プローブ不要)", got.enc.Mode())
 	}
 	stdout, _, err := got.Exec(context.Background(), "whoami", 0)
 	if err != nil {
-		t.Fatalf("恢复后 Exec: %v", err)
+		t.Fatalf("復元後の Exec: %v", err)
 	}
 	if strings.TrimSpace(stdout) != "www-data" {
 		t.Fatalf("stdout = %q", stdout)
 	}
 }
 
-// TestEncPKCS7RoundTrip:CBC 填充原语自洽(含满块边界)。
+// TestEncPKCS7RoundTrip: CBC パディングプリミティブの自己整合性(満ブロック境界を含む)。
 func TestEncPKCS7RoundTrip(t *testing.T) {
 	for _, n := range []int{1, 15, 16, 17, 64, 65} {
 		p := make([]byte, n)
@@ -438,11 +438,11 @@ func TestEncPKCS7RoundTrip(t *testing.T) {
 			t.Fatalf("n=%d: %v", n, err)
 		}
 		if len(got) != n {
-			t.Fatalf("n=%d 回环长度 = %d", n, len(got))
+			t.Fatalf("n=%d の往復後長 = %d", n, len(got))
 		}
 		for i := range got {
 			if got[i] != p[i] {
-				t.Fatalf("n=%d 第 %d 字节不一致", n, i)
+				t.Fatalf("n=%d 第 %d バイトが不一致", n, i)
 			}
 		}
 	}

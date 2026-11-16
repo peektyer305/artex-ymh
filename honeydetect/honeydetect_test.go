@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// writeSigs 在临时目录落一份签名文件并返回路径。
+// writeSigs は一時ディレクトリにシグネチャファイルを書き出し、パスを返す。
 func writeSigs(t *testing.T, body string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "honeypot.json")
@@ -33,11 +33,11 @@ func TestEvaluateHitsHighestConfidence(t *testing.T) {
 
 func TestEvaluateAllConditionsMustMatch(t *testing.T) {
 	e := NewEngine(writeSigs(t, testSigs))
-	// 端口不对:body 命中也不算
+	// ポートが違うため body が命中してもカウントしない
 	if score, _ := e.Evaluate(ServiceView{Port: 80, Body: "see x.js"}); score != 0 {
 		t.Fatalf("port mismatch should not hit, score=%v", score)
 	}
-	// 端口+body 都命中才算
+	// ポートと body の両方が命中したときだけカウントする
 	if score, _ := e.Evaluate(ServiceView{Port: 8080, Body: "see x.js"}); score != 0.85 {
 		t.Fatalf("port+body hit: score=%v", score)
 	}
@@ -76,7 +76,8 @@ func TestHotReloadByMtime(t *testing.T) {
 	if score, _ := e.Evaluate(ServiceView{Banner: "OpenSSH_6.0p1 Debian-4+deb7u2"}); score != 0 {
 		t.Fatalf("empty sigs should score 0, got %v", score)
 	}
-	// 重写文件(睡眠确保 mtime 变化可观测),无需重启即应热更新。
+	// ファイルを書き直す（mtime の変化を観測できるようスリープする）。再起動なしで
+	// ホットリロードされるはず。
 	if err := os.Chtimes(p, mustStat(t, p).ModTime(), mustStat(t, p).ModTime()); err != nil {
 		t.Fatal(err)
 	}
@@ -97,31 +98,33 @@ func mustStat(t *testing.T, p string) os.FileInfo {
 	return fi
 }
 
-// TestBundledSignaturesLoad 仓库内嵌签名库必须可解析、且每条都有来源与条件。
+// TestBundledSignaturesLoad リポジトリの埋め込みシグネチャライブラリは解析
+// 可能で、各エントリにソースと条件があること。
 func TestBundledSignaturesLoad(t *testing.T) {
 	sigs := parseSignatures(embeddedSignatures)
 	if len(sigs) == 0 {
-		t.Fatal("内嵌签名库为空或解析失败")
+		t.Fatal("埋め込みシグネチャライブラリが空か解析に失敗しました")
 	}
 	for _, s := range sigs {
 		if s.Name == "" || s.Product == "" || s.Source == "" {
-			t.Fatalf("签名缺 name/product/source: %+v", s)
+			t.Fatalf("シグネチャに name/product/source がありません: %+v", s)
 		}
 		if s.Confidence < 0.85 || s.Confidence > 0.99 {
-			t.Fatalf("签名 %s 置信度 %.2f 不在 0.85-0.99 区间", s.Name, s.Confidence)
+			t.Fatalf("シグネチャ %s の信頼度 %.2f が 0.85-0.99 の範囲外です", s.Name, s.Confidence)
 		}
 		if s.Match.empty() {
-			t.Fatalf("签名 %s 没有任何匹配条件", s.Name)
+			t.Fatalf("シグネチャ %s にマッチ条件がありません", s.Name)
 		}
 	}
-	// 内嵌库在签名文件缺失时应作为兜底返回(抽两条做实命中验证)。
+	// 埋め込みライブラリはシグネチャファイル欠落時のフォールバックとして返る
+	// はず（2 条を抽出して実際の命中を検証）。
 	e := NewEngine(filepath.Join(t.TempDir(), "nonexistent.json"))
 	score, _ := e.Evaluate(ServiceView{Port: 22, Banner: "SSH-2.0-OpenSSH_6.0p1 Debian-4+deb7u2"})
 	if score != 0.99 {
-		t.Fatalf("内嵌 Cowrie 签名未命中, score=%v", score)
+		t.Fatalf("埋め込み Cowrie シグネチャが命中しませんでした, score=%v", score)
 	}
 	score, _ = e.Evaluate(ServiceView{CertIssuer: "C=DE, CN=Nepenthes Development Team, O=dionaea.carnivore.it, OU=anv"})
 	if score != 0.9 {
-		t.Fatalf("内置 Dionaea issuer 签名未命中, score=%v", score)
+		t.Fatalf("埋め込み Dionaea の issuer シグネチャが命中しませんでした, score=%v", score)
 	}
 }

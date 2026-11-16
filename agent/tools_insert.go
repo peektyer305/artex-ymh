@@ -61,7 +61,7 @@ type assetInputItem struct {
 	Port  int    `json:"port"`
 	Proto string `json:"proto"`
 
-	// ---- service 可选:协议 banner / HTTP Server 头(批 6 L1 蜜罐静态签名识别用,不落库) ----
+	// ---- service 任意: プロトコル banner / HTTP Server ヘッダ（バッチ6 L1 のハニーポット静的署名識別用、DB へは保存しない） ----
 	Banner string `json:"banner"`
 
 	// ---- endpoint ----
@@ -73,81 +73,82 @@ type assetInputItem struct {
 func (t *ToolSet) insertAssets() actool.CoreTool {
 	return writeTool(
 		"insert_assets",
-		"批量登记新发现的资产，一次可混合多种类型（type 见枚举）。\n"+
-			"各类型必填字段：root_domain→domain；ip→ip（须为 IPv4/IPv6，非主机名）；subdomain→domain；app→app_name；service(HTTP)→url；service(非HTTP)→service_name+port（ip/domain 至少填一个）；endpoint→url+method。其余字段含义见各自说明。\n"+
-			"auth/technologies/params 为追加合并(append)，不覆盖原值。\n"+
-			"返回：{results:[{index,id,type}], errors:[{index,error}]}",
+		"新たに発見したアセットを一括登録します。1 回で複数種別を混在できます（type は列挙を参照）。\n"+
+			"各種別の必須フィールド：root_domain→domain；ip→ip（IPv4/IPv6 であること。ホスト名不可）；subdomain→domain；app→app_name；service(HTTP)→url；service(HTTP 以外)→service_name+port（ip/domain の少なくとも一方）；endpoint→url+method。その他のフィールドの意味は各説明を参照。\n"+
+			"auth/technologies/params は追加マージ(append)で、元の値を上書きしません。\n"+
+			"戻り値：{results:[{index,id,type}], errors:[{index,error}]}",
 		obj(map[string]any{
-			// task_id 不暴露给模型：worker 归属哪个 task 由程序经 SetTaskID 权威赋值(见 handler)。
+			// task_id はモデルに公開しない: worker がどの task に属するかはプログラムが SetTaskID で
+			// 正式に代入する（handler 参照）。
 			"assets": map[string]any{
 				"type":        "array",
-				"description": "资产数组，每个元素对应一条资产记录",
+				"description": "アセットの配列。各要素が 1 件のアセットレコードに対応します",
 				"items": obj(map[string]any{
 					"type": map[string]any{
 						"type":        "string",
 						"enum":        []string{"root_domain", "ip", "subdomain", "app", "service", "endpoint"},
-						"description": "资产类型",
+						"description": "アセットの種類",
 					},
 					// root_domain / subdomain
-					"domain":      str("根域名或子域名（root_domain/subdomain 必填）"),
-					"icp":         str("ICP 备案号（可选）"),
-					"record_type": str("DNS 解析类型：A/AAAA/CNAME/MX 等（subdomain 可选）"),
+					"domain":      str("ルートドメインまたはサブドメイン（root_domain/subdomain では必須）"),
+					"icp":         str("ICP 登録番号（任意）"),
+					"record_type": str("DNS レコード種別：A/AAAA/CNAME/MX など（subdomain では任意）"),
 					"record_value": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "DNS 解析值列表（subdomain 可选，如 [\"1.2.3.4\",\"2.3.4.5\"]）",
+						"description": "DNS レコード値の配列（subdomain では任意。例 [\"1.2.3.4\",\"2.3.4.5\"]）",
 					},
 					// ip
-					"ip": str("IP 地址，必须是 IPv4/IPv6 地址，不能填主机名（主机名请用 type=subdomain 的 domain 字段）；ip 类型必填；service/endpoint 类型可填，用于关联 IP"),
+					"ip": str("IP アドレス。IPv4/IPv6 であること。ホスト名は不可（ホスト名は type=subdomain の domain フィールドを使う）。ip 種別では必須。service/endpoint 種別でも指定可で、IP の関連付けに使う"),
 					"bound_domains": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "该 IP 绑定的域名列表（ip 类型可选）",
+						"description": "この IP に紐付くドメインの配列（ip 種別では任意）",
 					},
 					"open_ports": map[string]any{
 						"type":        "array",
-						"description": "开放端口列表（ip 类型可选）",
+						"description": "開放ポートの配列（ip 種別では任意）",
 						"items": obj(map[string]any{
-							"port":    intp("端口号"),
-							"service": str("服务名称，如 http/ssh/mysql 等（可选）"),
+							"port":    intp("ポート番号"),
+							"service": str("サービス名（例 http/ssh/mysql など、任意）"),
 						}, "port"),
 					},
 					// app
-					"app_name":    str("应用名称（app 类型必填）"),
-					"bundle_id":   str("Bundle ID（app 类型可选）"),
-					"category":    str("应用分类（可选）"),
-					"description": str("应用描述（可选）"),
-					"app_icp":     str("应用 ICP 备案（可选）"),
-					"company_id":  intp("归属企业 id（app 类型可选；app 无法靠 scope 自动归因，需显式指定。id 由 add_company_scope 返回）"),
+					"app_name":    str("アプリケーション名（app 種別では必須）"),
+					"bundle_id":   str("Bundle ID（app 種別では任意）"),
+					"category":    str("アプリケーションのカテゴリ（任意）"),
+					"description": str("アプリケーションの説明（任意）"),
+					"app_icp":     str("アプリケーションの ICP 登録（任意）"),
+					"company_id":  intp("帰属企業の id（app 種別では任意。app は scope による自動帰属ができないため明示指定が必要。id は add_company_scope が返す）"),
 					// service (http)
-					"url":         str("完整 URL，含协议和端口（HTTP 服务必填；service_type 自动设为 http）"),
-					"status_code": intp("HTTP 响应状态码，如 200/301/403/404（可选）"),
+					"url":         str("プロトコルとポートを含む完全な URL（HTTP サービスでは必須。service_type は自動で http になる）"),
+					"status_code": intp("HTTP レスポンスのステータスコード（例 200/301/403/404、任意）"),
 					"content_length": map[string]any{
 						"type":        "integer",
-						"description": "HTTP 响应体字节数（可选）",
+						"description": "HTTP レスポンスボディのバイト数（任意）",
 					},
-					"page_title":   str("页面 <title> 内容（可选）"),
-					"favicon_mmh3": str("favicon MMH3 哈希（可选）"),
+					"page_title":   str("ページの <title> 内容（任意）"),
+					"favicon_mmh3": str("favicon の MMH3 ハッシュ（任意）"),
 					"technologies": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "指纹/技术栈列表，如 [\"Nginx\",\"Vue\",\"Bootstrap\"]（可选）",
+						"description": "フィンガープリント/技術スタックの配列（例 [\"Nginx\",\"Vue\",\"Bootstrap\"]、任意）",
 					},
 					"auth": map[string]any{
 						"type":        "array",
-						"description": "发现的认证信息列表，每条含 type/username/password 等字段（可选，追加不覆盖）",
+						"description": "発見した認証情報の配列。各要素に type/username/password などのフィールド（任意、追加のみで上書きしない）",
 						"items":       map[string]any{"type": "object"},
 					},
-					// service (other，非 HTTP)
-					"service_name": str("服务名称，如 ssh/mysql/redis（service 非 HTTP 时必填）"),
-					"port":         intp("端口号（service 非 HTTP 时必填）"),
-					// service 可选（HTTP/非 HTTP 均可）
-					"banner": str("服务 banner 或 HTTP Server 响应头原文（可选，如 \"SSH-2.0-OpenSSH_6.0p1 Debian-4+deb7u2\"；用于蜜罐静态签名识别，侦察时见到就带上）"),
+					// service（その他、HTTP 以外）
+					"service_name": str("サービス名（例 ssh/mysql/redis。service が HTTP 以外のとき必須）"),
+					"port":         intp("ポート番号（service が HTTP 以外のとき必須）"),
+					// service 任意（HTTP でも HTTP 以外でも可）
+					"banner": str("サービスの banner、または HTTP Server レスポンスヘッダの原文（任意。例 \"SSH-2.0-OpenSSH_6.0p1 Debian-4+deb7u2\"。ハニーポットの静的シグネチャ識別に使い、偵察時に見かけたら付ける）"),
 					// endpoint
-					"method": str("HTTP 方法：GET/POST/PUT/PATCH/DELETE 等（endpoint 必填）"),
+					"method": str("HTTP メソッド：GET/POST/PUT/PATCH/DELETE など（endpoint では必須）"),
 					"params": map[string]any{
 						"type":        "array",
-						"description": "请求参数列表，每条含 location(query/body/header/path)/name/value/type（可选，追加不覆盖）",
+						"description": "リクエストパラメータの配列。各要素に location(query/body/header/path)/name/value/type（任意、追加のみで上書きしない）",
 						"items":       map[string]any{"type": "object"},
 					},
 				}, "type"),
@@ -155,7 +156,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 		}, "assets"),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
 			if t.as == nil {
-				return actool.Errorf("insert_assets 未启用: AssetStore 未初始化"), nil
+				return actool.Errorf("insert_assets は無効です: AssetStore が未初期化です"), nil
 			}
 			var a struct {
 				Assets []assetInputItem `json:"assets"`
@@ -163,8 +164,9 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 			if err := json.Unmarshal(in, &a); err != nil {
 				return actool.Errorf("invalid input: " + err.Error()), nil
 			}
-			// task_id 由程序权威赋值(worker: SetTaskID)，不接受模型传入——避免模型漏传/错传
-			// 导致资产未归任务或归错任务。无任务上下文的调用方(auto/pentest/chat)其 t.taskID=0。
+			// task_id はプログラムが正式に代入する(worker: SetTaskID)。モデルからの指定は受け付けない——
+			// モデルの未指定・誤指定でアセットがタスクに紐付かない/誤ったタスクに紐付くのを防ぐ。
+			// タスクコンテキストのない呼び出し元(auto/pentest/chat)では t.taskID=0 になる。
 			taskID := t.taskID
 
 			type result struct {
@@ -241,7 +243,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 							TaskID:        taskID,
 						})
 						if err == nil {
-							// 批 6 L1:落库后跑蜜罐静态签名(title/banner;httpx 回写同路径)。
+							// バッチ6 L1: 保存後にハニーポット静的署名を実行（title/banner。httpx の書き戻しも同じ経路）。
 							t.evaluateHoneypot(id, honeydetect.ServiceView{
 								Port: urlPort(item.URL), Banner: item.Banner, Title: item.PageTitle,
 							})
@@ -256,7 +258,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 							TaskID:      taskID,
 						})
 						if err == nil {
-							// 批 6 L1:落库后跑蜜罐静态签名(port/banner)。
+							// バッチ6 L1: 保存後にハニーポット静的署名を実行（port/banner）。
 							t.evaluateHoneypot(id, honeydetect.ServiceView{
 								Port: item.Port, Banner: item.Banner,
 							})
@@ -290,16 +292,17 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 						nodeID := t.ownerNode
 						sourceNodeID = &nodeID
 					}
-					summary := "Agent 通过 insert_assets 登记"
+					summary := "Agent が insert_assets で登録"
 					if t.ownerNode > 0 {
-						summary = fmt.Sprintf("Worker 意图 #%d 通过 insert_assets 登记", t.ownerNode)
+						summary = fmt.Sprintf("Worker の意図 #%d が insert_assets で登録", t.ownerNode)
 					}
 					_ = t.as.SetTaskAssetSource(taskID, id, "agent", summary, sourceNodeID)
 				}
-				// 自动入测试范围(source='auto')：只对 worker 顶层显式插入的这一项，按其
-				// 类型加保守范围；side-effect 派生的资产不经此处，故范围不盲目扩大。taskID=0 时无操作。
-				// 与覆盖度开关无关：task_scope 是任务的范围边界(list/查询的过滤基准)，
-				// 覆盖度开关只决定要不要把它当分母去算指标，不决定要不要累积范围本身。
+				// テスト範囲(source='auto')へ自動追加: worker 最上位で明示的に挿入されたこの項目だけを、
+				// その型に応じて保守的に範囲へ加える。副作用で派生したアセットはここを通らないため範囲は
+				// 無闇に広がらない。taskID=0 のときは何もしない。
+				// カバレッジのスイッチとは無関係: task_scope はタスクの範囲境界(list/検索の絞り込み基準)であり、
+				// カバレッジのスイッチはそれを分母に指標を計算するかどうかだけを決め、範囲自体の累積は決めない。
 				{
 					svcIP := item.ServiceIP
 					if svcIP == "" {
@@ -321,20 +324,20 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 func (t *ToolSet) addCompanyScope() actool.CoreTool {
 	return writeTool(
 		"add_company_scope",
-		"把域名/IP/CIDR/ICP备案/企业关键词加入某公司的【资产范围】——域名、网络和ICP会自动认领命中的资产，关键词只提供给Agent作为范围提示。\n"+
-			"公司名唯一：company 不存在则新建，已存在则复用(只把范围并进去)。\n"+
-			"scope 一行一条，系统自动识别：根域名 / URL / 单个 IP / CIDR 网段 / ICP备案 / 企业关键词。\n"+
-			"务必给 reason 说明归属依据(whois/证书/ASN 等)。\n"+
-			"护栏：拒绝裸 TLD 与过宽网段(IPv4前缀需为/16-/32、IPv6前缀需为/32-/128)，非法行会被跳过并在 errors 返回。",
+		"ドメイン/IP/CIDR/ICP 登録/企業キーワードを、ある企業の【アセット範囲】に追加します。ドメイン・ネットワーク・ICP は一致したアセットを自動で取り込み、キーワードは範囲のヒントとして Agent に渡すだけです。\n"+
+			"企業名は一意です。company が存在しなければ新規作成し、存在すれば再利用します（範囲をマージするだけ）。\n"+
+			"scope は 1 行 1 件で、システムが自動判別します：ルートドメイン / URL / 単一 IP / CIDR ネットワーク / ICP 登録 / 企業キーワード。\n"+
+			"reason には帰属の根拠（whois/証明書/ASN など）を必ず書いてください。\n"+
+			"ガードレール：裸の TLD と広すぎるネットワーク（IPv4 プレフィックスは /16〜/32、IPv6 プレフィックスは /32〜/128）は拒否します。不正な行はスキップされ errors で返ります。",
 		obj(map[string]any{
-			"company": str("公司名(不存在则新建、存在则复用；名称唯一)"),
-			"scope":   str("资产范围，一行一条：域名 / URL / IP / CIDR / ICP备案 / 企业关键词"),
-			"reason":  str("归属依据(证据/来源)，务必填写"),
-			"logo":    str("公司图标 URL(可选；仅新建公司时生效)"),
+			"company": str("企業名（存在しなければ新規作成、存在すれば再利用。名前は一意）"),
+			"scope":   str("アセット範囲。1 行 1 件：ドメイン / URL / IP / CIDR / ICP 登録 / 企業キーワード"),
+			"reason":  str("帰属の根拠（エビデンス/ソース）。必ず記入"),
+			"logo":    str("企業ロゴの URL（任意。新規作成時のみ有効）"),
 		}, "company", "scope"),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
 			if t.cs == nil {
-				return actool.Errorf("add_company_scope 未启用: CompanyStore 未初始化"), nil
+				return actool.Errorf("add_company_scope は無効です: CompanyStore が未初期化です"), nil
 			}
 			var a struct {
 				Company string `json:"company"`
@@ -346,11 +349,11 @@ func (t *ToolSet) addCompanyScope() actool.CoreTool {
 				return actool.Errorf(err.Error()), nil
 			}
 			if strings.TrimSpace(a.Company) == "" {
-				return actool.Errorf("company 不能为空"), nil
+				return actool.Errorf("company を指定してください"), nil
 			}
 			companyID, _, err := t.cs.UpsertCompany(a.Company, a.Logo)
 			if err != nil {
-				return actool.Errorf("创建/获取公司失败: " + err.Error()), nil
+				return actool.Errorf("企業の作成/取得に失敗しました: " + err.Error()), nil
 			}
 			lines := splitLines(a.Scope)
 			added, skipped, invalid, errMsgs := t.cs.AddScope(companyID, lines, a.Reason)
@@ -375,23 +378,23 @@ func (t *ToolSet) addCompanyScope() actool.CoreTool {
 func (t *ToolSet) addTaskScope() actool.CoreTool {
 	return writeTool(
 		"add_task_scope",
-		"把测试范围加入【本任务】——这是本任务的授权边界，也是资产测试覆盖度的分母。\n"+
-			"kind 支持：company(整个公司名下资产) / root_domain(整个根域，含所有子域) / subdomain(单个精确子域) / ip / cidr / icp / keyword。\n"+
-			"说明：worker 逐个碰到的主机会被系统【自动】加进范围(精确子域)；本工具用于【主动扩大】——把整个根域/整个公司纳入，或补充指定某子域/IP。\n"+
-			"value：company 传公司名或 id(公司须已存在)；root_domain/subdomain 传域名；ip/cidr 传 IP 或网段；icp/keyword 传备案号或企业关键词。\n"+
-			"务必给 reason 说明依据(可审计)。多条用 entries 数组。",
+		"テスト範囲を【本タスク】に追加します。これは本タスクの認可境界であり、アセットのテストカバレッジの分母でもあります。\n"+
+			"kind は company(企業配下のアセット全体) / root_domain(ルートドメイン全体、全サブドメインを含む) / subdomain(単一のサブドメイン) / ip / cidr / icp / keyword に対応します。\n"+
+			"補足：worker が個別に遭遇したホストはシステムが【自動】で範囲に追加します(サブドメイン単位)。本ツールは【能動的な拡大】用です——ルートドメイン全体/企業全体を取り込む、または特定のサブドメイン/IP を補足指定します。\n"+
+			"value：company は企業名または id(企業が既存であること)、root_domain/subdomain はドメイン、ip/cidr は IP またはネットワーク、icp/keyword は登録番号または企業キーワード。\n"+
+			"reason には根拠を必ず書いてください(監査可能)。複数件は entries 配列を使います。",
 		obj(map[string]any{
-			"entries": map[string]any{"type": "array", "description": "批量：[{kind, value}]。kind∈company/root_domain/subdomain/ip/cidr/icp/keyword。", "items": map[string]any{"type": "object"}},
-			"kind":    str("[单条] company / root_domain / subdomain / ip / cidr / icp / keyword"),
-			"value":   str("[单条] 公司名或id / 域名 / IP / CIDR / ICP / 关键词"),
-			"reason":  str("加入依据(用于审计)，务必填写"),
+			"entries": map[string]any{"type": "array", "description": "一括：[{kind, value}]。kind∈company/root_domain/subdomain/ip/cidr/icp/keyword。", "items": map[string]any{"type": "object"}},
+			"kind":    str("[単条] company / root_domain / subdomain / ip / cidr / icp / keyword"),
+			"value":   str("[単条] 企業名または id / ドメイン / IP / CIDR / ICP / キーワード"),
+			"reason":  str("追加の根拠(監査用)。必ず記入"),
 		}),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
 			if t.as == nil {
-				return actool.Errorf("add_task_scope 未启用: AssetStore 未初始化"), nil
+				return actool.Errorf("add_task_scope は無効です: AssetStore が未初期化です"), nil
 			}
 			if t.taskID <= 0 {
-				return actool.Errorf("add_task_scope 需要任务上下文(当前无 task)"), nil
+				return actool.Errorf("add_task_scope にはタスクコンテキストが必要です（現在タスクなし）"), nil
 			}
 			type scopeEntry struct {
 				Kind  string `json:"kind"`
@@ -399,7 +402,7 @@ func (t *ToolSet) addTaskScope() actool.CoreTool {
 			}
 			var a struct {
 				Entries    []scopeEntry `json:"entries"`
-				scopeEntry              // 单条模式
+				scopeEntry              // 単一指定モード
 				Reason     string       `json:"reason"`
 			}
 			_ = json.Unmarshal(in, &a)
@@ -431,20 +434,20 @@ func (t *ToolSet) addTaskScope() actool.CoreTool {
 func (t *ToolSet) listUntestedAssets() actool.CoreTool {
 	return readTool(
 		"list_untested_assets",
-		"查询【本任务及直接关联任务】范围内、还没被事实锚点覆盖的资产（关联范围只读，供你自己判断要不要补测，不代替你决策）。\n"+
-			"可选按资产类型过滤：root_domain/subdomain/service/app/endpoint/ip。\n"+
-			"分页：page 从 1 起、page_size 默认 10。返回 {assets:[{id,type,label}], total, page, page_size}。仅任务上下文可用。",
+		"【本タスクおよび直接関連タスク】の範囲内で、まだ事実のアンカーに覆われていないアセットを検索します（関連範囲は読み取り専用。補測の要否を自身で判断するための材料で、判断を代行するものではありません）。\n"+
+			"任意でアセット種別の絞り込みが可能：root_domain/subdomain/service/app/endpoint/ip。\n"+
+			"ページング：page は 1 始まり、page_size のデフォルトは 10。{assets:[{id,type,label}], total, page, page_size} を返します。タスクコンテキストでのみ利用可。",
 		obj(map[string]any{
-			"type":      str("资产类型过滤（可选）：root_domain/subdomain/service/app/endpoint/ip"),
-			"page":      intp("页码，从 1 起（默认 1）"),
-			"page_size": intp("每页数量（默认 10）"),
+			"type":      str("アセット種別の絞り込み（任意）：root_domain/subdomain/service/app/endpoint/ip"),
+			"page":      intp("ページ番号（1 始まり、デフォルト 1）"),
+			"page_size": intp("1 ページあたりの件数（デフォルト 10）"),
 		}),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
 			if t.as == nil {
-				return actool.Errorf("list_untested_assets 未启用: AssetStore 未初始化"), nil
+				return actool.Errorf("list_untested_assets は無効です: AssetStore が未初期化です"), nil
 			}
 			if t.taskID <= 0 || t.ts == nil {
-				return actool.Errorf("list_untested_assets 需要任务上下文"), nil
+				return actool.Errorf("list_untested_assets にはタスクコンテキストが必要です"), nil
 			}
 			var a struct {
 				Type     string `json:"type"`
@@ -474,22 +477,22 @@ func (t *ToolSet) listUntestedAssets() actool.CoreTool {
 func (t *ToolSet) listAssets() actool.CoreTool {
 	return readTool(
 		"list_assets",
-		"查询资产库：DSL 表达式搜索，或按 id/ids 直取；支持分页。只返回【本任务及直接关联任务】测试范围内的资产。\n"+
-			"DSL：field=value 模糊(ILIKE) | field==value 精确 | field!=value 排除 | 数字字段支持 > >= < <= | 裸词=全文模糊；AND/OR 组合(AND 优先级高)，可用括号分组。资产类型用独立 type 参数，不写进 DSL。\n"+
-			"未传 id/ids 时 dsl 必须非空（不允许无条件全量查询）。\n"+
-			"可用字段：domain(根/子/服务域名)、root_domain、ip、url、page_title、icp、service_name、app_name、method(如 GET/POST)、service_type(http|other)、record_type(如 A/CNAME)、technology(数组，=模糊 ==精确)、port/status_code/company_id(整数)。\n"+
-			"示例：status_code>=400 AND technology=shiro ；(port==80 OR port==443) AND technology=nginx",
+		"アセットライブラリを検索します：DSL 式の検索、または id/ids による直接取得。ページング対応。【本タスクおよび直接関連タスク】のテスト範囲内のアセットだけを返します。\n"+
+			"DSL：field=value 部分一致(ILIKE) | field==value 完全一致 | field!=value 除外 | 数値フィールドは > >= < <= に対応 | 裸の語=全文部分一致；AND/OR で組み合わせ(AND が優先)、括弧でグループ化可。アセット種別は独立した type パラメータで指定し、DSL には書かない。\n"+
+			"id/ids を渡さない場合、dsl は必須です（条件なしの全件検索は不可）。\n"+
+			"利用可能なフィールド：domain(ルート/サブ/サービスドメイン)、root_domain、ip、url、page_title、icp、service_name、app_name、method(例 GET/POST)、service_type(http|other)、record_type(例 A/CNAME)、technology(配列、=部分一致 ==完全一致)、port/status_code/company_id(整数)。\n"+
+			"例：status_code>=400 AND technology=shiro ；(port==80 OR port==443) AND technology=nginx",
 		obj(map[string]any{
-			"dsl":    str(`DSL 查询表达式（语法/字段见工具描述）。未传 id/ids 时必须非空。`),
-			"type":   str("资产类型过滤：root_domain|ip|subdomain|app|service|endpoint（独立字段，可与 dsl 叠加；单独 type 不足以查询，仍需 dsl）"),
-			"id":     intp("直接按单个资产 id 取（可选，与 dsl/type 互斥）"),
-			"ids":    map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "直接按多个资产 id 取（可选，与 dsl/type 互斥）"},
-			"limit":  intp("返回上限，默认 10（可选）"),
-			"offset": intp("分页偏移，默认 0（可选）"),
+			"dsl":    str(`DSL 検索式（構文とフィールドはツール説明を参照）。id/ids を渡さない場合は必須。`),
+			"type":   str("アセット種別の絞り込み：root_domain|ip|subdomain|app|service|endpoint（独立フィールドで dsl と併用可。type だけでは検索できず、dsl が必要）"),
+			"id":     intp("単一のアセット id で直接取得（任意、dsl/type と排他）"),
+			"ids":    map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "複数のアセット id で直接取得（任意、dsl/type と排他）"},
+			"limit":  intp("取得件数の上限（デフォルト 10、任意）"),
+			"offset": intp("ページングのオフセット（デフォルト 0、任意）"),
 		}),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
 			if t.as == nil {
-				return actool.Errorf("list_assets 未启用: AssetStore 未初始化"), nil
+				return actool.Errorf("list_assets は無効です: AssetStore が未初期化です"), nil
 			}
 			var a struct {
 				DSL    string  `json:"dsl"`
@@ -514,10 +517,10 @@ func (t *ToolSet) listAssets() actool.CoreTool {
 			case a.DSL != "":
 				assets, err = t.as.QueryDSLInScope(a.DSL, a.Type, t.taskID, a.Limit, a.Offset)
 			default:
-				return actool.Errorf("未传 id/ids 时 dsl 不能为空：不允许无条件查询全部资产，请提供查询条件"), nil
+				return actool.Errorf("id/ids を指定しない場合 dsl は必須です：条件なしで全アセットを検索することはできません。検索条件を指定してください"), nil
 			}
 			if err != nil {
-				return actool.Errorf("DSL 错误: " + err.Error()), nil
+				return actool.Errorf("DSL の誤り: " + err.Error()), nil
 			}
 			return jsonResult(map[string]any{
 				"count":  len(assets),
@@ -527,19 +530,19 @@ func (t *ToolSet) listAssets() actool.CoreTool {
 	)
 }
 
-// listCompanies lets an agent enumerate companies (企业) with their scope + asset count.
+// listCompanies lets an agent enumerate companies with their scope + asset count.
 func (t *ToolSet) listCompanies() actool.CoreTool {
 	return readTool(
 		"list_companies",
-		"列出资产库中的【企业/公司】及其资产范围(scope)与已归属资产数。用于查看有哪些公司、"+
-			"拿到 company_id（insert_assets 关联 app、list_assets 按 company_id 过滤时用）。"+
-			"可选 search 按公司名模糊过滤(不区分大小写)，留空返回全部。",
+		"アセットライブラリ内の【企業/会社】とそのアセット範囲(scope)、帰属済みアセット数を一覧表示します。企業の確認や、"+
+			"company_id の取得（insert_assets で app を紐付けるとき、list_assets を company_id で絞り込むときに使う）に利用します。"+
+			"任意で search による企業名の部分一致絞り込み(大文字小文字を区別しない)が可能。空なら全件を返します。",
 		obj(map[string]any{
-			"search": str("按公司名模糊过滤(可选，不区分大小写)；留空返回全部"),
+			"search": str("企業名の部分一致絞り込み(任意、大文字小文字を区別しない)。空なら全件を返す"),
 		}),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
 			if t.cs == nil {
-				return actool.Errorf("list_companies 未启用: CompanyStore 未初始化"), nil
+				return actool.Errorf("list_companies は無効です: CompanyStore が未初期化です"), nil
 			}
 			var a struct {
 				Search string `json:"search"`
@@ -547,7 +550,7 @@ func (t *ToolSet) listCompanies() actool.CoreTool {
 			_ = json.Unmarshal(in, &a)
 			cos, err := t.cs.ListCompanies()
 			if err != nil {
-				return actool.Errorf("查询公司失败: " + err.Error()), nil
+				return actool.Errorf("企業の取得に失敗しました: " + err.Error()), nil
 			}
 			q := strings.ToLower(strings.TrimSpace(a.Search))
 			type companyOut struct {
@@ -587,17 +590,18 @@ func splitLines(s string) []string {
 // WorkerTools returns the tool set for a work agent.
 func (t *ToolSet) WorkerTools() []actool.CoreTool {
 	return []actool.CoreTool{
-		// list_findings 保留：报漏洞前先查本任务已确认漏洞，避免重复上报同一漏洞。
+		// list_findings は維持: 脆弱性を報告する前に本タスクで確認済みの脆弱性を調べ、同じ脆弱性の重複報告を避ける。
 		t.listFindings(),
 		t.addFinding(), t.recordFact(),
-		// confirm_fact：worker 用成熟工具复核了自己被降级的阴性结论后，升级为 confirmed。
+		// confirm_fact: worker が確立したツールで降格された陰性結論を再検証した後、confirmed へ格上げする。
 		t.confirmFact(),
 		// asset management (handlers guard nil store internally)。
-		// add_company_scope 不给 worker：定义企业资产范围属规划/主控/Auto 的职责，worker 只执行探索。
+		// add_company_scope は worker に渡さない: 企業のアセット範囲の定義は計画/メイン制御/Auto の役割で、worker は探索を実行するだけ。
 		t.insertAssets(), t.listAssets(),
-		// 以下工具【不给】worker，只留给 planner/main（读上下文、跨 work 复盘是规划职责，
-		// worker 只做单条意图的执行与写回）：list_facts / node_detail / list_companies /
-		// 跨 work 检索 search_all_worker_traces / list_worker_traces / get_worker_trace。
+		// 以下のツールは worker には渡さず planner/main だけに残す（コンテキストの把握や work を
+		// 跨いだ振り返りは計画の役割で、worker は単一の意図の実行と書き戻しだけを行う）:
+		// list_facts / node_detail / list_companies / work を跨ぐ検索
+		// search_all_worker_traces / list_worker_traces / get_worker_trace。
 	}
 }
 
@@ -607,23 +611,23 @@ func (t *ToolSet) MainAgentTools() []actool.CoreTool {
 		t.graphOverview(), t.listFindings(), t.listFacts(), t.nodeDetail(),
 		t.expandDigest(), t.expandIndex(), // cold-digest §6.1
 		t.getWorkerOutput(), t.getWorkerTrace(), t.searchAllWorkerTraces(), t.addHint(), t.addIntent(),
-		// steer_work：人可对某条正在运行的意图(work)实时注入纠偏指令（不打断、不丢进展）。
+		// steer_work: 人は実行中の意図(work)へオンラインで軌道修正の指示を注入できる（中断せず、進捗も失わない）。
 		t.steerWorkTool(),
-		// kill_work：人可立即终止某条正在运行的意图(work)。描述经 DecorateTool 改写,
-		// 明确与 steer_work(不打断)/cancel_intent(只作废 open) 的边界;handler 不变,
-		// engine 回调带 killed_by_mainagent 具名原因(server 接线)。
-		DecorateTool(t.killWorkTool(), "【立即终止】一条正在运行(running)的意图(work):worker 被立刻叫停,意图标记为 stopped、不再自动重领。用于人判断方向跑偏/已无继续价值时止损。与 steer_work 的区别:steer_work 不打断、只注入纠偏指令;与 cancel_intent 的区别:cancel_intent 只作废【未开始(open)】的意图,kill_work 终止【正在运行】的。先用 get_worker_output 看看它在干嘛再决定。", nil),
-		// cancel_intent：人可作废 frontier 里未开始(open)的积压意图(原因挂图留痕)。
+		// kill_work: 人は実行中の意図(work)を即座に終了できる。説明文は DecorateTool で書き換えられ、
+		// steer_work(中断しない)/cancel_intent(open のみ無効化) との境界を明確にしている。handler は
+		// 不変で、engine のコールバックには killed_by_mainagent という名前付きの理由が付く(server 側の配線)。
+		DecorateTool(t.killWorkTool(), "【即時終了】実行中(running)の意図(work)を 1 件終了します：worker は即座に停止し、意図は stopped になり自動で再受領されません。方向が逸脱した、継続する価値がないと人が判断したときの損切りに使います。steer_work との違い：steer_work は中断せず、軌道修正の指示を注入するだけ。cancel_intent との違い：cancel_intent は【未開始(open)】の意図だけを無効化し、kill_work は【実行中】のものを終了します。まず get_worker_output で何をしているか確認してから決めてください。", nil),
+		// cancel_intent: 人は frontier 内の未開始(open)の滞留意図を無効化できる（理由はグラフに残る）。
 		t.cancelIntentTool(),
-		// set_goals：人可在运行时给本任务补一个新的最终目标（规划者据此重判是否达成）。
+		// set_goals: 人は実行中に本タスクへ新たな最終ゴールを追加できる（計画者はこれに基づき達成を再判定する）。
 		t.setGoals(),
-		// set_constraints：人可在运行时给本任务补/改操作约束（allow/deny），约束 planner/worker 的探索边界。
+		// set_constraints: 人は実行中に本タスクの操作制約(allow/deny)を追加・変更でき、planner/worker の探索境界を拘束する。
 		t.setConstraints(),
 		// asset management (handlers guard nil store internally)
 		t.insertAssets(), t.addCompanyScope(), t.listAssets(),
 		t.addFinding(), t.recordFact(),
 		t.addTaskScope(),
-		// list_untested_assets：按需查本任务范围内未测资产(类型+分页)，自行决定补测。
+		// list_untested_assets: 本タスク範囲内の未テストアセットをオンデマンドで調べ(型+ページング)、追加テストは自分で判断する。
 		t.listUntestedAssets(),
 	}
 }

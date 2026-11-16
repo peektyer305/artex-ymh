@@ -1,8 +1,8 @@
 package server
 
-// session_message_test.go 覆盖 register_session 返回的马型标签与登记明示文案
-// （复盘 R1：命令马登记成功必须明示「已登记为命令执行马」;disable_functions
-// 指纹与绕过可用性如实上报）。纯函数测试，不依赖 PG。
+// session_message_test.go は register_session が返すシェル種別ラベルと登録時の明示文言を
+// カバーする(振り返り R1:コマンドシェルの登録成功時は登録済みであることを必ず明示すること、disable_functions
+// のフィンガープリントとバイパス可否はありのまま報告すること)。純関数のテストで PG に依存しない。
 
 import (
 	"strings"
@@ -33,8 +33,8 @@ func TestShellTypeLabel(t *testing.T) {
 
 func TestRegisterMessageCmdShellExplicit(t *testing.T) {
 	msg := registerMessage(session.ProbeInfo{Lang: "phpcmd", Variant: "cmd"})
-	if !strings.Contains(msg, "已登记为命令执行马") {
-		t.Fatalf("命令马登记必须明示, got %q", msg)
+	if !strings.Contains(msg, "コマンド実行 webshell") {
+		t.Fatalf("コマンド実行 webshell の登録は明示すべき, got %q", msg)
 	}
 }
 
@@ -43,14 +43,14 @@ func TestRegisterMessageEvalWithBypass(t *testing.T) {
 		Lang: "php", Variant: "eval", DisableFunctions: true, Bypass: "ld_preload",
 	})
 	if !strings.Contains(msg, "disable_functions") || !strings.Contains(msg, "LD_PRELOAD") {
-		t.Fatalf("disable_functions + 绕过可用必须明示, got %q", msg)
+		t.Fatalf("disable_functions とバイパス可否は明示すべき, got %q", msg)
 	}
 	msg = registerMessage(session.ProbeInfo{Lang: "php", Variant: "eval", DisableFunctions: true})
-	if !strings.Contains(msg, "仅文件读写") {
-		t.Fatalf("无绕过时必须明示退化边界, got %q", msg)
+	if !strings.Contains(msg, "ファイル読み書きのみ") {
+		t.Fatalf("バイパスがない場合は退化した境界を明示すべき, got %q", msg)
 	}
 	msg = registerMessage(session.ProbeInfo{Lang: "php", Variant: "eval"})
-	if !strings.Contains(msg, "eval 马") {
-		t.Fatalf("正常 eval 马文案异常, got %q", msg)
+	if !strings.Contains(msg, "eval webshell") {
+		t.Fatalf("正常な eval webshell の文言が異常, got %q", msg)
 	}
 }

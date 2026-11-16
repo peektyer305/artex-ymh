@@ -1,8 +1,8 @@
-// intranet.go 是「内网作战页」的人工操作 API(期 1-3 能力的 Web 暴露面):
-// 会话台账/人工 exec/文件列读写删、隧道台账/teardown、凭据脱敏列表、拓扑组装。
-// 全部挂在 /api 下 requireAuth 之后(JWT),与 agent host 工具(session.go/
-// tunnel.go/credentials.go)完全隔离——那边是模型经 guard 审批的通道,这边是
-// 已登录操作者的人工通道,审计靠服务端日志([intranet] 前缀,含操作者/会话/命令)。
+// intranet.go は「イントラネット作戦ページ」の手動操作 API（フェーズ 1-3 の機能の Web 公開面）:
+// セッション台帳/手動 exec/ファイルの一覧・読み書き・削除、トンネル台帳/teardown、認証情報のマスク済み一覧、トポロジ組み立て。
+// すべて /api 配下の requireAuth の後ろ（JWT）にあり、agent の host ツール（session.go/
+// tunnel.go/credentials.go）とは完全に分離されている——あちらはモデルが guard 承認を経るチャネル、こちらは
+// ログイン済み操作者の手動チャネルで、監査はサーバーログ（[intranet] プレフィックス、操作者/セッション/コマンドを含む）で行う。
 package server
 
 import (
@@ -25,8 +25,8 @@ import (
 	"github.com/Autumn-27/artex/session"
 )
 
-// auditIntranet 打人工操作审计日志:操作者(JWT subject)/来源地址/动作明细。
-// 人工 exec/write/teardown/delete 必走这里;失败也记(结果含在明细里)。
+// auditIntranet は手動操作の監査ログを出力する:操作者（JWT subject）/送信元アドレス/操作の詳細。
+// 手動 exec/write/teardown/delete は必ずここを通る;失敗時も記録する（結果は詳細に含める）。
 func (s *Server) auditIntranet(r *http.Request, format string, args ...any) {
 	op := "unknown"
 	if tok := extractToken(r); tok != "" {
@@ -37,10 +37,10 @@ func (s *Server) auditIntranet(r *http.Request, format string, args ...any) {
 	log.Printf("[intranet] op=%s remote=%s %s", op, r.RemoteAddr, fmt.Sprintf(format, args...))
 }
 
-// intranetSessionsReady 是路由级前置:会话子系统(DB/注册表)未就绪时写 503。
+// intranetSessionsReady はルートレベルの前置チェック:セッションサブシステム（DB/レジストリ）が未準備の場合は 503 を返す。
 func (s *Server) intranetSessionsReady(w http.ResponseWriter) bool {
 	if s.sessStore == nil || s.sessReg == nil {
-		writeErr(w, 503, "会话子系统未就绪(DB 未连接)")
+		writeErr(w, 503, "セッションサブシステムが未準備です（DB 未接続）")
 		return false
 	}
 	return true
@@ -49,12 +49,12 @@ func (s *Server) intranetSessionsReady(w http.ResponseWriter) bool {
 func pathID(r *http.Request, name string) (int64, error) {
 	id, err := strconv.ParseInt(r.PathValue(name), 10, 64)
 	if err != nil || id <= 0 {
-		return 0, fmt.Errorf("非法 %s: %q", name, r.PathValue(name))
+		return 0, fmt.Errorf("不正な %s: %q", name, r.PathValue(name))
 	}
 	return id, nil
 }
 
-// sessionItem 是台账行的 Web 投影:不含 secret(连接密码/加密密钥不出 server)。
+// sessionItem は台帳行の Web 投影：secret（接続パスワード/暗号化鍵）は含めない（server から外に出さない）。
 func sessionItem(rec *db.SessionRecord) map[string]any {
 	item := map[string]any{
 		"id": rec.ID, "kind": rec.Kind, "url": rec.URL, "lang": rec.Lang,
@@ -62,7 +62,7 @@ func sessionItem(rec *db.SessionRecord) map[string]any {
 		"last_beat": rec.LastBeat, "created_at": rec.CreatedAt,
 		"created_by_task": rec.CreatedByTask, "created_by_intent": rec.CreatedByIntent,
 	}
-	// platform 在 secret JSON 里(探测指纹);解析失败只缺字段,不影响列表。
+	// platform は secret JSON の中（検出時のフィンガープリント）;解析失敗時はフィールドが欠けるだけで、一覧には影響しない。
 	var sec session.Secret
 	if err := json.Unmarshal(rec.Secret, &sec); err == nil && sec.Platform != "" {
 		item["platform"] = sec.Platform
@@ -70,8 +70,8 @@ func sessionItem(rec *db.SessionRecord) map[string]any {
 	return item
 }
 
-// GET /api/sessions?task_id= — 会话台账全量(含 dead,前端自行过滤);
-// 传 task_id 时只留本任务创建的会话(与拓扑同口径),不传保持全局视图。
+// GET /api/sessions?task_id= — セッション台帳の全量（dead を含む、フロント側で絞り込む）;
+// task_id を渡すと本タスクが作成したセッションだけを残し（トポロジと同じ基準）、渡さなければ全体ビューを維持する。
 func (s *Server) intranetListSessions(w http.ResponseWriter, r *http.Request) {
 	if !s.intranetSessionsReady(w) {
 		return
@@ -82,7 +82,7 @@ func (s *Server) intranetListSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	recs, err := s.sessStore.List(r.Context(), "")
 	if err != nil {
-		writeErr(w, 500, "会话台账读取失败: "+err.Error())
+		writeErr(w, 500, "セッション台帳の読み込みに失敗しました: "+err.Error())
 		return
 	}
 	if taskID > 0 {
@@ -101,7 +101,7 @@ func (s *Server) intranetListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"items": items})
 }
 
-// GET /api/sessions/{id} — 单条详情。
+// GET /api/sessions/{id} — 単一レコードの詳細。
 func (s *Server) intranetGetSession(w http.ResponseWriter, r *http.Request) {
 	if !s.intranetSessionsReady(w) {
 		return
@@ -113,27 +113,27 @@ func (s *Server) intranetGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	rec, err := s.sessStore.Get(r.Context(), id)
 	if err != nil {
-		writeErr(w, 500, "会话读取失败: "+err.Error())
+		writeErr(w, 500, "セッションの読み込みに失敗しました: "+err.Error())
 		return
 	}
 	if rec == nil {
-		writeErr(w, 404, fmt.Sprintf("会话 %d 不存在", id))
+		writeErr(w, 404, fmt.Sprintf("セッション %d は存在しません", id))
 		return
 	}
 	writeJSON(w, 200, sessionItem(rec))
 }
 
-// lookupLiveSession 取注册表活会话;查无/已死返回带语义错误(人工通道文案)。
+// lookupLiveSession はレジストリから生きたセッションを取得する;存在しない/既に死んでいる場合は意味の明確なエラーを返す（手動チャネル向けの文言）。
 func (s *Server) lookupLiveSession(id int64) (session.Session, error) {
 	sess, ok := s.sessReg.Get(id)
 	if !ok {
-		return nil, fmt.Errorf("会话 %d 不在注册表(未登记/已删除/进程重启后恢复失败)", id)
+		return nil, fmt.Errorf("セッション %d はレジストリにありません（未登録/削除済み/プロセス再起動後の復元失敗）", id)
 	}
 	return sess, nil
 }
 
 // POST /api/sessions/{id}/exec {command, timeout?} → {stdout,stderr,ms,timed_out}。
-// 人工执行:审计日志必记(操作者/会话/命令/耗时/结果)。
+// 手動実行:監査ログを必ず記録する（操作者/セッション/コマンド/所要時間/結果）。
 func (s *Server) intranetExec(w http.ResponseWriter, r *http.Request) {
 	if !s.intranetSessionsReady(w) {
 		return
@@ -148,19 +148,19 @@ func (s *Server) intranetExec(w http.ResponseWriter, r *http.Request) {
 		Timeout int    `json:"timeout"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
-		writeErr(w, 400, "请求体 JSON 解析失败: "+err.Error())
+		writeErr(w, 400, "リクエストボディの JSON 解析に失敗しました: "+err.Error())
 		return
 	}
 	a.Command = strings.TrimSpace(a.Command)
 	if a.Command == "" {
-		writeErr(w, 400, "command 必填")
+		writeErr(w, 400, "command は必須です")
 		return
 	}
 	if a.Timeout <= 0 {
 		a.Timeout = 15
 	}
 	if a.Timeout > 300 {
-		a.Timeout = 300 // 人工通道上限,防页面挂死长命令
+		a.Timeout = 300 // 手動チャネルの上限。長いコマンドでページが固まるのを防ぐ
 	}
 	sess, err := s.lookupLiveSession(id)
 	if err != nil {
@@ -171,12 +171,12 @@ func (s *Server) intranetExec(w http.ResponseWriter, r *http.Request) {
 	stdout, stderr, execErr := sess.Exec(r.Context(), a.Command, time.Duration(a.Timeout)*time.Second)
 	ms := time.Since(start).Milliseconds()
 	s.sessStore.Touch(r.Context(), id)
-	// 驱动内部用 context.WithTimeout 实现超时,错误文本含 "deadline exceeded"。
+	// ドライバ内部は context.WithTimeout でタイムアウトを実装しており、エラー文言に "deadline exceeded" が含まれる。
 	timedOut := execErr != nil && (errors.Is(r.Context().Err(), context.DeadlineExceeded) ||
 		strings.Contains(execErr.Error(), "deadline exceeded"))
 	if execErr != nil && !timedOut {
-		s.auditIntranet(r, "exec session=%d cmd=%q ms=%d 失败: %v", id, a.Command, ms, execErr)
-		writeErr(w, 502, "执行失败: "+execErr.Error())
+		s.auditIntranet(r, "exec session=%d cmd=%q ms=%d 失敗: %v", id, a.Command, ms, execErr)
+		writeErr(w, 502, "実行に失敗しました: "+execErr.Error())
 		return
 	}
 	s.auditIntranet(r, "exec session=%d cmd=%q ms=%d timed_out=%v stdout=%dB",
@@ -186,7 +186,7 @@ func (s *Server) intranetExec(w http.ResponseWriter, r *http.Request) {
 		"ms": ms, "timed_out": timedOut,
 	}
 	if timedOut {
-		out["error"] = "执行超时: " + execErr.Error()
+		out["error"] = "実行タイムアウト: " + execErr.Error()
 	}
 	if len(stdout) > maxSessionToolOutput || len(stderr) > maxSessionToolOutput {
 		out["truncated"] = true
@@ -194,12 +194,12 @@ func (s *Server) intranetExec(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 
-// sessionProbeTimeout 是人工探活(Test 探针)的统一超时。
+// sessionProbeTimeout は手動ヘルスチェック（Test プローブ）の共通タイムアウト。
 const sessionProbeTimeout = 10 * time.Second
 
-// POST /api/sessions/{id}/probe — 人工触发探活:对会话执行无害 Test() 探针
-// (10s 超时)。成功 → status=alive + 刷新 last_beat;失败 → 诚实标 dead
-// (治理「靶场已停、台账仍显示存活」的假存活)。返回 {alive, ms, error?}。
+// POST /api/sessions/{id}/probe — 手動でヘルスチェックを実行する:セッションに無害な Test() プローブを
+// 実行する（10s タイムアウト）。成功 → status=alive + last_beat を更新;失敗 → 正直に dead を記録
+// （「演習場は停止済みなのに台帳は alive のまま」という偽の alive を是正）。{alive, ms, error?} を返す。
 func (s *Server) intranetProbeSession(w http.ResponseWriter, r *http.Request) {
 	if !s.intranetSessionsReady(w) {
 		return
@@ -220,24 +220,24 @@ func (s *Server) intranetProbeSession(w http.ResponseWriter, r *http.Request) {
 	probeErr := sess.Test(ctx)
 	ms := time.Since(start).Milliseconds()
 	if probeErr != nil {
-		// 标 dead 用独立短 ctx:探活 ctx 可能已随超时取消,标死必须落库。
+		// dead の記録には独立した短い ctx を使う:チェック用 ctx はタイムアウトでキャンセル済みの可能性があり、dead の記録は必ず永続化する必要がある。
 		dctx, dcancel := context.WithTimeout(context.Background(), 5*time.Second)
 		uerr := s.sessStore.UpdateStatus(dctx, id, db.SessionDead)
 		dcancel()
 		if uerr != nil {
-			writeErr(w, 500, "探活失败且状态落库失败: "+uerr.Error())
+			writeErr(w, 500, "ヘルスチェックに失敗し、状態の永続化にも失敗しました: "+uerr.Error())
 			return
 		}
 		s.auditIntranet(r, "probe session=%d ms=%d dead: %v", id, ms, probeErr)
 		writeJSON(w, 200, map[string]any{"alive": false, "ms": ms, "error": probeErr.Error()})
 		return
 	}
-	// 探活成功:状态归 alive(可从 dead 复活)并刷新心跳。
+	// ヘルスチェック成功:状態を alive に戻し（dead から復活可能）、ハートビートを更新する。
 	dctx, dcancel := context.WithTimeout(context.Background(), 5*time.Second)
 	uerr := s.sessStore.UpdateStatus(dctx, id, db.SessionAlive)
 	dcancel()
 	if uerr != nil {
-		writeErr(w, 500, "状态落库失败: "+uerr.Error())
+		writeErr(w, 500, "状態の永続化に失敗しました: "+uerr.Error())
 		return
 	}
 	s.sessStore.Touch(r.Context(), id)
@@ -245,7 +245,7 @@ func (s *Server) intranetProbeSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"alive": true, "ms": ms})
 }
 
-// shellQuote 复用 customtool.go 的同款实现(单引号包裹,' → '\'')。
+// shellQuote は customtool.go と同じ実装を再利用する（シングルクォートで囲み、' → '\''）。
 
 type dirEntry struct {
 	Name  string `json:"name"`
@@ -253,8 +253,8 @@ type dirEntry struct {
 	Size  int64  `json:"size"`
 }
 
-// parseLsLa 把 `ls -la` 输出解析为条目列表(纯函数,可测)。
-// 跳过 total 行、. / ..、无法识别的行;symlink 的 "name -> target" 只留 name。
+// parseLsLa は `ls -la` の出力をエントリ一覧に解析する（純粋関数、テスト可能）。
+// total 行、. / ..、判別できない行はスキップする;symlink の "name -> target" は name だけを残す。
 func parseLsLa(out string) []dirEntry {
 	entries := []dirEntry{}
 	for _, line := range strings.Split(out, "\n") {
@@ -288,7 +288,7 @@ func parseLsLa(out string) []dirEntry {
 }
 
 // POST /api/sessions/{id}/list {path} → {entries:[{name,is_dir,size}]}。
-// 驱动无 ListDir 抽象,统一走 `ls -la` 经 Exec 解析(Windows 马会报驱动错误)。
+// ドライバに ListDir 抽象がないため、一律 `ls -la` を Exec 経由で実行して解析する（Windows の webshell ではドライバエラーになる）。
 func (s *Server) intranetListDir(w http.ResponseWriter, r *http.Request) {
 	if !s.intranetSessionsReady(w) {
 		return
@@ -302,12 +302,12 @@ func (s *Server) intranetListDir(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
-		writeErr(w, 400, "请求体 JSON 解析失败: "+err.Error())
+		writeErr(w, 400, "リクエストボディの JSON 解析に失敗しました: "+err.Error())
 		return
 	}
 	a.Path = strings.TrimSpace(a.Path)
 	if a.Path == "" {
-		writeErr(w, 400, "path 必填")
+		writeErr(w, 400, "path は必須です")
 		return
 	}
 	sess, err := s.lookupLiveSession(id)
@@ -318,7 +318,7 @@ func (s *Server) intranetListDir(w http.ResponseWriter, r *http.Request) {
 	stdout, _, err := sess.Exec(r.Context(), "ls -la "+shellQuote(a.Path), 15*time.Second)
 	s.sessStore.Touch(r.Context(), id)
 	if err != nil {
-		writeErr(w, 502, "列目录失败: "+err.Error())
+		writeErr(w, 502, "ディレクトリ一覧の取得に失敗しました: "+err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"entries": parseLsLa(stdout)})
@@ -338,12 +338,12 @@ func (s *Server) intranetReadFile(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
-		writeErr(w, 400, "请求体 JSON 解析失败: "+err.Error())
+		writeErr(w, 400, "リクエストボディの JSON 解析に失敗しました: "+err.Error())
 		return
 	}
 	a.Path = strings.TrimSpace(a.Path)
 	if a.Path == "" {
-		writeErr(w, 400, "path 必填")
+		writeErr(w, 400, "path は必須です")
 		return
 	}
 	sess, err := s.lookupLiveSession(id)
@@ -354,7 +354,7 @@ func (s *Server) intranetReadFile(w http.ResponseWriter, r *http.Request) {
 	data, err := sess.ReadFile(r.Context(), a.Path)
 	s.sessStore.Touch(r.Context(), id)
 	if err != nil {
-		writeErr(w, 502, "读取失败: "+err.Error())
+		writeErr(w, 502, "読み込みに失敗しました: "+err.Error())
 		return
 	}
 	s.auditIntranet(r, "read session=%d path=%q size=%dB", id, a.Path, len(data))
@@ -376,7 +376,7 @@ func (s *Server) intranetReadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/sessions/{id}/write {path, content_base64} → {ok, bytes}。
-// 高危写操作:无论成败都记审计日志。
+// 高リスクの書き込み操作:成否にかかわらず監査ログを記録する。
 func (s *Server) intranetWriteFile(w http.ResponseWriter, r *http.Request) {
 	if !s.intranetSessionsReady(w) {
 		return
@@ -391,17 +391,17 @@ func (s *Server) intranetWriteFile(w http.ResponseWriter, r *http.Request) {
 		ContentBase64 string `json:"content_base64"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
-		writeErr(w, 400, "请求体 JSON 解析失败: "+err.Error())
+		writeErr(w, 400, "リクエストボディの JSON 解析に失敗しました: "+err.Error())
 		return
 	}
 	a.Path = strings.TrimSpace(a.Path)
 	if a.Path == "" {
-		writeErr(w, 400, "path 必填")
+		writeErr(w, 400, "path は必須です")
 		return
 	}
 	data, err := base64.StdEncoding.DecodeString(a.ContentBase64)
 	if err != nil {
-		writeErr(w, 400, "content_base64 解码失败: "+err.Error())
+		writeErr(w, 400, "content_base64 のデコードに失敗しました: "+err.Error())
 		return
 	}
 	sess, err := s.lookupLiveSession(id)
@@ -410,8 +410,8 @@ func (s *Server) intranetWriteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sess.WriteFile(r.Context(), a.Path, data); err != nil {
-		s.auditIntranet(r, "write session=%d path=%q bytes=%d 失败: %v", id, a.Path, len(data), err)
-		writeErr(w, 502, "写入失败: "+err.Error())
+		s.auditIntranet(r, "write session=%d path=%q bytes=%d 失敗: %v", id, a.Path, len(data), err)
+		writeErr(w, 502, "書き込みに失敗しました: "+err.Error())
 		return
 	}
 	s.sessStore.Touch(r.Context(), id)
@@ -419,7 +419,7 @@ func (s *Server) intranetWriteFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true, "bytes": len(data)})
 }
 
-// DELETE /api/sessions/{id} — 关闭并从注册表/DB 移除(幂等:已不存在也 ok)。
+// DELETE /api/sessions/{id} — 閉じてレジストリ/DB から削除する（冪等:存在しなくても ok）。
 func (s *Server) intranetDeleteSession(w http.ResponseWriter, r *http.Request) {
 	if !s.intranetSessionsReady(w) {
 		return
@@ -429,21 +429,21 @@ func (s *Server) intranetDeleteSession(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	inReg := s.sessReg.Remove(id) // Remove 内部关闭会话
+	inReg := s.sessReg.Remove(id) // Remove が内部でセッションを閉じる
 	if err := s.sessStore.Delete(r.Context(), id); err != nil {
-		writeErr(w, 500, "会话删除失败: "+err.Error())
+		writeErr(w, 500, "セッションの削除に失敗しました: "+err.Error())
 		return
 	}
 	s.auditIntranet(r, "delete session=%d in_registry=%v", id, inReg)
 	writeJSON(w, 200, map[string]any{"ok": true, "id": id, "was_live": inReg})
 }
 
-// GET /api/tunnels?task_id= — 台账全量(含 stopped,全字段);
-// 传 task_id 时只留本任务的隧道,不传保持全局视图(兼容旧前端)。
-// 注意:deploy_params 含隧道 auth token(平台自造一次性令牌),仅 JWT 后可见。
+// GET /api/tunnels?task_id= — 台帳の全量（stopped を含む、全フィールド）;
+// task_id を渡すと本タスクのトンネルだけを残し、渡さなければ全体ビューを維持する（旧フロントとの互換）。
+// 注意：deploy_params にはトンネルの auth token（プラットフォームが生成するワンタイムトークン）が含まれ、JWT 通過後のみ参照できる。
 func (s *Server) intranetListTunnels(w http.ResponseWriter, r *http.Request) {
 	if s.m == nil || s.m.pg == nil {
-		writeErr(w, 503, "隧道台账未就绪(DB 未连接)")
+		writeErr(w, 503, "トンネル台帳が未準備です（DB 未接続）")
 		return
 	}
 	taskID, ok := parseTaskIDQuery(w, r)
@@ -459,7 +459,7 @@ func (s *Server) intranetListTunnels(w http.ResponseWriter, r *http.Request) {
 		recs, err = store.List(r.Context())
 	}
 	if err != nil {
-		writeErr(w, 500, "隧道台账读取失败: "+err.Error())
+		writeErr(w, 500, "トンネル台帳の読み込みに失敗しました: "+err.Error())
 		return
 	}
 	items := []*db.TunnelRecord{}
@@ -467,10 +467,10 @@ func (s *Server) intranetListTunnels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"items": items})
 }
 
-// POST /api/tunnels/{id}/teardown — 回收隧道(经 tunnel.Manager,幂等)。
+// POST /api/tunnels/{id}/teardown — トンネルを回収する（tunnel.Manager 経由、冪等）。
 func (s *Server) intranetTeardownTunnel(w http.ResponseWriter, r *http.Request) {
 	if s.tunnels == nil {
-		writeErr(w, 503, "隧道子系统未就绪")
+		writeErr(w, 503, "トンネルサブシステムが未準備です")
 		return
 	}
 	id, err := pathID(r, "id")
@@ -479,21 +479,21 @@ func (s *Server) intranetTeardownTunnel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := s.tunnels.Teardown(r.Context(), id); err != nil {
-		s.auditIntranet(r, "tunnel_teardown id=%d 失败: %v", id, err)
-		writeErr(w, 502, "回收失败: "+err.Error())
+		s.auditIntranet(r, "tunnel_teardown id=%d 失敗: %v", id, err)
+		writeErr(w, 502, "回収に失敗しました: "+err.Error())
 		return
 	}
 	s.auditIntranet(r, "tunnel_teardown id=%d 成功", id)
 	writeJSON(w, 200, map[string]any{"tunnel_id": id, "state": db.TunnelStopped})
 }
 
-// GET /api/credentials?task_id= — 跨任务凭据脱敏列表(secret 只露前后各 2 字符);
-// 传 task_id 时只留本任务的凭据,不传保持全局视图(兼容旧前端)。
-// 不含复用 score:打分是按任务上下文(凭据×本任务资产)算的,全局列表无此
-// 上下文;页面要建议走 agent 工具 credential_reuse_plan。
+// GET /api/credentials?task_id= — タスク横断の認証情報のマスク済み一覧（secret は前後 2 文字ずつのみ表示）;
+// task_id を渡すと本タスクの認証情報だけを残し、渡さなければ全体ビューを維持する（旧フロントとの互換）。
+// 再利用 score は含まない:採点はタスクのコンテキスト（認証情報×本タスクのアセット）で計算するため、全体一覧にはこの
+// コンテキストがない。ページで提案が必要なら agent ツール credential_reuse_plan を使う。
 func (s *Server) intranetListCredentials(w http.ResponseWriter, r *http.Request) {
 	if s.credStore == nil {
-		writeErr(w, 503, "凭据子系统未就绪(DB 未连接)")
+		writeErr(w, 503, "認証情報サブシステムが未準備です（DB 未接続）")
 		return
 	}
 	taskID, ok := parseTaskIDQuery(w, r)
@@ -508,7 +508,7 @@ func (s *Server) intranetListCredentials(w http.ResponseWriter, r *http.Request)
 		creds, err = s.credStore.ListAll(r.Context())
 	}
 	if err != nil {
-		writeErr(w, 500, "凭据读取失败: "+err.Error())
+		writeErr(w, 500, "認証情報の読み込みに失敗しました: "+err.Error())
 		return
 	}
 	items := []map[string]any{}
@@ -523,7 +523,7 @@ func (s *Server) intranetListCredentials(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, 200, map[string]any{"items": items})
 }
 
-// ---------------- 拓扑组装(纯函数,可测) ----------------
+// ---------------- トポロジ組み立て（純粋関数、テスト可能） ----------------
 
 type topoNode struct {
 	ID            string           `json:"id"` // asset-<id> | sess-<sessionID> | pf-<tunnelID> | platform
@@ -545,10 +545,10 @@ type topoEdge struct {
 
 type topoSegment struct {
 	Name     string `json:"name"`
-	ColorKey string `json:"color_key"` // 稳定着色键(排序序号为前缀)
+	ColorKey string `json:"color_key"` // 安定した着色キー（並び順の連番をプレフィックスにする）
 }
 
-// segmentOf 取资产网段:优先 c_segment 列,空则按 IPv4 /24(IPv6 /48)推导。
+// segmentOf はアセットのセグメントを取得する:優先は c_segment 列、空なら IPv4 /24（IPv6 /48）で導出する。
 func segmentOf(ip, cSegment string) string {
 	if cSegment != "" {
 		return cSegment
@@ -563,9 +563,9 @@ func segmentOf(ip, cSegment string) string {
 	return (&net.IPNet{IP: parsed.Mask(net.CIDRMask(48, 128)), Mask: net.CIDRMask(48, 128)}).String()
 }
 
-// buildTopology 纯组装:ip 资产 + 活会话主机去重为 nodes,隧道台账为 edges,
-// 出现的网段汇总为 segments。有隧道时追加 platform 合成节点作边的统一起点;
-// callbackHost 非空时同 IP 的主机节点也标 is_callback。
+// buildTopology は純粋な組み立て：ip アセットと生きたセッションのホストを重複排除して nodes に、トンネル台帳を edges に、
+// 出現したセグメントを集約して segments にする。トンネルがある場合は platform の合成ノードを追加して辺の共通起点にする;
+// callbackHost が非空なら同一 IP のホストノードにも is_callback を立てる。
 func buildTopology(assets []*db.Asset, recs []*db.SessionRecord, tunnels []*db.TunnelRecord, callbackHost string) map[string]any {
 	nodes := map[string]*topoNode{} // key: ip
 	for _, a := range assets {
@@ -587,15 +587,15 @@ func buildTopology(assets []*db.Asset, recs []*db.SessionRecord, tunnels []*db.T
 			}
 		}
 	}
-	// 会话归聚:优先 host_asset_id 对应的资产 IP;无资产关联的用 URL hostname
-	// 造合成节点(sess-<id>),保证「有会话的主机」一定出现在图上。
+	// セッションの集約:優先は host_asset_id に対応するアセットの IP;アセット紐付けがない場合は URL の hostname で
+	// 合成ノード（sess-<id>）を作り、「セッションがあるホスト」が必ず図に現れるようにする。
 	assetIP := map[int64]string{}
 	for _, a := range assets {
 		if a != nil && a.IP != "" {
 			assetIP[a.ID] = a.IP
 		}
 	}
-	sessionHost := map[int64]string{} // session id → 宿主 ip/hostname(边 to 用)
+	sessionHost := map[int64]string{} // session id → ホスト ip/hostname（辺の to に使う）
 	for _, rec := range recs {
 		host := ""
 		if u, err := url.Parse(rec.URL); err == nil {
@@ -619,7 +619,7 @@ func buildTopology(assets []*db.Asset, recs []*db.SessionRecord, tunnels []*db.T
 			n.AliveSessions++
 		}
 	}
-	// IP/主机名 → 节点 id:边的 from/to 必须是节点 id,指向不存在的节点 G6 画不出线。
+	// IP/ホスト名 → ノード id:辺の from/to はノード id でなければならず、存在しないノードを指すと G6 で線が描けない。
 	nodeIDByIP := map[string]string{}
 	for ip, n := range nodes {
 		nodeIDByIP[ip] = n.ID
@@ -629,9 +629,9 @@ func buildTopology(assets []*db.Asset, recs []*db.SessionRecord, tunnels []*db.T
 		to := ""
 		if t.Kind == "portfwd" && t.TargetHost != "" {
 			if id, ok := nodeIDByIP[t.TargetHost]; ok {
-				to = id // 目标是图上已有主机,直接连过去
+				to = id // 対象は図上に既にあるホストなので、そのまま接続する
 			} else {
-				// 目标不在台账:造合成节点(pf-<tunnel_id>,标签 host:port),保证边有落点。
+				// 対象が台帳にない:合成ノード（pf-<tunnel_id>、ラベルは host:port）を作り、辺に必ず着地点を持たせる。
 				addr := net.JoinHostPort(t.TargetHost, strconv.Itoa(t.TargetPort))
 				n := nodes[addr]
 				if n == nil {
@@ -642,9 +642,9 @@ func buildTopology(assets []*db.Asset, recs []*db.SessionRecord, tunnels []*db.T
 				to = n.ID
 			}
 		} else if h := sessionHost[t.ViaSessionID]; h != "" {
-			to = nodeIDByIP[h] // socks:连到经由会话的宿主节点(会话归聚保证节点存在)
+			to = nodeIDByIP[h] // socks:経由セッションのホストノードに接続する（セッション集約によりノードの存在は保証される）
 		}
-		// 经由会话不在当前视图(被任务过滤/已删除)时边无从落点,跳过;台账页仍可见。
+		// 経由セッションが現在のビューにない（タスクで絞り込まれた/削除済み）場合は辺の着地点がないのでスキップする;台帳ページでは引き続き見える。
 		if to == "" {
 			continue
 		}
@@ -663,13 +663,13 @@ func buildTopology(assets []*db.Asset, recs []*db.SessionRecord, tunnels []*db.T
 		nodeList = append(nodeList, n)
 	}
 	sort.Slice(nodeList, func(i, j int) bool { return nodeList[i].IP < nodeList[j].IP })
-	// 平台自身合成节点:隧道边统一从它出发(from="platform")。标签用回连地址,
-	// 未配置回连地址时显示「平台自身」;有边才创建,空拓扑不留孤点。
-	// 不放进 nodes 表:回连地址可能与某资产同 IP,按 IP 归聚会把它吞掉。
+	// プラットフォーム自身の合成ノード:トンネルの辺は一律ここから出る（from="platform"）。ラベルはコールバックアドレスを使い、
+	// 未設定時は「プラットフォーム自身」を表示する;辺がある場合だけ作成し、空のトポロジに孤立点を残さない。
+	// nodes テーブルには入れない:コールバックアドレスが既存アセットと同一 IP だと、IP での集約に飲み込まれるため。
 	if len(edges) > 0 {
 		ip := callbackHost
 		if ip == "" {
-			ip = "平台自身"
+			ip = "プラットフォーム自身"
 		}
 		nodeList = append(nodeList, &topoNode{ID: "platform", IP: ip, IsCallback: true, Services: []map[string]any{}})
 	}
@@ -685,7 +685,7 @@ func buildTopology(assets []*db.Asset, recs []*db.SessionRecord, tunnels []*db.T
 	return map[string]any{"nodes": nodeList, "edges": edges, "segments": segList}
 }
 
-// assetCSegment 取某 IP 对应资产行的 c_segment(空串表示未登记)。
+// assetCSegment はある IP に対応するアセット行の c_segment を取得する（空文字列は未登録を表す）。
 func assetCSegment(assets []*db.Asset, ip string) string {
 	for _, a := range assets {
 		if a != nil && a.IP == ip {
@@ -695,8 +695,8 @@ func assetCSegment(assets []*db.Asset, ip string) string {
 	return ""
 }
 
-// parseTaskIDQuery 解析可选的 ?task_id=:缺省/空返回 (0, true) 表示全局视图;
-// 非法值写 400 并返回 false,调用方直接 return。
+// parseTaskIDQuery は任意の ?task_id= を解析する:省略/空は (0, true) を返して全体ビューを表す;
+// 不正な値は 400 を返して false を返すので、呼び出し側はそのまま return する。
 func parseTaskIDQuery(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	v := strings.TrimSpace(r.URL.Query().Get("task_id"))
 	if v == "" {
@@ -704,16 +704,16 @@ func parseTaskIDQuery(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	}
 	id, err := strconv.ParseInt(v, 10, 64)
 	if err != nil || id <= 0 {
-		writeErr(w, 400, "非法 task_id: "+v)
+		writeErr(w, 400, "不正な task_id: "+v)
 		return 0, false
 	}
 	return id, true
 }
 
-// GET /api/intranet/topology?task_id= — 纯组装,只读。
+// GET /api/intranet/topology?task_id= — 純粋な組み立て、読み取り専用。
 func (s *Server) intranetTopology(w http.ResponseWriter, r *http.Request) {
 	if s.m == nil || s.m.pg == nil || s.sessStore == nil {
-		writeErr(w, 503, "拓扑数据未就绪(DB 未连接)")
+		writeErr(w, 503, "トポロジデータが未準備です（DB 未接続）")
 		return
 	}
 	taskID, ok := parseTaskIDQuery(w, r)
@@ -728,15 +728,15 @@ func (s *Server) intranetTopology(w http.ResponseWriter, r *http.Request) {
 		assets, err = s.m.pg.Assets().QueryByType("ip", 5000, 0)
 	}
 	if err != nil {
-		writeErr(w, 500, "资产读取失败: "+err.Error())
+		writeErr(w, 500, "アセットの読み込みに失敗しました: "+err.Error())
 		return
 	}
 	recs, err := s.sessStore.List(r.Context(), "")
 	if err != nil {
-		writeErr(w, 500, "会话台账读取失败: "+err.Error())
+		writeErr(w, 500, "セッション台帳の読み込みに失敗しました: "+err.Error())
 		return
 	}
-	if taskID > 0 { // 任务视图只留本任务创建的会话,避免串图
+	if taskID > 0 { // タスクビューでは本タスクが作成したセッションだけを残し、図の混線を避ける
 		filtered := recs[:0]
 		for _, rec := range recs {
 			if rec.CreatedByTask == taskID {
@@ -747,7 +747,7 @@ func (s *Server) intranetTopology(w http.ResponseWriter, r *http.Request) {
 	}
 	tunnels, err := db.NewTunnelStore(s.m.pg).List(r.Context())
 	if err != nil {
-		writeErr(w, 500, "隧道台账读取失败: "+err.Error())
+		writeErr(w, 500, "トンネル台帳の読み込みに失敗しました: "+err.Error())
 		return
 	}
 	if taskID > 0 {
@@ -759,13 +759,13 @@ func (s *Server) intranetTopology(w http.ResponseWriter, r *http.Request) {
 		}
 		tunnels = filtered
 	}
-	cb, _ := callbackHost() // 未配置回连地址时 is_callback 全 false
+	cb, _ := callbackHost() // コールバックアドレス未設定時は is_callback がすべて false
 	writeJSON(w, 200, buildTopology(assets, recs, tunnels, cb))
 }
 
-// taskIntranet 判定任务是否处于内网期(期 4,worker.intranet 提示词变体的开关):
-// 存在该任务的 alive 隧道,或该任务创建的存活立足点会话。worker 每次 run 现查,
-// 隧道/会话状态变化即时生效;读取失败按外网处理(不误切变体)。
+// taskIntranet はタスクがイントラネット期にあるか判定する（フェーズ 4、worker.intranet プロンプト変種のスイッチ）:
+// そのタスクの alive なトンネル、またはそのタスクが作成した存続中のフットホールドセッションが存在する場合。
+// worker は run のたびに照会するので、トンネル/セッションの状態変化は即座に反映される;読み込み失敗時は外部ネットワーク扱いにする（変種を誤って切り替えない）。
 func (s *Server) taskIntranet(taskID int64) bool {
 	if taskID <= 0 {
 		return false

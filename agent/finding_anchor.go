@@ -9,38 +9,40 @@ import (
 	"github.com/Autumn-27/artex/db"
 )
 
-// report_finding 的资产自动锚定(纯逻辑层,可单测)。
+// report_finding のアセット自動アンカリング（純粋なロジック層、単体テスト可能）。
 //
-// 背景:档 A 同入口合并(db/finding_merge.go)要求 (task_id, 归一化 vulnclass,
-// 主资产=AssetIDs[0]) 三者一致;压测发现 worker 经常不带 asset_ids 上报,
-// 合并键整体失效。这里在 asset_ids 为空时从上报文本(name+summary+evidence)
-// 提取第一个 URL(无 URL 则提取 host[:port]/裸 host),在全库资产(调用方
-// 已在 SQL 层按 host 粗筛,见 db.AssetStore.QueryByHost)中按
+// 背景:方針 A の同一入口マージ（db/finding_merge.go）は (task_id、正規化した vulnclass、
+// 主アセット=AssetIDs[0]) の 3 つが一致することを要求する。負荷試験では worker が
+// asset_ids を付けずに報告することが多く、マージキーが全体として機能しなくなった。
+// そこで asset_ids が空のときは報告テキスト（name+summary+evidence）から最初の URL を
+// 抽出し（URL が無ければ host[:port]/素の host）、DB 全体のアセット（呼び出し側が既に SQL 層で
+// host により粗く絞り込む。db.AssetStore.QueryByHost を参照）の中から
 //
-//	endpoint(同 scheme://host:port,path 前缀匹配取最长前缀)
-//	→ service(同 scheme://host:port)
+//	endpoint（同一 scheme://host:port、path の前方一致で最長の接頭辞）
+//	→ service（同一 scheme://host:port）
 //	→ ip / root_domain
 //
-// 的优先级锚定一个主资产;全部不命中保持为空,不强行新建资产。
+// の優先順で主アセットを 1 件アンカリングする。どれにも一致しなければ空のままとし、アセットを
+// 無理に新規作成しない。
 
 var (
-	// findingURLRe 取文本中第一个 http(s) URL。
+	// findingURLRe はテキスト中で最初の http(s) URL を取る。
 	findingURLRe = regexp.MustCompile(`https?://[^\s)\]"']+`)
-	// findingHostRe 在无 URL 时取第一个 host[:port](IPv4 或域名)。
+	// findingHostRe は URL が無いときに最初の host[:port]（IPv4 またはドメイン）を取る。
 	findingHostRe = regexp.MustCompile(`\b(?:\d{1,3}(?:\.\d{1,3}){3}|(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,})(?::\d{1,5})?\b`)
 )
 
-// anchorTarget 是从上报文本提取出的定位目标。
+// anchorTarget は報告テキストから抽出した位置特定の対象。
 type anchorTarget struct {
-	raw    string // 命中的原始文本(URL 或 host[:port]),用于空 name 兜底
+	raw    string // 一致した元テキスト（URL または host[:port]）。name が空のときのフォールバック用
 	hasURL bool
-	scheme string // 仅 hasURL 时有意义,http/https 小写
-	host   string // 小写 hostname
-	port   int    // 0 = 未指定;URL 时按 scheme 补默认端口
-	path   string // 仅 hasURL 时有意义,至少 "/"
+	scheme string // hasURL のときのみ有意。http/https の小文字
+	host   string // 小文字の hostname
+	port   int    // 0 = 未指定。URL のときは scheme に応じて既定ポートを補う
+	path   string // hasURL のときのみ有意。最低 "/"
 }
 
-// extractAnchorTarget 取文本中第一个 URL;无 URL 时取第一个 host[:port]/裸 host。
+// extractAnchorTarget はテキスト中で最初の URL を取る。URL が無ければ最初の host[:port]/素の host を取る。
 func extractAnchorTarget(text string) anchorTarget {
 	if m := findingURLRe.FindString(text); m != "" {
 		m = strings.TrimRight(m, ".,;:!?")
@@ -77,8 +79,8 @@ func extractAnchorTarget(text string) anchorTarget {
 	return anchorTarget{}
 }
 
-// urlKey 把资产 URL 解析为 (scheme, host, port, path);host 小写、端口缺省按
-// scheme 补 80/443、path 缺省为 "/"。不可解析时 ok=false。
+// urlKey はアセット URL を (scheme, host, port, path) に分解する;host は小文字、ポートの
+// 省略時は scheme に応じて 80/443 を補い、path の省略時は "/" とする。解析不能なら ok=false。
 func urlKey(raw string) (scheme, host string, port int, path string, ok bool) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Hostname() == "" {
@@ -104,8 +106,8 @@ func urlKey(raw string) (scheme, host string, port int, path string, ok bool) {
 	return scheme, host, port, path, true
 }
 
-// pathPrefix 判断 endpoint 资产路径 prefix 是否是 finding 路径 path 的前缀
-// (按路径段边界:"/api" 命中 "/api/users",但不命中 "/apisix")。
+// pathPrefix は endpoint アセットのパス prefix が finding のパス path の接頭辞かを判定する
+// （パスセグメントの境界で判定:"/api" は "/api/users" に一致するが "/apisix" には一致しない）。
 func pathPrefix(prefix, path string) bool {
 	if prefix == "" || prefix == "/" {
 		return true
@@ -119,15 +121,16 @@ func pathPrefix(prefix, path string) bool {
 	return strings.HasPrefix(path, prefix+"/")
 }
 
-// anchorFindingAsset 在 candidates(全库资产,已按 host 粗筛)中为上报文本锚定
-// 一个主资产,返回资产 id 与命中理由;不命中返回 0。命中优先级见文件头注释;
-// 同分时取 id 最小者,保证同一文本+同一资产集结果确定(合并键稳定)。
+// anchorFindingAsset は candidates（DB 全体のアセット、既に host で粗く絞り込み済み）から報告
+// テキストの主アセットを 1 件アンカリングし、アセット id と一致理由を返す。一致しなければ 0。
+// 優先順位はファイル冒頭のコメントを参照。同点なら id の最小を取り、同じテキストと同じ
+// アセット集合に対して結果が確定するようにする（マージキーの安定化）。
 func anchorFindingAsset(text string, candidates []*db.Asset) (int64, string) {
 	tgt := extractAnchorTarget(text)
 	if tgt.host == "" {
 		return 0, ""
 	}
-	// 1) endpoint:同 scheme://host:port 且 path 前缀匹配,取最长前缀。
+	// 1) endpoint:同一 scheme://host:port かつ path が前方一致するものから最長の接頭辞を取る。
 	if tgt.hasURL {
 		var best *db.Asset
 		bestLen := -1
@@ -147,10 +150,10 @@ func anchorFindingAsset(text string, candidates []*db.Asset) (int64, string) {
 			}
 		}
 		if best != nil {
-			return best.ID, "endpoint 最长前缀匹配"
+			return best.ID, "endpoint の最長接頭辞に一致"
 		}
 	}
-	// 2) service:同 scheme://host:port;无 URL(裸 host[:port])时按 host(+port)匹配。
+	// 2) service:同一 scheme://host:port。URL が無い場合（素の host[:port]）は host（+port）で一致を取る。
 	var svc *db.Asset
 	for _, a := range candidates {
 		if a == nil || a.Type != "service" {
@@ -172,9 +175,9 @@ func anchorFindingAsset(text string, candidates []*db.Asset) (int64, string) {
 		}
 	}
 	if svc != nil {
-		return svc.ID, "service 同 scheme://host:port 匹配"
+		return svc.ID, "service が同一 scheme://host:port に一致"
 	}
-	// 3) ip / root_domain 兜底。
+	// 3) ip / root_domain のフォールバック。
 	var ip *db.Asset
 	for _, a := range candidates {
 		if a == nil || a.Type != "ip" || a.IP != tgt.host {
@@ -185,7 +188,7 @@ func anchorFindingAsset(text string, candidates []*db.Asset) (int64, string) {
 		}
 	}
 	if ip != nil {
-		return ip.ID, "ip 资产匹配"
+		return ip.ID, "ip アセットに一致"
 	}
 	var root *db.Asset
 	for _, a := range candidates {
@@ -201,13 +204,13 @@ func anchorFindingAsset(text string, candidates []*db.Asset) (int64, string) {
 		}
 	}
 	if root != nil {
-		return root.ID, "root_domain 资产匹配"
+		return root.ID, "root_domain アセットに一致"
 	}
 	return 0, ""
 }
 
-// fallbackFindingName 在 name 为空时兜底:vulnclass + 文本中第一个 URL/host;
-// 两者皆空时给固定占位名,避免写入空串 name。
+// fallbackFindingName は name が空のときのフォールバック：vulnclass + テキスト中の最初の
+// URL/host。どちらも空なら固定のプレースホルダ名を返し、空文字の name を書き込まない。
 func fallbackFindingName(vulnClass, text string) string {
 	vc := strings.TrimSpace(vulnClass)
 	if tgt := extractAnchorTarget(text); tgt.raw != "" {
@@ -216,5 +219,5 @@ func fallbackFindingName(vulnClass, text string) string {
 	if vc != "" {
 		return vc
 	}
-	return "未命名漏洞"
+	return "名称未設定の脆弱性"
 }

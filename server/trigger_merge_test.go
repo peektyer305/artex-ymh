@@ -9,14 +9,14 @@ import (
 // fix: the task-context header (description + goal) is rendered ONCE per task, no
 // matter how many same-task fires are merged.
 
-const longGoal = "拿到题目 f2-05 的受保护 flag 并通过 submit_flag 提交；本题密文已高度收敛，flag 只能由二进制内嵌数据派生……" // 代表那段几千字的继承事实
+const longGoal = "課題 f2-05 の保護された flag を取得し submit_flag で提出する；本問の暗号文は十分に収束しており、flag はバイナリ内に埋め込まれたデータからのみ導出できる……" // 数千文字の継承事実を代表する
 
 func sameTaskFires(n int) []triggeredRun {
 	items := make([]triggeredRun, n)
 	for i := range items {
 		items[i] = triggeredRun{
-			agentKey: "tec_benchmark", taskID: 72, taskDesc: "f2-05 逆向", taskGoal: longGoal,
-			message: "【本次由工具调用触发】\n工具: submit_flag\n入参: {...}\n返回: {correct:false}", mergeable: true,
+			agentKey: "tec_benchmark", taskID: 72, taskDesc: "f2-05 リバース", taskGoal: longGoal,
+			message: "【今回はツール呼び出しでトリガー】\nツール: submit_flag\n引数: {...}\n戻り: {correct:false}", mergeable: true,
 		}
 	}
 	return items
@@ -83,16 +83,16 @@ func TestTaskContextHeaderEmptyForIntervalFire(t *testing.T) {
 		t.Fatalf("interval/none trigger (no task) must produce no header, got %q", h)
 	}
 	// An interval fire's message must pass through untouched.
-	item := triggeredRun{message: "定时触发正文"}
-	if finalTriggerMessage(item) != "定时触发正文" {
+	item := triggeredRun{message: "定期トリガーの本文"}
+	if finalTriggerMessage(item) != "定期トリガーの本文" {
 		t.Fatalf("interval fire message must pass through unchanged")
 	}
 }
 
 func TestTaskContextHeaderTruncatesLongGoal(t *testing.T) {
-	huge := strings.Repeat("很", 5000)
+	huge := strings.Repeat("あ", 5000)
 	h := taskContextHeader(72, "d", huge)
-	if len([]rune(h)) > 800 { // 200 desc + 500 goal + 截断标记/装饰，远小于 5000
+	if len([]rune(h)) > 800 { // 200 desc + 500 goal + 切り詰めマーカー/装飾で、5000 よりはるかに小さい
 		t.Fatalf("header should be bounded even for a huge goal, got %d runes", len([]rune(h)))
 	}
 }

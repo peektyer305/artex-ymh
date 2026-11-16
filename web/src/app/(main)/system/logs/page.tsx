@@ -8,7 +8,7 @@ import { MOCK } from "@/lib/mock/enabled";
 import type { LogLine } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// Mock demo：无后端 SSE，塞几行示例日志。
+// Mock demo：バックエンド SSE なしで、サンプルログを数行入れる。
 const MOCK_LOGS: LogLine[] = [
   {
     seq: 1,
@@ -29,28 +29,28 @@ const MOCK_LOGS: LogLine[] = [
     ts: "2026-07-26T03:56:10Z",
     level: "info",
     tag: "planner",
-    text: "task t-acme-web: 第 3 轮规划，生成意图 i-4",
+    text: "task t-acme-web: 第 3 ターンの計画、意図 i-4 を生成",
   },
   {
     seq: 4,
     ts: "2026-07-26T03:57:00Z",
     level: "warn",
     tag: "guard",
-    text: "block bash: 目标越界 out.evil.example 不在 scope 内",
+    text: "block bash: ターゲット範囲外 out.evil.example は scope 外",
   },
   {
     seq: 5,
     ts: "2026-07-26T03:57:30Z",
     level: "info",
     tag: "work#1",
-    text: "report_finding: Default Credentials (high) 已落库",
+    text: "report_finding: Default Credentials (high) を DB に記録済み",
   },
   {
     seq: 6,
     ts: "2026-07-26T03:58:20Z",
     level: "error",
     tag: "work#3",
-    text: "intercept: mysqldump 命中破坏性规则，等待人工审批",
+    text: "intercept: mysqldump が破壊的ルールに該当、手動承認待ち",
   },
 ];
 
@@ -95,8 +95,9 @@ export default function LogsPage() {
 
   // Live tail via SSE. on connect, replays whatever is in the ring (includes
   // DB-restored history from the last 100 rows written before restart).
-  // F6:凭据是 60s 一次性 ticket,EventSource 自带的自动重连第二次握手必然 401,
-  // 所以在连接彻底关闭后重新换票重连(seq 去重,重放无害)。
+  // F6:認証情報は 60s のワンタイム ticket、EventSource 標準の自動再接続は 2 回目の
+  // ハンドシェイクが必ず 401 になるため、接続が完全に閉じた後に ticket を取得し直して
+  // 再接続する(seq で重複排除、再送は無害)。
   React.useEffect(() => {
     if (MOCK) {
       setLines(MOCK_LOGS);
@@ -203,13 +204,13 @@ export default function LogsPage() {
   return (
     <div className="flex flex-1 flex-col gap-3">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">系统日志</h1>
-        <p className="text-muted-foreground text-sm">后端实时日志流(planner / worker / 数据库 / 流量 …)</p>
+        <h1 className="text-xl font-semibold tracking-tight">システムログ</h1>
+        <p className="text-muted-foreground text-sm">バックエンドのリアルタイムログストリーム（planner / worker / データベース / トラフィック …）</p>
       </div>
       <div className="flex flex-1 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Input
-            placeholder="过滤(文本 / tag)…"
+            placeholder="絞り込み（テキスト / tag）…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="h-8 max-w-xs"
@@ -223,7 +224,7 @@ export default function LogsPage() {
                 className="h-8"
                 onClick={() => setLevel(lv)}
               >
-                {lv === "all" ? "全部" : lv}
+                {lv === "all" ? "すべて" : lv}
               </Button>
             ))}
           </div>
@@ -233,14 +234,14 @@ export default function LogsPage() {
             className="h-8"
             onClick={() => setPaused((p) => !p)}
           >
-            {paused ? "已暂停" : "暂停"}
+            {paused ? "一時停止中" : "一時停止"}
           </Button>
           <Button size="sm" variant="outline" className="h-8" onClick={() => setLines([])}>
-            清空
+            クリア
           </Button>
           <span className="ml-auto text-xs text-muted-foreground">
             {counts.total} 行 · <span className="text-amber-600 dark:text-amber-400">{counts.warn} 警告</span> ·{" "}
-            <span className="text-red-600 dark:text-red-400">{counts.error} 错误</span>
+            <span className="text-red-600 dark:text-red-400">{counts.error} エラー</span>
           </span>
         </div>
 
@@ -260,12 +261,12 @@ export default function LogsPage() {
                 disabled={loadingHistory}
                 onClick={loadOlderHistory}
               >
-                {loadingHistory ? "加载中…" : "加载更早日志"}
+                {loadingHistory ? "読み込み中…" : "以前のログを読み込む"}
               </Button>
             </div>
           )}
           {filtered.length === 0 ? (
-            <p className="py-10 text-center text-muted-foreground">暂无日志。</p>
+            <p className="py-10 text-center text-muted-foreground">ログはありません。</p>
           ) : (
             filtered.map((l) => {
               const body =

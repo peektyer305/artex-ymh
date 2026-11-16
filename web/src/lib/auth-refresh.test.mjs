@@ -2,7 +2,7 @@ import { refreshAccessToken } from "./auth-refresh.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// auth-refresh.ts 在成功路径写 localStorage,node 里没有,给个最小 stub。
+// auth-refresh.ts は成功時に localStorage へ書き込むが node には存在しないため、最小限の stub を用意する。
 const store = new Map();
 globalThis.localStorage = {
   getItem: (k) => (store.has(k) ? store.get(k) : null),
@@ -31,7 +31,7 @@ test("concurrent 401s share a single in-flight refresh (single-flight)", async (
   });
   const fetchImpl = async () => {
     calls++;
-    await gate; // 挂住第一次 refresh,让并发调用叠上来
+    await gate; // 最初の refresh を止めて、並行呼び出しを重ねる
     return okResponse("tok-shared");
   };
   const p1 = refreshAccessToken(fetchImpl);
@@ -49,7 +49,7 @@ test("failed refresh returns false and the next call retries fresh", async () =>
     return { ok: false, json: async () => ({}) };
   };
   assert.equal(await refreshAccessToken(fetchImpl), false);
-  // 上一次 promise 已结算并清空,再调应触发新的请求而不是复用失败结果。
+  // 前回の promise は解決済みでクリアされているため、再度呼ぶと失敗結果を再利用せず新しいリクエストを発行する。
   assert.equal(await refreshAccessToken(fetchImpl), false);
   assert.equal(calls, 2);
 });

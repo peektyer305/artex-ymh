@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// 纯单测(不需要 PG):内网期 2 横向/喷洒底线规则的正则必须命中常见变体、
-// 不误伤正常命令。hashcat 本地破密不拦的取舍见 db.go builtinLateralRules 注释。
+// 純粋な単体テスト（PG 不要）:イントラネット期 2 の横展開/パスワードスプレー用レッドラインの正規表現が一般的な変種に命中し、
+// 正常なコマンドを誤検知しないこと。hashcat によるローカル解読を止めない判断は db.go の builtinLateralRules のコメントを参照。
 func TestBuiltinLateralRulePatterns(t *testing.T) {
 	hits := map[string][]string{
 		"crackmapexec/nxc": {
@@ -36,21 +36,21 @@ func TestBuiltinLateralRulePatterns(t *testing.T) {
 		},
 	}
 	misses := []string{
-		"hashcat -m 1000 ntlm.txt rockyou.txt",        // 本地破密,不拦(取舍见 db.go 注释)
-		"john --wordlist=rockyou.txt shadow.txt",      // 本地破密
-		"ssh administrator@10.0.0.5",                  // 正常登录
-		"smbclient //10.0.0.5/share -U administrator", // 正常 SMB 访问
-		"nmap -p 445,3389 10.0.0.0/24",                // 常规扫描
-		"impacket-secretsdump administrator@10.0.0.5", // secretsdump 不在本批
-		"python3 exploit.py 10.0.0.5",                 // 普通脚本
+		"hashcat -m 1000 ntlm.txt rockyou.txt",        // ローカル解読のためブロックしない（判断は db.go のコメント参照）
+		"john --wordlist=rockyou.txt shadow.txt",      // ローカル解読
+		"ssh administrator@10.0.0.5",                  // 正常なログイン
+		"smbclient //10.0.0.5/share -U administrator", // 正常な SMB アクセス
+		"nmap -p 445,3389 10.0.0.0/24",                // 通常のスキャン
+		"impacket-secretsdump administrator@10.0.0.5", // secretsdump は今回の対象外
+		"python3 exploit.py 10.0.0.5",                 // 通常のスクリプト
 	}
-	// 已知取舍:"cat medusa.jpg" 这类同名词文件会命中 hydra/medusa 的词边界匹配,
-	// ask(非 deny)下误伤代价是一次人工确认,可接受;不为消灭它把正则写复杂。
+	// 既知のトレードオフ:"cat medusa.jpg" のような同じ語を含むファイル名は hydra/medusa の語境界マッチに命中する。
+	// ask（deny ではない）では誤検知のコストは手動確認 1 回で許容範囲;それを消すために正規表現を複雑にはしない。
 	var rules []*regexp.Regexp
 	for _, r := range builtinLateralRules {
 		re, err := regexp.Compile(r.pattern)
 		if err != nil {
-			t.Fatalf("规则 %q 正则编译失败: %v", r.name, err)
+			t.Fatalf("ルール %q の正規表現コンパイルに失敗しました: %v", r.name, err)
 		}
 		rules = append(rules, re)
 	}
@@ -65,13 +65,13 @@ func TestBuiltinLateralRulePatterns(t *testing.T) {
 	for group, cmds := range hits {
 		for _, c := range cmds {
 			if !matchAny(c) {
-				t.Errorf("[%s] 应命中但未命中: %s", group, c)
+				t.Errorf("[%s] は命中すべきですが未命中です: %s", group, c)
 			}
 		}
 	}
 	for _, c := range misses {
 		if matchAny(c) {
-			t.Errorf("误伤正常命令: %s", c)
+			t.Errorf("正常なコマンドを誤検知しました: %s", c)
 		}
 	}
 }

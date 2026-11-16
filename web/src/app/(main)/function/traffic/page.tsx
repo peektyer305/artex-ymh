@@ -217,7 +217,7 @@ export default function TrafficPage() {
         if (alive) setDetail(d);
       })
       .catch(() => {
-        if (alive) setDetail({ req: "（无法加载报文）", resp: "" });
+        if (alive) setDetail({ req: "（通信内容を読み込めません）", resp: "" });
       })
       .finally(() => {
         if (alive) setDetailLoading(false);
@@ -237,8 +237,8 @@ export default function TrafficPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">流量</h1>
-          <p className="text-muted-foreground text-sm">全局录制代理 · 所有 HTTP 往来</p>
+          <h1 className="text-xl font-semibold tracking-tight">トラフィック</h1>
+          <p className="text-muted-foreground text-sm">全体記録プロキシ · すべての HTTP 通信</p>
         </div>
         <div className="flex items-center gap-4 text-sm">
           <span
@@ -250,11 +250,11 @@ export default function TrafficPage() {
             )}
           >
             <RadioTowerIcon className="size-3.5" />
-            {traffic?.enabled ? "录制中" : "已停用"}
+            {traffic?.enabled ? "記録中" : "無効"}
           </span>
           {traffic?.proxy && <span className="font-mono text-xs text-muted-foreground">{traffic.proxy}</span>}
           <span className="text-xs text-muted-foreground">
-            共 <span className="tabular-nums">{traffic?.count ?? 0}</span> 条
+            計 <span className="tabular-nums">{traffic?.count ?? 0}</span> 件
           </span>
         </div>
       </div>
@@ -265,7 +265,7 @@ export default function TrafficPage() {
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="h-8">
               <ListChecksIcon className="size-3.5" />
-              {selectedHosts.length > 0 ? `选择目标（${selectedHosts.length}）` : "选择目标…"}
+              {selectedHosts.length > 0 ? `ターゲット選択（${selectedHosts.length}）` : "ターゲットを選択…"}
             </Button>
           </PopoverTrigger>
           <PopoverContent
@@ -274,7 +274,7 @@ export default function TrafficPage() {
             collisionPadding={16}
           >
             <div className="flex items-center justify-between border-b px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">按目标批量删除</span>
+              <span className="text-xs font-medium text-muted-foreground">ターゲット別に一括削除</span>
               <div className="flex items-center gap-1">
                 {hosts.length > 0 && (
                   <Tooltip>
@@ -285,14 +285,14 @@ export default function TrafficPage() {
                         onClick={() => setHostCountSortDirection((current) => (current === "desc" ? "asc" : "desc"))}
                         aria-label={
                           hostCountSortDirection === "desc"
-                            ? "数据包数量当前倒序，点击切换为正序"
-                            : "数据包数量当前正序，点击切换为倒序"
+                            ? "パケット数は現在降順、クリックで昇順に切り替え"
+                            : "パケット数は現在昇順、クリックで降順に切り替え"
                         }
                       >
                         {hostCountSortDirection === "desc" ? <ArrowDownWideNarrowIcon /> : <ArrowUpNarrowWideIcon />}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>按数据包数量{hostCountSortDirection === "desc" ? "倒序" : "正序"}</TooltipContent>
+                    <TooltipContent>パケット数で{hostCountSortDirection === "desc" ? "降順" : "昇順"}</TooltipContent>
                   </Tooltip>
                 )}
                 {hosts.length > 0 && (
@@ -302,14 +302,14 @@ export default function TrafficPage() {
                     className="h-6 px-2 text-xs"
                     onClick={() => setSelectedHosts(allSelected ? [] : hosts.map((h) => h.host))}
                   >
-                    {allSelected ? "取消全选" : "全选"}
+                    {allSelected ? "全選択を解除" : "全選択"}
                   </Button>
                 )}
               </div>
             </div>
             <div className="max-h-64 overflow-y-auto">
               {hosts.length === 0 ? (
-                <div className="px-3 py-6 text-center text-xs text-muted-foreground">暂无流量记录</div>
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">トラフィックの記録なし</div>
               ) : (
                 sortedHosts.map((h, index) => (
                   <label
@@ -343,7 +343,7 @@ export default function TrafficPage() {
                   setPickerOpen(false);
                 }}
               >
-                删除选中（{selectedHosts.length}）
+                選択を削除（{selectedHosts.length}）
               </Button>
             </div>
           </PopoverContent>
@@ -356,16 +356,16 @@ export default function TrafficPage() {
           size="sm"
           className="h-8"
           disabled={!hostQ || deleting}
-          title={hostQ ? undefined : "先在左侧选择目标或输入 host"}
+          title={hostQ ? undefined : "先に左側でターゲットを選択するか host を入力"}
           onClick={() => setDeleteMode("filter")}
         >
           <Trash2Icon className="size-3.5" />
-          删除该目标
+          このターゲットを削除
         </Button>
         <div className="relative max-w-sm flex-1">
           <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="搜索全部（URL / 方法 / 类型 / 状态码…）"
+            placeholder="すべて検索（URL / メソッド / 種類 / ステータスコード…）"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="h-8 pl-8"
@@ -373,10 +373,10 @@ export default function TrafficPage() {
         </div>
         <Select value={method} onValueChange={setMethod}>
           <SelectTrigger size="sm" className="w-32">
-            <SelectValue placeholder="方法" />
+            <SelectValue placeholder="メソッド" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部方法</SelectItem>
+            <SelectItem value="all">すべてのメソッド</SelectItem>
             {METHODS.map((m) => (
               <SelectItem key={m} value={m}>
                 {m}
@@ -391,7 +391,7 @@ export default function TrafficPage() {
           <SelectContent>
             {PAGE_SIZES.map((n) => (
               <SelectItem key={n} value={String(n)}>
-                {n} / 页
+                {n} / ページ
               </SelectItem>
             ))}
           </SelectContent>
@@ -426,13 +426,13 @@ export default function TrafficPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">已选 {selectedFlows.size} 条流量</span>
+        <span className="text-sm text-muted-foreground">選択済み {selectedFlows.size} 件のトラフィック</span>
         <Button variant="outline" size="sm" disabled={selectedFlows.size === 0} onClick={() => setLinking(true)}>
-          关联到漏洞
+          脆弱性に関連付け
         </Button>
         {selectedFlows.size > 0 ? (
           <Button variant="ghost" size="sm" onClick={() => setSelectedFlows(new Set())}>
-            清空选择
+            選択をクリア
           </Button>
         ) : null}
       </div>
@@ -445,7 +445,7 @@ export default function TrafficPage() {
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
-                      aria-label="选择本页流量"
+                      aria-label="このページのトラフィックを選択"
                       checked={exchanges.length > 0 && exchanges.every((e) => selectedFlows.has(e.id))}
                       onCheckedChange={(checked) =>
                         setSelectedFlows((previous) => {
@@ -459,13 +459,13 @@ export default function TrafficPage() {
                       }
                     />
                   </TableHead>
-                  <TableHead className="w-36">时间</TableHead>
+                  <TableHead className="w-36">時刻</TableHead>
                   <TableHead className="w-44">host</TableHead>
-                  <TableHead className="w-20">方法</TableHead>
+                  <TableHead className="w-20">メソッド</TableHead>
                   <TableHead>URL</TableHead>
-                  <TableHead className="w-20">状态码</TableHead>
+                  <TableHead className="w-20">ステータスコード</TableHead>
                   <TableHead className="w-36">content-type</TableHead>
-                  <TableHead className="w-24 text-right">响应长度</TableHead>
+                  <TableHead className="w-24 text-right">レスポンス長</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -477,7 +477,7 @@ export default function TrafficPage() {
                   >
                     <TableCell>
                       <Checkbox
-                        aria-label={`选择流量 ${e.id}`}
+                        aria-label={`トラフィック ${e.id} を選択`}
                         checked={selectedFlows.has(e.id)}
                         onClick={(event) => event.stopPropagation()}
                         onCheckedChange={(checked) =>
@@ -510,7 +510,7 @@ export default function TrafficPage() {
                 {exchanges.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
-                      {traffic === null ? "加载中…" : "没有匹配的流量。"}
+                      {traffic === null ? "読み込み中…" : "一致するトラフィックはありません。"}
                     </TableCell>
                   </TableRow>
                 )}
@@ -544,14 +544,14 @@ export default function TrafficPage() {
               </SheetHeader>
               <Tabs defaultValue="request" className="min-h-0 flex-1 gap-0">
                 <TabsList className="mx-5 mt-4 grid w-auto grid-cols-2">
-                  <TabsTrigger value="request">请求 Request</TabsTrigger>
-                  <TabsTrigger value="response">响应 Response</TabsTrigger>
+                  <TabsTrigger value="request">リクエスト Request</TabsTrigger>
+                  <TabsTrigger value="response">レスポンス Response</TabsTrigger>
                 </TabsList>
                 <TabsContent value="request" className="min-h-0 overflow-auto">
                   {detailLoading ? (
                     <div className="flex items-center gap-2 p-5 text-xs text-muted-foreground">
                       <Loader2Icon className="size-3.5 animate-spin" />
-                      加载报文…
+                      通信内容を読み込み中…
                     </div>
                   ) : (
                     <HttpCodeBlock raw={requestWithHost(detail?.req ?? "", selected)} />
@@ -561,7 +561,7 @@ export default function TrafficPage() {
                   {detailLoading ? (
                     <div className="flex items-center gap-2 p-5 text-xs text-muted-foreground">
                       <Loader2Icon className="size-3.5 animate-spin" />
-                      加载报文…
+                      通信内容を読み込み中…
                     </div>
                   ) : (
                     <HttpCodeBlock raw={detail?.resp ?? ""} />
@@ -583,29 +583,29 @@ export default function TrafficPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {deleteMode === "selected"
-                ? `删除选中的 ${selectedHosts.length} 个目标的全部流量？`
-                : "删除该目标的全部流量？"}
+                ? `選択した ${selectedHosts.length} ターゲットの全トラフィックを削除？`
+                : "このターゲットの全トラフィックを削除？"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {deleteMode === "selected" ? (
                 <>
-                  将永久删除 <span className="font-semibold tabular-nums">{selectedHosts.length}</span> 个目标（
+                  次の <span className="font-semibold tabular-nums">{selectedHosts.length}</span> 件のターゲット（
                   <span className="font-mono">
                     {selectedHosts.slice(0, 3).join("、")}
                     {selectedHosts.length > 3 ? "…" : ""}
                   </span>
-                  ）的所有流量记录（含请求/响应原文），此操作不可撤销。
+                  ）のすべてのトラフィック記録（リクエスト/レスポンス原文を含む）を永久に削除します。この操作は元に戻せません。
                 </>
               ) : (
                 <>
-                  将永久删除 host 包含 <span className="font-mono font-semibold">{hostQ}</span>{" "}
-                  的所有流量记录（含请求/响应原文），此操作不可撤销。
+                  host に <span className="font-mono font-semibold">{hostQ}</span>{" "}
+                  を含むすべてのトラフィック記録（リクエスト/レスポンス原文を含む）を永久に削除します。この操作は元に戻せません。
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>キャンセル</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -614,7 +614,7 @@ export default function TrafficPage() {
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? "删除中…" : "确认删除"}
+              {deleting ? "削除中…" : "削除する"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

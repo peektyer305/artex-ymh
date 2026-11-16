@@ -16,7 +16,7 @@ import { SearchDialog } from "./sidebar/search-dialog";
 import { ThemeSwitcher } from "./sidebar/theme-switcher";
 import { UpdateBadge } from "./update-badge";
 
-// 任务详情页保持原样：它自带头部/Tabs 与内边距，这里不再叠加全局头部和 padding。
+// タスク詳細ページはそのまま表示する：独自のヘッダー/タブと内側の余白を持つため、ここでグローバルヘッダーと padding を重ねない。
 function isFullBleed(pathname: string) {
   const p = (() => {
     try {
@@ -63,7 +63,7 @@ export function MainContent({ children }: { children: ReactNode }) {
           </div>
           <div className="flex items-center gap-2">
             {version && (
-              <span className="font-medium text-muted-foreground text-xs tabular-nums">版本 · {version}</span>
+              <span className="font-medium text-muted-foreground text-xs tabular-nums">バージョン · {version}</span>
             )}
             <UpdateBadge />
             <LayoutControls />

@@ -11,7 +11,7 @@ import (
 	"github.com/Autumn-27/artex/intercept"
 )
 
-// 一键放行开启时:ask 规则直通(历史记 auto_allow),deny 规则照常拦截不豁免。
+// 一括許可が有効なとき：ask ルールはそのまま通し（履歴に auto_allow を記録）、deny ルールは通常どおりブロックされ免除されない。
 func TestAutoAllowKeepsDenyEnforced(t *testing.T) {
 	dsn, _, err := db.DSN()
 	if err != nil {
@@ -29,12 +29,12 @@ func TestAutoAllowKeepsDenyEnforced(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = ic.SetAutoAllow(false, 0) })
 	if !ic.IsToolEnabled("Bash") {
-		t.Skip("Bash 不在拦截范围内,无法验证规则行为")
+		t.Skip("Bash がインターセプト対象外のため、ルールの動作を検証できません")
 	}
 
-	// 两条测试规则:相同前缀的 marker,一条 deny 一条 ask,最高优先级。
+	// テスト用ルール 2 件:同じ接頭辞の marker で、1 件は deny、1 件は ask、最高優先度。
 	marker := fmt.Sprintf("autoallow-guard-%d", time.Now().UnixNano())
-	denyRule, err := d.CreateInterceptRule("autoallow-test-deny", "tool_input", "string", marker+"-deny", "deny", "deny 兜底", 1<<30, true, false, 0, "deny")
+	denyRule, err := d.CreateInterceptRule("autoallow-test-deny", "tool_input", "string", marker+"-deny", "deny", "deny フォールバック", 1<<30, true, false, 0, "deny")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestAutoAllowKeepsDenyEnforced(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// deny:照常拦截,且不产生 auto_allow 历史。
+	// deny:通常どおりブロックされ、auto_allow の履歴も生成されない。
 	if !call(marker + "-deny") {
 		t.Fatal("auto-allow must not exempt deny rules")
 	}
@@ -74,7 +74,7 @@ func TestAutoAllowKeepsDenyEnforced(t *testing.T) {
 		t.Fatal("deny path must not record auto_allow decisions")
 	}
 
-	// ask:直通,历史记 auto_allow。
+	// ask:そのまま通り、履歴に auto_allow を記録。
 	if call(marker + "-ask") {
 		t.Fatal("auto-allow enabled: ask rule should pass through")
 	}
@@ -87,7 +87,7 @@ func TestAutoAllowKeepsDenyEnforced(t *testing.T) {
 		t.Fatalf("decision_source = %s, want auto_allow", source)
 	}
 
-	// 关闭后:ask 回到人工审批路径(ctx 超时 → 拦截),deny 仍拦截。
+	// 無効化後：ask は手動承認の経路に戻り（ctx タイムアウト → ブロック）、deny は引き続きブロック。
 	if err := ic.SetAutoAllow(false, 0); err != nil {
 		t.Fatal(err)
 	}

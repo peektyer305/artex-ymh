@@ -1,14 +1,16 @@
 package guard
 
-// 批 5 B3(设计文档 HONEYPOT-DETECTION-DESIGN.md 二-B「自身防护」第 5 条):tarpit 熔断。
-// Nepenthes / Cloudflare AI Labyrinth 类反爬虫迷宫用无限假页面困死抓取方、烧光
-// 任务预算。本文件按「每任务每 host」计数 WebFetch 抓取调用,超过预算触发一次
-// 熔断:经 Hint 回调写 hint 节点进探索图(planner 每轮 graph overview 必读 hints,
-// 参照停滞检测 hint 的既有通道),提示停派该方向;之后对该 host 的抓取仍 warn
-// 放行——不硬 block,防误杀真实大站。
+// バッチ 5 B3（設計ドキュメント HONEYPOT-DETECTION-DESIGN.md 二-B「自己防護」第 5 条）:tarpit サーキットブレーカー。
+// Nepenthes / Cloudflare AI Labyrinth のようなクローラー迷路は無限の偽ページで
+// クローラーを拘束し、タスク予算を焼き尽くす。本ファイルは「タスクごと・host ごと」に
+// WebFetch の呼び出しを数え、予算超過で一度だけサーキットブレーカーを発動する:
+// Hint コールバック経由で探索グラフに hint ノードを書き込み（planner は毎ターン
+// graph overview で hints を必ず読む。停滞検知 hint の既存チャネルを参照）、
+// この方向への割り当て停止を促す。以降その host への取得は warn で通過させる——
+// ハード block はせず、実在する大規模サイトの誤爆を防ぐ。
 //
-// 计数器在内存里(每任务一个 Guard,见 server taskFromPG),任务重启清零:重启后
-// 重新爬一遍才会再触发,代价可接受,不落库。
+// カウンタはメモリ上（タスクごとに 1 つの Guard。server taskFromPG 参照）。タスク再起動で
+// ゼロに戻り、再クロール時に再発火する。コストは許容範囲で、DB には保存しない。
 
 import (
 	"encoding/json"
@@ -19,28 +21,29 @@ import (
 	"github.com/Autumn-27/norma/hook"
 )
 
-// defaultTarpitFetchBudget 是每 host 抓取调用的默认预算(settings 键
-// tarpit_fetch_budget 可配,<=0 或非法值回落到它)。
+// defaultTarpitFetchBudget は host あたりの取得呼び出しのデフォルト予算（settings キー
+// tarpit_fetch_budget で設定可能。<=0 または不正な値ならこれにフォールバックする）。
 const defaultTarpitFetchBudget = 40
 
-// TarpitConfig 是 tarpit 熔断的装配:两个回调都由 server 注入(guard 不反向
-// 依赖 db/server)。
+// TarpitConfig は tarpit サーキットブレーカーの組み立て。2 つのコールバックは
+// いずれも server が注入する（guard は db/server に逆依存しない）。
 type TarpitConfig struct {
-	// Budget 返回当前预算(settings tarpit_fetch_budget)。nil 或返回 <=0 → 默认 40。
+	// Budget は現在の予算を返す（settings tarpit_fetch_budget）。nil または <=0 を返す → デフォルト 40。
 	Budget func() int
-	// Hint 是熔断触发(每 host 只一次)时的回调,server 装配为写探索图 hint 节点。
-	// nil = 只记 guard 审计/日志。
+	// Hint は発動時（host ごとに 1 回だけ）のコールバック。server が探索グラフの hint ノード書き込みとして組み立てる。
+	// nil = guard の監査/ログのみ記録。
 	Hint func(host string, count int)
 }
 
-// tarpitState 是每 Guard(=每任务)的 tarpit 计数状态;经 Guard.mu 串行化。
+// tarpitState は Guard ごと（=タスクごと）の tarpit カウント状態。Guard.mu で直列化する。
 type tarpitState struct {
 	cfg    TarpitConfig
 	counts map[string]int
-	fired  map[string]bool // 每 host 只熔断一次
+	fired  map[string]bool // host ごとに 1 回だけ発動
 }
 
-// SetTarpit 装配 tarpit 熔断。零值/再传 nil 回调只是降级(不写 hint),不报错。
+// SetTarpit は tarpit サーキットブレーカーを組み立てる。ゼロ値/nil コールバックの再設定は
+// 単なる機能低下（hint を書かない）で、エラーにはしない。
 func (g *Guard) SetTarpit(cfg TarpitConfig) {
 	g.mu.Lock()
 	g.tarpit = &tarpitState{cfg: cfg, counts: map[string]int{}, fired: map[string]bool{}}
@@ -57,9 +60,9 @@ func (c TarpitConfig) budget() int {
 	return defaultTarpitFetchBudget
 }
 
-// checkTarpit 统计 WebFetch 对同一 host 的抓取调用;超预算时熔断一次(写 hint),
-// 之后对该 host 一律 warn 放行(只记审计,不 block)。非 WebFetch / 无法解析
-// host 的调用直接放行。
+// checkTarpit は同一 host に対する WebFetch の取得呼び出しを数える。予算超過時に一度だけ発動し（hint を書く）、
+// 以降その host へは一律 warn で通過させる（監査のみ記録し、block しない）。WebFetch 以外 / host を
+// 解析できない呼び出しはそのまま通過させる。
 func (g *Guard) checkTarpit(ev hook.Event) {
 	if ev.ToolName != "WebFetch" {
 		return
@@ -97,20 +100,20 @@ func (g *Guard) checkTarpit(ev hook.Event) {
 		return
 	}
 	if first {
-		// 熔断:记审计 + 回调写 hint(host/次数),提示 planner 停派该方向。
+		// 発動:監査を記録し、コールバックで hint（host/回数）を書き、planner にこの方向への割り当て停止を促す。
 		g.record(ev.ToolName, "allow", tarpitMessage(host, count, budget), "")
-		log.Printf("[guard][tarpit] host %s 抓取调用 %d 次超过预算 %d,已熔断告警(warn 放行)", host, count, budget)
+		log.Printf("[guard][tarpit] host %s の取得呼び出しが %d 回で予算 %d を超過しました。発動を警告します（warn で通過）", host, count, budget)
 		if st.cfg.Hint != nil {
 			st.cfg.Hint(host, count)
 		}
 		return
 	}
-	// 已熔断过的 host:warn 放行——不硬 block(防误杀真实大站),但每次留一条
-	// 轻量审计,事后能还原「熔断后仍在抓」的行为。
+	// 発動済みの host は warn で通過させる——ハード block はせず（実在する大規模サイトの誤爆防止）、
+	// 毎回軽量な監査を 1 行残し、後から「発動後も取得している」動作を復元できるようにする。
 	g.record(ev.ToolName, "allow", "tarpit 熔断后仍抓取 "+host, "")
 }
 
-// tarpitMessage 是熔断审计/hint 共用的文案:疑似 tarpit 迷宫(host,次数)。
+// tarpitMessage は発動監査/hint で共用する文言:疑わしい tarpit 迷路（host、回数）。
 func tarpitMessage(host string, count, budget int) string {
 	return "疑似 tarpit 迷宫(" + host + ",抓取 " + strconv.Itoa(count) + " 次,预算 " + strconv.Itoa(budget) + ")"
 }

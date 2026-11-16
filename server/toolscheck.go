@@ -1,8 +1,8 @@
-// toolscheck.go 启动期外部工具完整性自检（期 6 部署链加固）:server.New 时读
-// 钉版清单（packaging/tools-manifest.json，或 ARTEX_TOOLS_MANIFEST 指定）,
-// 对存在的二进制校 sha256（清单里非空的才校）。清单文件缺失（开发态）静默跳过；
-// 工具缺失是常态（精简环境只装部分工具），只打一行汇总不刷屏；哈希不匹配只警告
-// 不阻断（用户可能自编译）。详细逐项报告用 `artex doctor`。
+// toolscheck.go は起動時の外部ツール完全性セルフチェック(期 6 デプロイチェーン強化):server.New 時に
+// 固定版マニフェスト(packaging/tools-manifest.json、または ARTEX_TOOLS_MANIFEST 指定)を読み、
+// 存在するバイナリの sha256 を検証する(マニフェストで空でないもののみ)。マニフェストファイルがない場合(開発時)は黙ってスキップし、
+// ツールの欠落は常態(最小構成では一部のみ導入)なので 1 行のサマリだけ出して画面を埋めない。ハッシュ不一致は警告のみで
+// ブロックしない(ユーザーが自前ビルドした可能性がある)。詳細な項目別レポートは `artex doctor`。
 package server
 
 import (
@@ -13,12 +13,12 @@ import (
 	"github.com/Autumn-27/artex/tools"
 )
 
-// checkToolsManifest 执行启动自检并打日志；任何失败都只记日志，不拖垮启动。
+// checkToolsManifest は起動時のセルフチェックを実行してログを出す。失敗してもログのみで、起動は止めない。
 func checkToolsManifest(dataDir string) {
 	m, err := tools.Load(tools.ManifestPath())
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("[tools] 清单解析失败（跳过自检）: %v", err)
+			log.Printf("[tools] マニフェストの解析に失敗しました(セルフチェックをスキップ): %v", err)
 		}
 		return
 	}
@@ -31,18 +31,18 @@ func checkToolsManifest(dataDir string) {
 			unpinned = append(unpinned, r.Entry.Name)
 		case tools.StatusMismatch:
 			mismatch = append(mismatch, r.Entry.Name)
-			log.Printf("[tools] ⚠ %s 哈希不匹配（期望 %s，实际 %s)——可能是自编译/新版，仅警告不阻断",
+			log.Printf("[tools] ⚠ %s のハッシュが一致しません(期待 %s、実際 %s)——自前ビルド/新版の可能性があります。警告のみでブロックしません",
 				r.Entry.Name, r.Entry.SHA256, r.Actual)
 		case tools.StatusMissing:
 			missing = append(missing, r.Entry.Name)
 		}
 	}
-	log.Printf("[tools] 清单自检：sha256 一致 %d，存在未钉 %d，缺失 %d，不匹配 %d%s%s",
+	log.Printf("[tools] マニフェストセルフチェック：sha256 一致 %d、未固定 %d、欠落 %d、不一致 %d%s%s",
 		len(ok), len(unpinned), len(missing), len(mismatch),
-		toolsListNote("缺失", missing), toolsListNote("不匹配", mismatch))
+		toolsListNote("欠落", missing), toolsListNote("不一致", mismatch))
 }
 
-// toolsListNote 把名单拼成汇总行后缀；空名单不输出（别刷屏）。
+// toolsListNote はリストをサマリ行の接尾辞に組み立てる。空のリストは出力しない(画面を埋めない)。
 func toolsListNote(label string, names []string) string {
 	if len(names) == 0 {
 		return ""

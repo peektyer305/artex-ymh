@@ -85,13 +85,13 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 				}
 				cl, err := connectMCP(ctx, m)
 				if err != nil {
-					log.Printf("[mcp] %s 连接失败: %v", m.Name, err)
+					log.Printf("[mcp] %s の接続に失敗しました: %v", m.Name, err)
 					continue
 				}
 				closers = append(closers, cl)
 				ts, err := cl.Tools(ctx)
 				if err != nil {
-					log.Printf("[mcp] %s tools/list 失败: %v", m.Name, err)
+					log.Printf("[mcp] %s の tools/list に失敗しました: %v", m.Name, err)
 					continue
 				}
 				for _, t := range ts {
@@ -195,11 +195,11 @@ func seedPrompts(pg *db.DB) {
 	for key, tmpl := range agent.BuiltinPromptSeeds() {
 		a, err := pg.GetAgentByKey(key)
 		if err != nil || a == nil {
-			log.Printf("[prompts] seed %s 跳过: agent 不存在 (%v)", key, err)
+			log.Printf("[prompts] seed %s をスキップ: agent が存在しません (%v)", key, err)
 			continue
 		}
 		if err := pg.SeedPromptIfEmpty(a.ID, tmpl); err != nil {
-			log.Printf("[prompts] seed %s 失败: %v", key, err)
+			log.Printf("[prompts] seed %s に失敗しました: %v", key, err)
 		}
 	}
 }
@@ -208,7 +208,7 @@ func seedPrompts(pg *db.DB) {
 // edits survive restart) and wires the DB tools table into the agent runtime: at
 // tool-assembly time each built-in tool is filtered by its agent binding / enabled
 // flag and, if kept, wrapped so the model sees the DB-overridden description/schema
-// and缺省入参 get injected. MCP/skill/host tools have no row and pass through.
+// and default arguments get injected. MCP/skill/host tools have no row and pass through.
 func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 	agent.FindingTrafficBindingEnabled = func() bool { return pg.GetBool(settingAgentTrafficBinding, false) }
 	// Seed the built-in domain tools (first-insert only; DO NOTHING preserves edits).
@@ -218,7 +218,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 		schema, _ := json.Marshal(s.Schema)
 		agents, _ := json.Marshal(s.Agents)
 		if err := pg.SeedTool(s.Key, s.Desc, schema, agents); err != nil {
-			log.Printf("[tools] seed %s 失败: %v", s.Key, err)
+			log.Printf("[tools] seed %s に失敗しました: %v", s.Key, err)
 		}
 	}
 	// Seed the traffic host tools so they're bindable per-agent like built-ins.
@@ -229,7 +229,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 	for _, t := range traffic.SeedToolMetas() {
 		schema, _ := json.Marshal(t.InputSchema())
 		if err := pg.SeedTool(t.Name(), t.Description(), schema, trafficAgents); err != nil {
-			log.Printf("[tools] seed %s 失败: %v", t.Name(), err)
+			log.Printf("[tools] seed %s に失敗しました: %v", t.Name(), err)
 		}
 	}
 	// bashInteractiveShellNote is appended to Bash's description ONLY for agents whose
@@ -239,7 +239,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 	agent.ToolResolve = func(ctx context.Context, agentKey string, tools []actool.CoreTool) []actool.CoreTool {
 		rows, err := pg.ListTools()
 		if err != nil {
-			log.Printf("[tools] 读取工具表失败，按代码默认放行: %v", err)
+			log.Printf("[tools] ツールテーブルの読み取りに失敗しました。コードのデフォルトで通過させます: %v", err)
 			return tools
 		}
 		byKey := make(map[string]*db.Tool, len(rows))
@@ -320,8 +320,8 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 				}
 			}
 		}
-		// 批 5 B4:只有 worker 的 BashEnv 注入了 ARTEX_UA(见 worker.go uaEnv),
-		// UA 纪律说明也只绑 worker 的 Bash 描述,其他 agent 无此变量、不 dangling。
+		// バッチ 5 B4:worker の BashEnv にのみ ARTEX_UA が注入されるため(worker.go uaEnv 参照)、
+		// UA 規律の説明も worker の Bash 説明にのみ付加する。他の agent にはこの変数がなく、ぶら下がらない。
 		if agentKey == "worker" {
 			for i, t := range out {
 				if t.Name() == "Bash" {
@@ -334,8 +334,8 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 	}
 }
 
-// bashUANote 是批 5 B4 追加进 worker Bash 描述的 UA 使用纪律(与
-// bashInteractiveShellNote 同一套代码固定追加法,DB 描述覆盖不掉)。
+// bashUANote はバッチ 5 B4 で worker の Bash 説明に追加された UA 使用規律(実際は
+// bashInteractiveShellNote と同じくコードで固定追加する方式で、DB の説明では上書きできない)。
 const bashUANote = "\n\nHTTP 客户端(curl/httpx 等)统一使用 $ARTEX_UA 作为 User-Agent(本任务稳定分配,任务内不要更换);禁止裸 Chrome UA+库 TLS 之外的组合伪装(UA/TLS 指纹失配正是反 AI 蜜罐的触发器);疑似反 AI 陷阱的目标改用 browser MCP 访问。"
 
 func contains(ss []string, v string) bool {

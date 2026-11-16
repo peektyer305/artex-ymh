@@ -12,7 +12,7 @@ func TestExplorationFlow(t *testing.T) {
 	}
 	defer d.Close()
 
-	expID, err := d.CreateExploration("test", "拿下测试目标")
+	expID, err := d.CreateExploration("test", "テスト目標の攻略")
 	if err != nil {
 		t.Fatal(err)
 	}

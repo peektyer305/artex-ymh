@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import type { IntranetSegment, IntranetTopology } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// 网段配色盘：按 segments 顺序取色，超出循环复用。
+// セグメント配色パレット：segments の順に色を割り当て、超過分は循環して再利用します。
 const SEGMENT_PALETTE = [
   "#3b82f6",
   "#10b981",
@@ -23,8 +23,8 @@ const SEGMENT_PALETTE = [
   "#14b8a6",
 ];
 
-// 与资产覆盖图同一套做法：lucide 图标（v1.22 路径）渲染成白色 data URI 作节点图标，
-// 手写内嵌以避免 react-dom/server 在 React19/Next 客户端打包的问题。
+// アセットカバレッジ図と同じ方式：lucide アイコン（v1.22 パス）を白い data URI としてノードアイコンに描画します。
+// react-dom/server が React19/Next のクライアントバンドルで問題を起こすため、手書きで埋め込みます。
 function svgUri(inner: string, filled = false): string {
   const attrs = filled
     ? 'fill="#fff" stroke="none"'
@@ -33,7 +33,7 @@ function svgUri(inner: string, filled = false): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-// 普通主机 = 显示器；平台自身（回连端）= 实心五角星。
+// 一般ホスト = モニター、プラットフォーム自身（コールバック端）= 塗りつぶしの五芒星。
 const HOST_ICON = svgUri(
   '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" x2="16" y1="21" x2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
 );
@@ -50,8 +50,8 @@ export function segmentColor(segments: IntranetSegment[], segment: string): stri
   return SEGMENT_PALETTE[idx % SEGMENT_PALETTE.length];
 }
 
-// G6 的类型把自定义字段归在 data 下，但官方 force 示例（及运行时）按顶层读 d.<field>。
-// 回调形参用 unknown 满足 G6 签名，内部用 nd()/ed() 强转回我们的顶层结构。
+// G6 の型ではカスタムフィールドは data 配下ですが、公式の force サンプル（および実行時）はトップレベルの d.<field> を読みます。
+// コールバックの仮引数は unknown で G6 のシグネチャを満たし、内部で nd()/ed() によりトップレベル構造へキャストします。
 type G6NodeDatum = {
   id: string;
   lbl: string;
@@ -98,13 +98,13 @@ function TopologyLegend({
       <div className="flex items-center justify-between gap-3">
         {data ? (
           <span className="text-muted-foreground">
-            主机 <span className="text-foreground font-semibold tabular-nums">{nodeCount}</span> · 存活链路{" "}
+            ホスト <span className="text-foreground font-semibold tabular-nums">{nodeCount}</span> · 稼働中のリンク{" "}
             <span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{aliveEdges}</span>
           </span>
         ) : (
-          <span className="text-muted-foreground">{loading ? "加载中…" : "暂无拓扑数据"}</span>
+          <span className="text-muted-foreground">{loading ? "読み込み中…" : "トポロジデータはありません"}</span>
         )}
-        <Button variant="ghost" size="icon" className="size-6" onClick={onRefresh} title="刷新">
+        <Button variant="ghost" size="icon" className="size-6" onClick={onRefresh} title="更新">
           <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
         </Button>
       </div>
@@ -120,10 +120,10 @@ function TopologyLegend({
       )}
       <div className="border-border/60 text-muted-foreground flex flex-wrap gap-x-3 gap-y-1.5 border-t pt-2">
         <span className="inline-flex items-center gap-1.5">
-          <span className="size-3 rounded-full border-2 border-emerald-600 bg-neutral-300" /> 有存活会话
+          <span className="size-3 rounded-full border-2 border-emerald-600 bg-neutral-300" /> 稼働中のセッションあり
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="size-3 rounded-full border border-white/70 bg-neutral-400" /> 无会话
+          <span className="size-3 rounded-full border border-white/70 bg-neutral-400" /> セッションなし
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="flex size-3 items-center justify-center rounded-full bg-slate-500">
@@ -131,25 +131,25 @@ function TopologyLegend({
               <path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6-5.9-3.3-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z" />
             </svg>
           </span>
-          平台自身
+          プラットフォーム自身
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-0.5 w-4 rounded-full bg-emerald-500" /> 存活隧道
+          <span className="h-0.5 w-4 rounded-full bg-emerald-500" /> 稼働中のトンネル
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-0 w-4 border-t-2 border-dashed border-neutral-400" /> 停止/失败
+          <span className="h-0 w-4 border-t-2 border-dashed border-neutral-400" /> 停止/失敗
         </span>
       </div>
       <p className="text-muted-foreground/80 border-border/60 border-t pt-2 leading-relaxed">
-        力导向布局，可拖拽节点、滚轮缩放；点击主机节点可在下方「会话」页签中过滤该主机的会话。
+        力学レイアウトです。ノードはドラッグ、ホイールで拡大縮小できます。ホストノードをクリックすると、下部の「セッション」タブでそのホストのセッションに絞り込めます。
       </p>
     </div>
   );
 }
 
-// TopologyGraph 渲染内网主机拓扑：节点=主机（按网段着色、有会话加边框、平台自身星标），
-// 边=隧道（alive 实线绿 / stopped·error 虚线灰）。点击节点回调 onSelectHost。
-// 复用资产覆盖图的 G6 d3-force 模式（动态 import 避开 SSR/静态导出期的 window 依赖）。
+// TopologyGraph はイントラネットのホストトポロジを描画します。ノード=ホスト（セグメント別の色分け、セッションありは枠線、プラットフォーム自身は星印）、
+// エッジ=トンネル（alive は実線の緑、stopped·error は破線の灰）。ノードクリックで onSelectHost を呼びます。
+// アセットカバレッジ図の G6 d3-force モードを再利用します（動的 import で SSR/静的エクスポート時の window 依存を回避）。
 export function TopologyGraph({
   data,
   loading,
@@ -166,11 +166,11 @@ export function TopologyGraph({
   const gDataRef = React.useRef<{ nodes: G6NodeDatum[]; edges: G6EdgeDatum[] }>({ nodes: [], edges: [] });
   const onSelectHostRef = React.useRef(onSelectHost);
   onSelectHostRef.current = onSelectHost;
-  // 建图回调（闭包）里读最新 segments 顺序解析网段色，保证图与图例同色。
+  // グラフ構築コールバック（クロージャ）内で最新の segments 順を読み、セグメント色を解決して図と凡例の色を一致させます。
   const segmentsRef = React.useRef<IntranetSegment[]>([]);
   segmentsRef.current = data?.segments ?? [];
 
-  // 结构签名：节点/边集合或其关键状态变化时才重灌数据重跑布局，避免轮询期无谓抖动。
+  // 構造シグネチャ：ノード・エッジ集合やその重要状態が変化した時だけデータを入れ替えてレイアウトを再実行し、ポーリング中の無駄な揺れを防ぎます。
   const sig = React.useMemo(() => {
     if (!data) return "";
     const ns = data.nodes
@@ -190,14 +190,14 @@ export function TopologyGraph({
     const graph = graphRef.current;
     if (!graph || graph.destroyed) return;
     graph.setData(gDataRef.current);
-    // render() 异步跑 d3-force 布局；组件在布局落地前卸载时 G6 会在已清空的 context 上
-    // 访问 transform 抛错（纯 teardown 竞态），吞掉即可；真正的渲染错误仍打日志。
+    // render() は d3-force レイアウトを非同期で実行します。レイアウト完了前にコンポーネントがアンマウントされると、G6 はクリア済みの context で
+    // transform にアクセスして例外を投げます（純粋な teardown 競合）。これは握り潰してよく、実際の描画エラーは引き続きログ出力します。
     void graph.render().catch((err) => {
       if (!graph.destroyed) console.error("[intranet-topology] render:", err);
     });
   }, []);
 
-  // 建图（一次）。
+  // グラフ構築（1 回のみ）。
   React.useEffect(() => {
     let destroyed = false;
     let graph: G6Graph | null = null;
@@ -256,19 +256,19 @@ export function TopologyGraph({
     })();
     return () => {
       destroyed = true;
-      // 先停布局再销毁：尽量缩短「布局在飞、context 被清空」的竞态窗口。
+      // レイアウトを停止してから破棄し、「レイアウト実行中に context がクリアされる」競合の窓をできるだけ短くします。
       try {
         graph?.stopLayout();
       } catch {
-        /* 图可能尚未建成或已无布局上下文 */
+        /* グラフ未構築、またはレイアウトコンテキストが既にない可能性 */
       }
       graph?.destroy();
       graphRef.current = null;
     };
   }, [applyData]);
 
-  // 数据变化 → 重新灌数据 + 布局。sig 只作为重排触发器（applyData 读 gDataRef）。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: sig 是刻意的重排触发依赖
+  // データ変化 → データ再投入 + レイアウト。sig は再配置のトリガー専用（applyData は gDataRef を読む）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sig は意図的な再配置トリガーの依存
   React.useEffect(() => {
     applyData();
   }, [sig, applyData]);

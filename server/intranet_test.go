@@ -24,50 +24,50 @@ not a valid line at all
 `
 	entries := parseLsLa(out)
 	if len(entries) != 5 {
-		t.Fatalf("期望 5 条,实得 %d: %+v", len(entries), entries)
+		t.Fatalf("5 件を期待したが %d 件だった: %+v", len(entries), entries)
 	}
 	byName := map[string]dirEntry{}
 	for _, e := range entries {
 		byName[e.Name] = e
 	}
 	if e, ok := byName[".bashrc"]; !ok || e.IsDir || e.Size != 3771 {
-		t.Errorf(".bashrc 解析错误: %+v", e)
+		t.Errorf(".bashrc の解析が不正: %+v", e)
 	}
 	if e, ok := byName["my dir"]; !ok || !e.IsDir || e.Size != 4096 {
-		t.Errorf("带空格目录解析错误: %+v", e)
+		t.Errorf("スペースを含むディレクトリの解析が不正: %+v", e)
 	}
 	if e, ok := byName["link"]; !ok || e.IsDir || e.Size != 11 {
-		t.Errorf("symlink 应去掉 -> target 且非目录: %+v", e)
+		t.Errorf("symlink は -> target を除き、ディレクトリでないべき: %+v", e)
 	}
 	if e, ok := byName["dump.sql"]; !ok || e.IsDir || e.Size != 123456 {
-		t.Errorf("dump.sql 解析错误: %+v", e)
+		t.Errorf("dump.sql の解析が不正: %+v", e)
 	}
 	if _, ok := byName["."]; ok {
-		t.Error(". 应被跳过")
+		t.Error(". はスキップされるべき")
 	}
 	if _, ok := byName[".."]; ok {
-		t.Error(".. 应被跳过")
+		t.Error(".. はスキップされるべき")
 	}
 }
 
 func TestParseLsLaEmpty(t *testing.T) {
 	if got := parseLsLa(""); len(got) != 0 {
-		t.Fatalf("空输出应得空列表: %+v", got)
+		t.Fatalf("空の出力なら空のリストになるべき: %+v", got)
 	}
 	if got := parseLsLa("total 0\n"); len(got) != 0 {
-		t.Fatalf("仅 total 行应得空列表: %+v", got)
+		t.Fatalf("total 行だけなら空のリストになるべき: %+v", got)
 	}
 }
 
 func TestSegmentOf(t *testing.T) {
 	if got := segmentOf("10.0.0.5", "192.168.1.0/24"); got != "192.168.1.0/24" {
-		t.Errorf("c_segment 优先: %s", got)
+		t.Errorf("c_segment を優先すべき: %s", got)
 	}
 	if got := segmentOf("10.0.0.5", ""); got != "10.0.0.0/24" {
-		t.Errorf("IPv4 /24 推导: %s", got)
+		t.Errorf("IPv4 は /24 を導出すべき: %s", got)
 	}
 	if got := segmentOf("not-an-ip", ""); got != "" {
-		t.Errorf("非法 IP 应空: %q", got)
+		t.Errorf("不正な IP は空になるべき: %q", got)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestBuildTopology(t *testing.T) {
 	}
 	recs := []*db.SessionRecord{
 		{ID: 11, HostAssetID: 1, URL: "http://10.0.0.5/shell.php", Status: db.SessionAlive, CreatedByTask: 3},
-		{ID: 12, URL: "http://10.0.9.9:8080/s.jsp", Status: db.SessionAlive, CreatedByTask: 3}, // 无资产 → 合成节点
+		{ID: 12, URL: "http://10.0.9.9:8080/s.jsp", Status: db.SessionAlive, CreatedByTask: 3}, // アセットなし → 合成ノード
 		{ID: 13, HostAssetID: 2, URL: "http://10.0.1.7/x.php", Status: db.SessionDead, CreatedByTask: 3},
 	}
 	tuns := []*db.TunnelRecord{
@@ -89,9 +89,9 @@ func TestBuildTopology(t *testing.T) {
 	topo := buildTopology(assets, recs, tuns, "10.0.0.5")
 
 	nodes := topo["nodes"].([]*topoNode)
-	// 2 资产 + 1 合成 sess + 1 合成 pf(portfwd 目标不在台账) + platform
+	// アセット 2 + 合成 sess 1 + 合成 pf 1(portfwd のターゲットが台帳にない) + platform
 	if len(nodes) != 5 {
-		t.Fatalf("节点数应为 5: %d", len(nodes))
+		t.Fatalf("ノード数は 5 であるべき: %d", len(nodes))
 	}
 	byID := map[string]*topoNode{}
 	for _, n := range nodes {
@@ -99,56 +99,56 @@ func TestBuildTopology(t *testing.T) {
 	}
 	n5 := byID["asset-1"]
 	if n5 == nil || !n5.HasSession || n5.AliveSessions != 1 || !n5.IsCallback {
-		t.Errorf("10.0.0.5 节点错误: %+v", n5)
+		t.Errorf("10.0.0.5 のノードが不正: %+v", n5)
 	}
 	if n5.IP != "10.0.0.5" {
-		t.Errorf("资产节点 ip 应 10.0.0.5: %s", n5.IP)
+		t.Errorf("アセットノードの ip は 10.0.0.5 であるべき: %s", n5.IP)
 	}
 	if len(n5.Services) != 2 {
-		t.Errorf("services 应 2 条: %+v", n5.Services)
+		t.Errorf("services は 2 件であるべき: %+v", n5.Services)
 	}
 	n7 := byID["asset-2"]
 	if n7 == nil || !n7.HasSession || n7.AliveSessions != 0 {
-		t.Errorf("dead 会话主机应 has_session=true 但 alive=0: %+v", n7)
+		t.Errorf("dead セッションのホストは has_session=true だが alive=0 であるべき: %+v", n7)
 	}
 	n9 := byID["sess-12"]
 	if n9 == nil || n9.IP != "10.0.9.9" || n9.Segment != "10.0.9.0/24" {
-		t.Errorf("合成节点错误: %+v", n9)
+		t.Errorf("合成ノードが不正: %+v", n9)
 	}
-	// 平台自身合成节点:隧道边统一从它出发;标签用回连地址,星标复用「平台自身」图例。
+	// プラットフォーム自身の合成ノード:トンネルの辺はすべてここから出る;ラベルはコールバックアドレスを使い、星印は「プラットフォーム自身」の凡例を流用する。
 	platform := byID["platform"]
 	if platform == nil || !platform.IsCallback || platform.IP != "10.0.0.5" {
-		t.Errorf("platform 节点错误: %+v", platform)
+		t.Errorf("platform ノードが不正: %+v", platform)
 	}
-	// portfwd 目标 10.0.0.8 不在资产台账 → 合成节点 pf-<tunnel_id>,标签 host:port。
+	// portfwd のターゲット 10.0.0.8 がアセット台帳にない → 合成ノード pf-<tunnel_id>、ラベルは host:port。
 	pf := byID["pf-22"]
 	if pf == nil || pf.IP != "10.0.0.8:3306" {
-		t.Errorf("pf 合成节点错误: %+v", pf)
+		t.Errorf("pf の合成ノードが不正: %+v", pf)
 	}
 
 	edges := topo["edges"].([]topoEdge)
 	if len(edges) != 2 {
-		t.Fatalf("边数应 2: %d", len(edges))
+		t.Fatalf("辺の数は 2 であるべき: %d", len(edges))
 	}
-	// 边的 from/to 必须是节点 id:socks 边 platform → 经由会话的宿主节点。
+	// 辺の from/to は必ずノード id:socks の辺は platform → 経由セッションのホストノード。
 	if edges[0].From != "platform" || edges[0].To != "asset-1" {
-		t.Errorf("socks 边应 platform → 会话宿主节点: %+v", edges[0])
+		t.Errorf("socks の辺は platform → セッションのホストノードであるべき: %+v", edges[0])
 	}
 	if edges[1].From != "platform" || edges[1].To != "pf-22" {
-		t.Errorf("portfwd 边应 platform → pf 合成节点: %+v", edges[1])
+		t.Errorf("portfwd の辺は platform → pf 合成ノードであるべき: %+v", edges[1])
 	}
 
 	segs := topo["segments"].([]topoSegment)
 	if len(segs) != 3 { // 10.0.0.0/24, 10.0.1.0/24, 10.0.9.0/24
-		t.Fatalf("网段数应 3: %+v", segs)
+		t.Fatalf("セグメント数は 3 であるべき: %+v", segs)
 	}
 	if segs[0].ColorKey == "" || segs[0].Name != "10.0.0.0/24" {
-		t.Errorf("网段着色键/排序错误: %+v", segs)
+		t.Errorf("セグメントの色キー/並び順が不正: %+v", segs)
 	}
 
-	// JSON 可序列化(页面直接消费)。
+	// JSON にシリアライズできる(ページが直接消費する)。
 	if _, err := json.Marshal(topo); err != nil {
-		t.Fatalf("拓扑 JSON 序列化失败: %v", err)
+		t.Fatalf("トポロジの JSON シリアライズに失敗: %v", err)
 	}
 }
 
@@ -157,12 +157,12 @@ func TestBuildTopologyEmpty(t *testing.T) {
 	if len(topo["nodes"].([]*topoNode)) != 0 ||
 		len(topo["edges"].([]topoEdge)) != 0 ||
 		len(topo["segments"].([]topoSegment)) != 0 {
-		t.Fatalf("空输入应得空拓扑: %+v", topo)
+		t.Fatalf("空の入力なら空のトポロジになるべき: %+v", topo)
 	}
 }
 
-// TestBuildTopologyEdgeEndpoints 拓扑不变量:每条边的 from/to 都必须落在节点
-// id 集合里(G6 边指向不存在的节点画不出线);经由会话不在视图内的隧道跳过。
+// TestBuildTopologyEdgeEndpoints はトポロジの不変条件:各辺の from/to は必ずノード
+// id の集合に含まれる(G6:存在しないノードを指す辺は線を描けない);経由セッションがビュー内にないトンネルはスキップ。
 func TestBuildTopologyEdgeEndpoints(t *testing.T) {
 	assets := []*db.Asset{{ID: 1, IP: "10.0.0.5"}}
 	recs := []*db.SessionRecord{
@@ -170,9 +170,9 @@ func TestBuildTopologyEdgeEndpoints(t *testing.T) {
 	}
 	tuns := []*db.TunnelRecord{
 		{ID: 21, Kind: "socks", ViaSessionID: 11, State: db.TunnelAlive},
-		{ID: 22, Kind: "portfwd", ViaSessionID: 11, TargetHost: "10.0.0.5", TargetPort: 3306, State: db.TunnelAlive}, // 命中资产
-		{ID: 23, Kind: "portfwd", ViaSessionID: 11, TargetHost: "10.0.0.8", TargetPort: 445, State: db.TunnelAlive},  // 合成 pf 节点
-		{ID: 24, Kind: "socks", ViaSessionID: 99, State: db.TunnelAlive},                                            // 会话不在视图 → 跳过
+		{ID: 22, Kind: "portfwd", ViaSessionID: 11, TargetHost: "10.0.0.5", TargetPort: 3306, State: db.TunnelAlive}, // アセットに一致
+		{ID: 23, Kind: "portfwd", ViaSessionID: 11, TargetHost: "10.0.0.8", TargetPort: 445, State: db.TunnelAlive},  // 合成 pf ノード
+		{ID: 24, Kind: "socks", ViaSessionID: 99, State: db.TunnelAlive},                                            // セッションがビュー内にない → スキップ
 	}
 	topo := buildTopology(assets, recs, tuns, "")
 
@@ -182,23 +182,23 @@ func TestBuildTopologyEdgeEndpoints(t *testing.T) {
 	}
 	edges := topo["edges"].([]topoEdge)
 	if len(edges) != 3 {
-		t.Fatalf("边数应 3(会话不在视图的隧道跳过): %d", len(edges))
+		t.Fatalf("辺の数は 3 であるべき(ビュー内にないセッションのトンネルはスキップ): %d", len(edges))
 	}
 	for _, e := range edges {
 		if !ids[e.From] {
-			t.Errorf("边 %d from=%q 不在节点集合", e.ID, e.From)
+			t.Errorf("辺 %d の from=%q がノード集合にない", e.ID, e.From)
 		}
 		if !ids[e.To] {
-			t.Errorf("边 %d to=%q 不在节点集合", e.ID, e.To)
+			t.Errorf("辺 %d の to=%q がノード集合にない", e.ID, e.To)
 		}
 	}
-	// portfwd 命中资产 IP 时直接连到该资产节点。
+	// portfwd がアセットの IP に一致した場合はそのアセットノードへ直接繋ぐ。
 	if edges[1].To != "asset-1" {
-		t.Errorf("portfwd 命中资产应连 asset-1: %+v", edges[1])
+		t.Errorf("portfwd がアセットに一致したら asset-1 に繋ぐべき: %+v", edges[1])
 	}
 }
 
-// openIntranetTestDB 连测试库;无库时 skip(与 intranet_probe_test.go 同一套语义)。
+// openIntranetTestDB はテスト用 DB に接続する;DB がない場合はスキップ(intranet_probe_test.go と同じ意味論)。
 func openIntranetTestDB(t *testing.T) *db.DB {
 	t.Helper()
 	dsn, _, err := db.DSN()
@@ -213,35 +213,35 @@ func openIntranetTestDB(t *testing.T) *db.DB {
 	return pg
 }
 
-// doListItems GET 台账列表并解出 items;非 200 直接 fatal。
+// doListItems は台帳一覧を GET して items を取り出す;200 以外はそのまま fatal。
 func doListItems(t *testing.T, h http.HandlerFunc, url string) []any {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, url, nil)
 	w := httptest.NewRecorder()
 	h(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("GET %s 状态码 = %d, body = %q", url, w.Code, w.Body.String())
+		t.Fatalf("GET %s のステータスコード = %d, body = %q", url, w.Code, w.Body.String())
 	}
 	var body map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("响应 JSON 解析失败: %v (%q)", err, w.Body.String())
+		t.Fatalf("レスポンス JSON の解析に失敗: %v (%q)", err, w.Body.String())
 	}
 	items, _ := body["items"].([]any)
 	return items
 }
 
-// expectBadTaskID 非法 task_id 一律 400。
+// expectBadTaskID は不正な task_id を一律 400 とする。
 func expectBadTaskID(t *testing.T, h http.HandlerFunc, url string) {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, url, nil)
 	w := httptest.NewRecorder()
 	h(w, req)
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("GET %s 非法 task_id 应 400: %d", url, w.Code)
+		t.Fatalf("GET %s で不正な task_id は 400 であるべき: %d", url, w.Code)
 	}
 }
 
-// TestIntranetListSessionsTaskFilter ?task_id= 只留本任务创建的会话;不传保持全局。
+// TestIntranetListSessionsTaskFilter は ?task_id= で本タスクが作成したセッションだけを残す;指定なしなら全体を保つ。
 func TestIntranetListSessionsTaskFilter(t *testing.T) {
 	pg := openIntranetTestDB(t)
 	store := db.NewSessionStore(pg, []byte("intranet-test-master-key"))
@@ -254,7 +254,7 @@ func TestIntranetListSessionsTaskFilter(t *testing.T) {
 			Status: db.SessionAlive, CreatedByTask: taskID,
 		})
 		if err != nil {
-			t.Fatalf("会话落库失败: %v", err)
+			t.Fatalf("セッションの永続化に失敗: %v", err)
 		}
 		t.Cleanup(func() { _ = store.Delete(context.Background(), id) })
 		return id
@@ -264,21 +264,21 @@ func TestIntranetListSessionsTaskFilter(t *testing.T) {
 
 	items := doListItems(t, s.intranetListSessions, "/api/sessions?task_id=980001")
 	if len(items) != 1 {
-		t.Fatalf("task_id=980001 应只留 1 条: %d", len(items))
+		t.Fatalf("task_id=980001 では 1 件だけ残るべき: %d", len(items))
 	}
 	it, _ := items[0].(map[string]any)
 	if it["id"].(float64) != float64(id1) || it["created_by_task"].(float64) != 980001 {
-		t.Errorf("会话过滤结果错误: %+v", it)
+		t.Errorf("セッションの絞り込み結果が不正: %+v", it)
 	}
 
-	// 不传 task_id 保持全局视图(至少包含刚建的两条),兼容旧前端。
+	// task_id を指定しなければ全体ビューを保つ(少なくとも今作った 2 件を含む)。旧フロントとの互換。
 	if all := doListItems(t, s.intranetListSessions, "/api/sessions"); len(all) < 2 {
-		t.Fatalf("全局视图应至少 2 条: %d", len(all))
+		t.Fatalf("全体ビューは少なくとも 2 件であるべき: %d", len(all))
 	}
 	expectBadTaskID(t, s.intranetListSessions, "/api/sessions?task_id=abc")
 }
 
-// TestIntranetListTunnelsTaskFilter ?task_id= 走 ListByTask;不传保持全局。
+// TestIntranetListTunnelsTaskFilter は ?task_id= で ListByTask を通す;指定なしなら全体を保つ。
 func TestIntranetListTunnelsTaskFilter(t *testing.T) {
 	pg := openIntranetTestDB(t)
 	s := &Server{m: &Manager{pg: pg}}
@@ -291,7 +291,7 @@ func TestIntranetListTunnelsTaskFilter(t *testing.T) {
 			State: db.TunnelAlive,
 		})
 		if err != nil {
-			t.Fatalf("隧道落库失败: %v", err)
+			t.Fatalf("トンネルの永続化に失敗: %v", err)
 		}
 		t.Cleanup(func() { _ = store.Delete(context.Background(), id) })
 		return id
@@ -301,20 +301,20 @@ func TestIntranetListTunnelsTaskFilter(t *testing.T) {
 
 	items := doListItems(t, s.intranetListTunnels, "/api/tunnels?task_id=980011")
 	if len(items) != 1 {
-		t.Fatalf("task_id=980011 应只留 1 条: %d", len(items))
+		t.Fatalf("task_id=980011 では 1 件だけ残るべき: %d", len(items))
 	}
 	it, _ := items[0].(map[string]any)
 	if it["id"].(float64) != float64(id1) || it["task_id"].(float64) != 980011 {
-		t.Errorf("隧道过滤结果错误: %+v", it)
+		t.Errorf("トンネルの絞り込み結果が不正: %+v", it)
 	}
 
 	if all := doListItems(t, s.intranetListTunnels, "/api/tunnels"); len(all) < 2 {
-		t.Fatalf("全局视图应至少 2 条: %d", len(all))
+		t.Fatalf("全体ビューは少なくとも 2 件であるべき: %d", len(all))
 	}
 	expectBadTaskID(t, s.intranetListTunnels, "/api/tunnels?task_id=-1")
 }
 
-// TestIntranetListCredentialsTaskFilter ?task_id= 走 ListByTask;不传保持全局。
+// TestIntranetListCredentialsTaskFilter は ?task_id= で ListByTask を通す;指定なしなら全体を保つ。
 func TestIntranetListCredentialsTaskFilter(t *testing.T) {
 	pg := openIntranetTestDB(t)
 	cs := db.NewCredentialStore(pg, []byte("intranet-test-master-key"))
@@ -327,7 +327,7 @@ func TestIntranetListCredentialsTaskFilter(t *testing.T) {
 			Secret: "s3cret-value", Source: "test",
 		})
 		if err != nil {
-			t.Fatalf("凭据落库失败: %v", err)
+			t.Fatalf("認証情報の永続化に失敗: %v", err)
 		}
 		t.Cleanup(func() { _ = cs.Delete(context.Background(), id) })
 		return id
@@ -337,15 +337,15 @@ func TestIntranetListCredentialsTaskFilter(t *testing.T) {
 
 	items := doListItems(t, s.intranetListCredentials, "/api/credentials?task_id=980021")
 	if len(items) != 1 {
-		t.Fatalf("task_id=980021 应只留 1 条: %d", len(items))
+		t.Fatalf("task_id=980021 では 1 件だけ残るべき: %d", len(items))
 	}
 	it, _ := items[0].(map[string]any)
 	if it["id"].(float64) != float64(id1) || it["task_id"].(float64) != 980021 {
-		t.Errorf("凭据过滤结果错误: %+v", it)
+		t.Errorf("認証情報の絞り込み結果が不正: %+v", it)
 	}
 
 	if all := doListItems(t, s.intranetListCredentials, "/api/credentials"); len(all) < 2 {
-		t.Fatalf("全局视图应至少 2 条: %d", len(all))
+		t.Fatalf("全体ビューは少なくとも 2 件であるべき: %d", len(all))
 	}
 	expectBadTaskID(t, s.intranetListCredentials, "/api/credentials?task_id=0")
 }

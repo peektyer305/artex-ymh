@@ -1,6 +1,6 @@
-// sessions.go 是立足点会话的落库层（schema.sql §J)。secret（连接参数 JSON)
-// 用 AES-GCM 加密存储：密钥由 jwt.key 派生（SHA-256 域分离）,参照 server/auth.go
-// 的密钥管理模式——master key 只存在于 keyDir/jwt.key,DB 里不落明文。
+// sessions.go はフットホールドセッションの永続化層（schema.sql §J）。secret（接続パラメータの JSON）は
+// AES-GCM で暗号化して保存する:鍵は jwt.key から派生（SHA-256 ドメイン分離）し、server/auth.go の
+// 鍵管理方式に倣う——master key は keyDir/jwt.key にのみ存在し、DB には平文を残さない。
 package db
 
 import (
@@ -17,14 +17,14 @@ import (
 	"time"
 )
 
-// SessionRecord 是 sessions 表的一行。Secret 在 Go 层是明文 JSON;Create 加密、
-// Get/List 解密，密钥不出 SessionStore。
+// SessionRecord は sessions 表の 1 行。Secret は Go 層では平文 JSON;Create が暗号化し、
+// Get/List が復号する。鍵が SessionStore の外に出ることはない。
 type SessionRecord struct {
 	ID              int64           `json:"id"`
-	Kind            string          `json:"kind"` // http_php/http_jsp/http_aspx/ssh/reverse(预留)
+	Kind            string          `json:"kind"` // http_php/http_jsp/http_aspx/ssh/reverse（予約）
 	HostAssetID     int64           `json:"host_asset_id,omitempty"`
 	URL             string          `json:"url"`
-	Secret          json.RawMessage `json:"secret"` // 明文 JSON;落库时加密
+	Secret          json.RawMessage `json:"secret"` // 平文 JSON;保存時に暗号化
 	Lang            string          `json:"lang"`
 	Status          string          `json:"status"` // alive | dead
 	CreatedByTask   int64           `json:"created_by_task,omitempty"`
@@ -37,25 +37,25 @@ const (
 	SessionAlive = "alive"
 	SessionDead  = "dead"
 
-	// secretPrefix 标记密文格式版本：gcm1:<base64(nonce|ciphertext)>。
+	// secretPrefix は暗号文の形式バージョンを示す：gcm1:<base64(nonce|ciphertext)>。
 	secretPrefix = "gcm1:"
 )
 
-// SessionSecretKey 由 master key(jwt.key 内容）派生会话加密密钥：
-// SHA-256 域分离，与 JWT 签名用途隔离。
+// SessionSecretKey は master key（jwt.key の内容）からセッション暗号化鍵を派生する:
+// SHA-256 ドメイン分離であり、JWT 署名の用途とは隔離している。
 func SessionSecretKey(master []byte) []byte {
 	sum := sha256.Sum256(append([]byte("artex/sessions/v1\x00"), master...))
 	return sum[:]
 }
 
-// SessionStore 是 sessions 表的访问层。key 为 32 字节 AES 密钥
-// （经 SessionSecretKey 派生）;key 缺失时加解密直接报错（诚实失败，不落明文）。
+// SessionStore は sessions 表のアクセス層。key は 32 バイトの AES 鍵
+// （SessionSecretKey で派生）。key がない場合、暗号化/復号は即座にエラーになる（誠実に失敗し、平文を保存しない）。
 type SessionStore struct {
 	d   *DB
 	key []byte
 }
 
-// NewSessionStore 构造访问层。masterKey 传 jwt.key 内容；内部自行派生。
+// NewSessionStore はアクセス層を生成する。masterKey には jwt.key の内容を渡す;派生は内部で行う。
 func NewSessionStore(d *DB, masterKey []byte) *SessionStore {
 	var key []byte
 	if len(masterKey) > 0 {
@@ -66,7 +66,7 @@ func NewSessionStore(d *DB, masterKey []byte) *SessionStore {
 
 func (s *SessionStore) encrypt(plain []byte) (string, error) {
 	if len(s.key) != 32 {
-		return "", fmt.Errorf("会话加密密钥未初始化，拒绝明文落库")
+		return "", fmt.Errorf("セッションの暗号化鍵が未初期化のため、平文での保存を拒否します")
 	}
 	gcm, err := newGCM(s.key)
 	if err != nil {
@@ -84,25 +84,25 @@ func (s *SessionStore) decrypt(stored string) ([]byte, error) {
 		return nil, nil
 	}
 	if len(s.key) != 32 {
-		return nil, fmt.Errorf("会话加密密钥未初始化，无法解密")
+		return nil, fmt.Errorf("セッションの暗号化鍵が未初期化のため、復号できません")
 	}
 	if !hasPrefix(stored, secretPrefix) {
-		return nil, fmt.Errorf("未知 secret 格式（缺 gcm1: 前缀）,拒绝按明文读取")
+		return nil, fmt.Errorf("未知の secret 形式（gcm1: 接頭辞がない）のため、平文としての読み取りを拒否します")
 	}
 	raw, err := base64.StdEncoding.DecodeString(stored[len(secretPrefix):])
 	if err != nil {
-		return nil, fmt.Errorf("secret base64 解码失败: %w", err)
+		return nil, fmt.Errorf("secret の base64 デコードに失敗しました: %w", err)
 	}
 	gcm, err := newGCM(s.key)
 	if err != nil {
 		return nil, err
 	}
 	if len(raw) < gcm.NonceSize() {
-		return nil, fmt.Errorf("secret 密文过短")
+		return nil, fmt.Errorf("secret の暗号文が短すぎます")
 	}
 	plain, err := gcm.Open(nil, raw[:gcm.NonceSize()], raw[gcm.NonceSize():], nil)
 	if err != nil {
-		return nil, fmt.Errorf("secret 解密失败（密钥不符或数据被篡改）: %w", err)
+		return nil, fmt.Errorf("secret の復号に失敗しました（鍵の不一致またはデータの改ざん）: %w", err)
 	}
 	return plain, nil
 }
@@ -119,7 +119,7 @@ func hasPrefix(s, p string) bool {
 	return len(s) >= len(p) && s[:len(p)] == p
 }
 
-// nilIfZero 把 0 转成 NULL（可空外键列）。
+// nilIfZero は 0 を NULL に変換する（NULL 許容の外部キー列）。
 func nilIfZero(v int64) any {
 	if v == 0 {
 		return nil
@@ -127,10 +127,10 @@ func nilIfZero(v int64) any {
 	return v
 }
 
-// Create 插入一条会话并返回主键。Secret 加密存储。
+// Create はセッションを 1 件挿入して主キーを返す。Secret は暗号化して保存する。
 func (s *SessionStore) Create(ctx context.Context, rec *SessionRecord) (int64, error) {
 	if rec.Kind == "" {
-		return 0, fmt.Errorf("kind 必填")
+		return 0, fmt.Errorf("kind は必須です")
 	}
 	enc, err := s.encrypt(rec.Secret)
 	if err != nil {
@@ -168,7 +168,7 @@ func (s *SessionStore) scan(row interface{ Scan(...any) error }) (*SessionRecord
 	return &r, nil
 }
 
-// Get 取一条（含解密 secret);不存在返回 (nil, nil)。
+// Get は 1 件取得する（secret は復号済み）;存在しない場合は (nil, nil) を返す。
 func (s *SessionStore) Get(ctx context.Context, id int64) (*SessionRecord, error) {
 	r, err := s.scan(s.d.QueryRowContext(ctx,
 		`SELECT `+sessionCols+` FROM sessions WHERE id=$1`, id))
@@ -178,7 +178,7 @@ func (s *SessionStore) Get(ctx context.Context, id int64) (*SessionRecord, error
 	return r, err
 }
 
-// List 取全部（按 id 升序）;status 非空时按状态过滤。
+// List は全件取得する（id 昇順）;status が空でない場合はステータスで絞り込む。
 func (s *SessionStore) List(ctx context.Context, status string) ([]*SessionRecord, error) {
 	query := `SELECT ` + sessionCols + ` FROM sessions`
 	args := []any{}
@@ -203,26 +203,26 @@ func (s *SessionStore) List(ctx context.Context, status string) ([]*SessionRecor
 	return out, rows.Err()
 }
 
-// UpdateStatus 更新 alive/dead 状态。
+// UpdateStatus は alive/dead のステータスを更新する。
 func (s *SessionStore) UpdateStatus(ctx context.Context, id int64, status string) error {
 	if status != SessionAlive && status != SessionDead {
-		return fmt.Errorf("非法会话状态 %q（alive|dead)", status)
+		return fmt.Errorf("不正なセッションステータス %q（alive|dead）", status)
 	}
 	_, err := s.d.ExecContext(ctx, `UPDATE sessions SET status=$2 WHERE id=$1`, id, status)
 	return err
 }
 
-// Touch 刷新 last_beat（每次使用会话时调用）。
+// Touch は last_beat を更新する（セッションを使うたびに呼ぶ）。
 func (s *SessionStore) Touch(ctx context.Context, id int64) {
 	_, _ = s.d.ExecContext(ctx, `UPDATE sessions SET last_beat=now() WHERE id=$1`, id)
 }
 
-// SetHostAsset 回填 webshell 关联的 endpoint 资产 id。
+// SetHostAsset は webshell に関連付く endpoint アセット id を書き戻す。
 func (s *SessionStore) SetHostAsset(ctx context.Context, id, assetID int64) {
 	_, _ = s.d.ExecContext(ctx, `UPDATE sessions SET host_asset_id=$2 WHERE id=$1`, id, assetID)
 }
 
-// Delete 删除一条。
+// Delete は 1 件削除する。
 func (s *SessionStore) Delete(ctx context.Context, id int64) error {
 	_, err := s.d.ExecContext(ctx, `DELETE FROM sessions WHERE id=$1`, id)
 	return err

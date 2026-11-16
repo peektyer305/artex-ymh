@@ -1,5 +1,5 @@
-// plan_test.go 是计划组装的纯函数单测：端口池解析、端口分配、命令行组装
-// (auth 不进命令行）、回滚步骤顺序。
+// plan_test.go は計画組み立ての純関数単体テスト：ポートプール解析、ポート割り当て、
+// コマンドライン組み立て（auth はコマンドラインに入れない）、ロールバック手順の順序。
 package tunnel
 
 import (
@@ -17,12 +17,12 @@ func TestParsePortRange(t *testing.T) {
 		wantErr bool
 	}{
 		{"20000-21000", 20000, 21000, false},
-		{"", 20000, 21000, false}, // 空 = 默认池
+		{"", 20000, 21000, false}, // 空 = デフォルトプール
 		{" 8080 - 8085 ", 8080, 8085, false},
-		{"20000", 0, 0, true},   // 缺 -
-		{"0-100", 0, 0, true},   // min 非法
+		{"20000", 0, 0, true},   // - がない
+		{"0-100", 0, 0, true},   // min が不正
 		{"100-99", 0, 0, true},  // min>max
-		{"1-70000", 0, 0, true}, // max 超界
+		{"1-70000", 0, 0, true}, // max が範囲外
 		{"abc-def", 0, 0, true},
 	}
 	for _, c := range cases {
@@ -39,20 +39,20 @@ func TestParsePortRange(t *testing.T) {
 
 func TestAllocatePort(t *testing.T) {
 	used := map[int]bool{20000: true, 20001: true}
-	closed := map[int]bool{20002: true} // 空闲但被别的进程占着
+	closed := map[int]bool{20002: true} // 空きだが別プロセスが占有中
 	canListen := func(p int) bool { return !closed[p] }
 	p, err := AllocatePort(20000, 20010, used, canListen)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if p != 20003 {
-		t.Errorf("AllocatePort = %d, want 20003（跳过台账占用与绑定失败）", p)
+		t.Errorf("AllocatePort = %d, want 20003（台帳の占有とバインド失敗をスキップ）", p)
 	}
-	// 全部不可用 → 明确错误
+	// すべて利用不可 → 明確なエラー
 	if _, err := AllocatePort(20000, 20002, used, canListen); err == nil {
-		t.Error("端口池耗尽应报错")
+		t.Error("ポートプールが枯渇したらエラーになるべきです")
 	}
-	// nil used / nil canListen 也能工作
+	// nil used / nil canListen でも動作する
 	p, err = AllocatePort(21000, 21001, nil, nil)
 	if err != nil || p != 21000 {
 		t.Errorf("AllocatePort(nil) = %d, %v", p, err)
@@ -77,32 +77,32 @@ func TestPlanSocksAssembly(t *testing.T) {
 		t.Errorf("kind/adapter = %s/%s", p.Kind, p.Adapter)
 	}
 	if p.ListenPort < 20000 || p.ListenPort > 20100 || p.SocksPort < 20000 || p.SocksPort > 20100 {
-		t.Errorf("端口越池： listen=%d socks=%d", p.ListenPort, p.SocksPort)
+		t.Errorf("ポートがプール外です： listen=%d socks=%d", p.ListenPort, p.SocksPort)
 	}
 	if p.ListenPort == p.SocksPort {
-		t.Error("listen 与 socks 端口必须不同")
+		t.Error("listen と socks のポートは必ず異なる必要があります")
 	}
 	if p.PlatformAddr != "10.0.0.5:"+strconv.Itoa(p.ListenPort) {
-		t.Errorf("PlatformAddr = %s（应为 callback host + listen port)", p.PlatformAddr)
+		t.Errorf("PlatformAddr = %s（callback host + listen port であるべき）", p.PlatformAddr)
 	}
-	// server 命令行组装
+	// server のコマンドライン組み立て
 	joined := strings.Join(p.ServerArgs, " ")
 	for _, want := range []string{"server", "--host 0.0.0.0", "-p " + strconv.Itoa(p.ListenPort), "--reverse", "--authfile"} {
 		if !strings.Contains(joined, want) {
-			t.Errorf("ServerArgs 缺 %q: %s", want, joined)
+			t.Errorf("ServerArgs に %q がありません: %s", want, joined)
 		}
 	}
-	// auth 不得出现在任何命令行（server 走 --authfile,client 走 AUTH env)
+	// auth はどのコマンドラインにも現れてはならない（server は --authfile、client は AUTH env）
 	if strings.Contains(joined, p.AuthPass) {
-		t.Error("auth 泄露进 ServerArgs")
+		t.Error("auth が ServerArgs に漏えいしています")
 	}
 	if strings.Contains(strings.Join(p.ClientArgs, " "), p.AuthPass) {
-		t.Error("auth 泄露进 ClientArgs")
+		t.Error("auth が ClientArgs に漏えいしています")
 	}
-	if len(p.AuthPass) != 32 { // 16 字节 hex
-		t.Errorf("AuthPass 长度 %d, want 32(crypto/rand 16 字节 hex)", len(p.AuthPass))
+	if len(p.AuthPass) != 32 { // 16 バイト hex
+		t.Errorf("AuthPass の長さ %d, want 32（crypto/rand 16 バイトの hex）", len(p.AuthPass))
 	}
-	// client remote 形式：反向 socks 绑平台回环
+	// client の remote 形式：リバース socks をプラットフォームのループバックにバインド
 	wantRemote := "R:127.0.0.1:" + strconv.Itoa(p.SocksPort) + ":socks"
 	found := false
 	for _, a := range p.ClientArgs {
@@ -111,12 +111,12 @@ func TestPlanSocksAssembly(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("ClientArgs 缺 remote %q: %v", wantRemote, p.ClientArgs)
+		t.Errorf("ClientArgs に remote %q がありません: %v", wantRemote, p.ClientArgs)
 	}
-	// authfile 必须是 chisel 期望的 JSON users 格式 {"user:pass": [".*"]}
+	// authfile は chisel が期待する JSON users 形式 {"user:pass": [".*"]} であること
 	var users map[string][]string
 	if err := json.Unmarshal([]byte(p.AuthfileContent()), &users); err != nil {
-		t.Fatalf("AuthfileContent 不是合法 JSON: %v", err)
+		t.Fatalf("AuthfileContent が正当な JSON ではありません: %v", err)
 	}
 	key := p.AuthUser + ":" + p.AuthPass
 	if got, ok := users[key]; !ok || len(got) != 1 || got[0] != ".*" {
@@ -139,25 +139,25 @@ func TestPlanPortfwdAssembly(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("ClientArgs 缺 remote %q: %v", wantRemote, p.ClientArgs)
+		t.Errorf("ClientArgs に remote %q がありません: %v", wantRemote, p.ClientArgs)
 	}
-	// 缺 target 必须报错
+	// target がなければエラーになること
 	if _, err := PlanPortfwd(testOpts()); err == nil {
-		t.Error("portfwd 缺 target 应报错")
+		t.Error("portfwd で target がない場合はエラーになるべきです")
 	}
-	// 缺 callback host 必须报错
+	// callback host がなければエラーになること
 	o2 := testOpts()
 	o2.CallbackHost = ""
 	if _, err := PlanSocks(o2); err == nil {
-		t.Error("缺 callback host 应报错")
+		t.Error("callback host がない場合はエラーになるべきです")
 	}
 }
 
 func TestPlanSocksPortPoolExhausted(t *testing.T) {
 	o := testOpts()
-	o.PortMin, o.PortMax = 20000, 20000 // 只有一个口，socks 需要两个
+	o.PortMin, o.PortMax = 20000, 20000 // ポートが 1 つだけだが socks は 2 つ必要
 	if _, err := PlanSocks(o); err == nil {
-		t.Error("端口池不够分配两个口应报错")
+		t.Error("ポートプールが 2 つのポートを割り当てるのに足りない場合はエラーになるべきです")
 	}
 }
 
@@ -170,11 +170,11 @@ func TestRollbackStepsOrder(t *testing.T) {
 	steps := p.RollbackSteps()
 	wantOrder := []string{"remote_process", "remote_files", "server_process", "stage_entry", "authfile", "ledger_row"}
 	if len(steps) != len(wantOrder) {
-		t.Fatalf("回滚步数 %d, want %d", len(steps), len(wantOrder))
+		t.Fatalf("ロールバックのステップ数 %d, want %d", len(steps), len(wantOrder))
 	}
 	for i, layer := range wantOrder {
 		if steps[i].Layer != layer {
-			t.Errorf("回滚第 %d 步 = %s, want %s（先目标侧后平台侧，台账最后删）", i, steps[i].Layer, layer)
+			t.Errorf("ロールバックの %d 番目のステップ = %s, want %s（まず目標側、次にプラットフォーム側、台帳は最後に削除）", i, steps[i].Layer, layer)
 		}
 	}
 }

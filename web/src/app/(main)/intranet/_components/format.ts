@@ -1,6 +1,6 @@
-// 内网作战页共用的小工具。
+// イントラネット運用ページ共通の小さなユーティリティ。
 
-/** fmtTime 把 RFC3339 时间格式化为 zh-CN 短格式；空值/非法值原样兜底。 */
+/** fmtTime は RFC3339 の時刻を zh-CN の短い形式に整形します。空値・不正値はそのまま返します。 */
 export function fmtTime(ts: string | undefined | null): string {
   if (!ts) return "—";
   const d = new Date(ts);
@@ -14,7 +14,7 @@ export function fmtTime(ts: string | undefined | null): string {
   });
 }
 
-/** fmtBytes 人类可读文件大小。 */
+/** fmtBytes は人間が読めるファイルサイズを返します。 */
 export function fmtBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
   if (n < 1024) return `${n} B`;

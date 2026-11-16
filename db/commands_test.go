@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// capLLMRawBody:上限内原样返回;超限截断并带行内标记;截断点不得切坏 UTF-8。
+// capLLMRawBody:上限内はそのまま返し、超過時は切り詰めて行内マーカーを付け、切り詰め位置で UTF-8 を壊してはならない。
 func TestCapLLMRawBody(t *testing.T) {
 	small := strings.Repeat("a", 1024)
 	if got := capLLMRawBody(small); got != small {
@@ -22,8 +22,8 @@ func TestCapLLMRawBody(t *testing.T) {
 		t.Fatalf("truncated body lost its prefix")
 	}
 
-	// 多字节字符横跨截断点时,结果仍必须是合法 UTF-8。
-	mixed := strings.Repeat("中", llmRawBodyCap) // 3 字节/字,必跨界
+	// マルチバイト文字が切り詰め位置をまたぐ場合も、結果は有効な UTF-8 でなければならない。
+	mixed := strings.Repeat("中", llmRawBodyCap) // 3 バイト/文字なので必ず境界をまたぐ
 	got = capLLMRawBody(mixed)
 	if !utf8.ValidString(got) {
 		t.Fatalf("truncation broke UTF-8 validity")

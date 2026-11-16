@@ -31,14 +31,14 @@ func TestNormalizeVulnClass(t *testing.T) {
 		"Information Disclosure":         "info-leak",
 		"privilege escalation":           "privesc",
 		"other":                          "other",
-		// 模糊段:实战漂移字符串对(归一后必须相等,才能互相合并)
+		// 曖昧なケース：実戦で揺らぐ文字列の組（正規化後に等しければ相互マージできる）
 		"Stored Cross-Site Scripting (XSS)": "xss",
 		"XSS (Stored)":                      "xss",
-		// blind sqli 归到 sqli(与现有粗类一致,盲注是利用手法而非新类目)
+		// blind sqli は sqli に寄せる（既存の粗い分類と一致。ブラインドは利用手法であり新しい分類ではない）
 		"SQL Injection (Blind)": "sqli",
 		"Blind SQL Injection":   "sqli",
 		"SQL 盲注":                "sqli",
-		// 中文 / 带 CVE 号 / 括号内缩写
+		// 中国語 / CVE 番号付き / 括弧内の略語
 		"任意文件上传 (CVE-2017-12615)": "upload",
 		"任意文件上传":                  "upload",
 		"远程代码执行":                  "cmdi",
@@ -48,14 +48,14 @@ func TestNormalizeVulnClass(t *testing.T) {
 		"敏感信息泄露":                  "info-leak",
 		"业务逻辑漏洞":                  "logic",
 		"密码爆破":                    "brute-force",
-		// 保守:含 "injection" 不等于 sqli,SSTI 由 template-injection 关键词收敛
+		// 保守的："injection" を含んでも sqli とは限らない。SSTI は template-injection キーワードで収束させる
 		"Template Injection":                      "ssti",
 		"Jinja2 模板注入":                             "ssti",
 		"Insecure Deserialization (Java)":         "deser",
 		"Vertical Privilege Escalation (PrivEsc)": "privesc",
 		"OS Command Injection (RCE)":              "cmdi",
 		"Authentication Bypass (MFA)":             "auth-bypass",
-		// 未知名目:原样小写、折叠后保留
+		// 未知の項目：そのまま小文字化し、折り畳み後も保持する
 		"csrf":             "csrf",
 		"Weird  New_Class": "weird-new-class",
 		"":                 "",
@@ -76,8 +76,8 @@ func TestMaxSeverity(t *testing.T) {
 		{"high", "high", "high"},
 		{"medium", "low", "medium"},
 		{"", "low", "low"},
-		{"weird", "", "weird"},        // 都未知:返回 a
-		{"medium", "weird", "medium"}, // 未知按 0 处理
+		{"weird", "", "weird"},        // どちらも未知：a を返す
+		{"medium", "weird", "medium"}, // 未知は 0 として扱う
 	}
 	for _, c := range cases {
 		if got := MaxSeverity(c.a, c.b); got != c.want {
@@ -88,61 +88,61 @@ func TestMaxSeverity(t *testing.T) {
 
 func TestMergeFindingFields(t *testing.T) {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
-	old := DBFinding{Severity: "medium", Summary: "旧摘要", Evidence: "旧证据正文"}
+	old := DBFinding{Severity: "medium", Summary: "旧要約", Evidence: "旧エビデンス本文"}
 
-	// summary 不同:替换,旧摘要归档进 evidence;severity 取高;新证据追加带标记
+	// summary が異なる：置換し、旧要約を evidence へアーカイブ。severity は高い方、新エビデンスはマーカー付きで追記
 	sev, sum, ev := mergeFindingFields(old, RecordFindingInput{
-		Severity: "high", Summary: "更深度利用摘要", Evidence: "新 PoC", IntentID: 77, Worker: "w2",
+		Severity: "high", Summary: "より深い悪用の要約", Evidence: "新 PoC", IntentID: 77, Worker: "w2",
 	}, now)
-	if sev != "high" || sum != "更深度利用摘要" {
+	if sev != "high" || sum != "より深い悪用の要約" {
 		t.Fatalf("severity/summary: got (%q,%q)", sev, sum)
 	}
-	for _, want := range []string{"旧证据正文", "[原摘要]", "旧摘要", "[新证据]", "新 PoC", "intent #77", "by w2", "2026-09-13T12:00:00Z"} {
+	for _, want := range []string{"旧エビデンス本文", "[原摘要]", "旧要約", "[新证据]", "新 PoC", "intent #77", "by w2", "2026-09-13T12:00:00Z"} {
 		if !strings.Contains(ev, want) {
 			t.Errorf("merged evidence missing %q:\n%s", want, ev)
 		}
 	}
-	if !strings.HasPrefix(ev, "旧证据正文") {
-		t.Errorf("原 evidence 必须保留在最前:\n%s", ev)
+	if !strings.HasPrefix(ev, "旧エビデンス本文") {
+		t.Errorf("元の evidence は先頭に保持されなければなりません:\n%s", ev)
 	}
 
-	// summary 相同:不替换、不归档;severity 平级保留旧值;空 evidence 不追加
-	sev, sum, ev = mergeFindingFields(old, RecordFindingInput{Severity: "low", Summary: "旧摘要"}, now)
-	if sev != "medium" || sum != "旧摘要" || ev != "旧证据正文" {
+	// summary が同一：置換もアーカイブもしない。severity が同格なら旧値を保持。空の evidence は追記しない
+	sev, sum, ev = mergeFindingFields(old, RecordFindingInput{Severity: "low", Summary: "旧要約"}, now)
+	if sev != "medium" || sum != "旧要約" || ev != "旧エビデンス本文" {
 		t.Fatalf("no-op merge: got (%q,%q,%q)", sev, sum, ev)
 	}
 
-	// 新 summary 为空:保留旧 summary,不动 evidence
+	// 新しい summary が空：旧 summary を保持し、evidence は変更しない
 	_, sum, ev = mergeFindingFields(old, RecordFindingInput{Severity: "medium", Evidence: "  "}, now)
-	if sum != "旧摘要" || ev != "旧证据正文" {
+	if sum != "旧要約" || ev != "旧エビデンス本文" {
 		t.Fatalf("empty summary/evidence merge: got (%q,%q)", sum, ev)
 	}
 
-	// 旧 summary 为空、新 summary 非空:替换但不产生"原摘要"归档段
+	// 旧 summary が空で新 summary が非空：置換するが「原摘要」のアーカイブ段は作らない
 	emptyOld := DBFinding{Severity: "low", Summary: "", Evidence: "E"}
 	_, sum, ev = mergeFindingFields(emptyOld, RecordFindingInput{Severity: "low", Summary: "S", Evidence: "E2", IntentID: 0}, now)
 	if sum != "S" || strings.Contains(ev, "[原摘要]") || !strings.Contains(ev, "E2") {
 		t.Fatalf("empty old summary merge: got (%q,%q)", sum, ev)
 	}
 
-	// vulnclass 措辞漂移(归一化后才相等):追加段标注本次原文,便于审计模型漂移
+	// vulnclass の表現揺らぎ（正規化後に等しい）：追記段に今回の原文を注記し、モデルの揺らぎを監査できるようにする
 	oldX := DBFinding{VulnClass: "XSS (Stored)", Severity: "medium", Summary: "S", Evidence: "E"}
 	_, _, ev = mergeFindingFields(oldX, RecordFindingInput{
-		VulnClass: "Stored Cross-Site Scripting (XSS)", Severity: "medium", Summary: "S", Evidence: "新证据",
+		VulnClass: "Stored Cross-Site Scripting (XSS)", Severity: "medium", Summary: "S", Evidence: "新エビデンス",
 	}, now)
 	if !strings.Contains(ev, `本次 vulnclass 原文 "Stored Cross-Site Scripting (XSS)"`) {
 		t.Errorf("drift annotation missing:\n%s", ev)
 	}
 
-	// vulnclass 原文相同:不标注
+	// vulnclass の原文が同一：注記しない
 	_, _, ev = mergeFindingFields(oldX, RecordFindingInput{
-		VulnClass: "XSS (Stored)", Severity: "medium", Summary: "S", Evidence: "新证据",
+		VulnClass: "XSS (Stored)", Severity: "medium", Summary: "S", Evidence: "新エビデンス",
 	}, now)
 	if strings.Contains(ev, "vulnclass 原文") {
 		t.Errorf("no drift expected:\n%s", ev)
 	}
 
-	// 无新证据且 summary 不变,但有漂移:单独留审计段,痕迹不丢
+	// 新しいエビデンスがなく summary も不変だが揺らぎはある：監査用の段を単独で残し、痕跡を失わない
 	_, _, ev = mergeFindingFields(oldX, RecordFindingInput{
 		VulnClass: "Stored Cross-Site Scripting (XSS)", Severity: "medium", Summary: "S",
 	}, now)
@@ -151,12 +151,12 @@ func TestMergeFindingFields(t *testing.T) {
 	}
 }
 
-// --- PG 依赖路径(本机无 ARTEX_PG_DSN 时自动 skip;需在有 PG 的环境实测) ---
+// --- PG 依存パス（本機に ARTEX_PG_DSN がない場合は自動 skip。PG のある環境で実測が必要） ---
 
-// TestRecordFindingTxMerge 端到端验证档 A 合并:命中 confirmed/pending 同入口
-// finding 时不新增行/节点,evidence 追加、severity 取高、summary 替换并归档、
-// 血缘边指向既有节点;异类/异主资产/终态/无资产均不合并。
-// 需要 PG(testDSN 无配置即 skip)。
+// TestRecordFindingTxMerge はアプローチ A のマージをエンドツーエンドで検証する：同一入口の
+// confirmed/pending ファインディングにヒットした場合は行/ノードを新規作成せず、evidence を追記、
+// severity は高い方を採用、summary は置換してアーカイブし、系譜辺は既存ノードを指す。
+// 異種/主資産違い/終了状態/資産なしはいずれもマージしない。PG が必要（testDSN 未設定なら skip）。
 func TestRecordFindingTxMerge(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
@@ -164,7 +164,7 @@ func TestRecordFindingTxMerge(t *testing.T) {
 	}
 	defer d.Close()
 
-	tk, err := d.CreateTask("合并测试", "目标", nil, 0, 0)
+	tk, err := d.CreateTask("マージテスト", "ゴール", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,13 +188,13 @@ func TestRecordFindingTxMerge(t *testing.T) {
 		t.Helper()
 		var err error
 		nodeID, err = es.AddNode(KindFinding, map[string]any{
-			"vulnclass": vulnclass, "severity": "medium", "summary": "旧摘要",
-			"evidence": map[string]any{"by": "w1", "poc": "旧证据"},
+			"vulnclass": vulnclass, "severity": "medium", "summary": "旧要約",
+			"evidence": map[string]any{"by": "w1", "poc": "旧エビデンス"},
 		}, 9, "confirmed", "w1", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		fid, err = d.AddFinding(tk.ID, nodeID, vulnclass, "", "medium", "旧摘要", "旧证据", "w1", assets)
+		fid, err = d.AddFinding(tk.ID, nodeID, vulnclass, "", "medium", "旧要約", "旧エビデンス", "w1", assets)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -219,16 +219,16 @@ func TestRecordFindingTxMerge(t *testing.T) {
 		}
 		return out
 	}
-	intentID, err := es.AddNode(KindIntent, map[string]any{"summary": "深入利用"}, 5, "open", "planner", nil)
+	intentID, err := es.AddNode(KindIntent, map[string]any{"summary": "深掘り悪用"}, 5, "open", "planner", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// 1) 命中:同任务、confirmed、"SQL-Injection"≈"sqli"、主资产相同 → 合并
+	// 1) ヒット：同一タスク、confirmed、"SQL-Injection"≈"sqli"、主資産が同一 → マージ
 	fid, nodeID := mkFinding("SQL-Injection", FindingConfirmed, []int64{assetA})
 	out := record(RecordFindingInput{
-		VulnClass: "sqli", Severity: "critical", Summary: "拿到凭据的深度利用",
-		Evidence: "新 PoC 输出", Worker: "w2", IntentID: intentID, AssetIDs: []int64{assetA},
+		VulnClass: "sqli", Severity: "critical", Summary: "認証情報奪取後の深掘り悪用",
+		Evidence: "新 PoC 出力", Worker: "w2", IntentID: intentID, AssetIDs: []int64{assetA},
 	})
 	if !out.Merged || out.FindingID != fid || out.NodeID != nodeID {
 		t.Fatalf("want merge into (%d,%d), got %+v", fid, nodeID, out)
@@ -240,33 +240,33 @@ func TestRecordFindingTxMerge(t *testing.T) {
 	if err != nil || f == nil {
 		t.Fatal(err)
 	}
-	if f.Severity != "critical" || f.Summary != "拿到凭据的深度利用" {
+	if f.Severity != "critical" || f.Summary != "認証情報奪取後の深掘り悪用" {
 		t.Fatalf("merged fields: severity=%q summary=%q", f.Severity, f.Summary)
 	}
-	for _, want := range []string{"旧证据", "[原摘要]", "旧摘要", "[新证据]", "新 PoC 输出", "intent #"} {
+	for _, want := range []string{"旧エビデンス", "[原摘要]", "旧要約", "[新证据]", "新 PoC 出力", "intent #"} {
 		if !strings.Contains(f.Evidence, want) {
 			t.Errorf("merged evidence missing %q:\n%s", want, f.Evidence)
 		}
 	}
-	// 血缘边 intent --yields--> 既有节点
+	// 系譜辺 intent --yields--> 既存ノード
 	var edges int
 	if err := d.QueryRow(`SELECT count(*) FROM exploration_edges
 		WHERE exploration_id=$1 AND src_id=$2 AND rel=$3 AND dst_id=$4`,
 		tk.ExplorationID, intentID, RelYields, nodeID).Scan(&edges); err != nil || edges != 1 {
 		t.Fatalf("yields edge: count=%d err=%v", edges, err)
 	}
-	// 节点 payload 同步
+	// ノードの payload を同期
 	var payload string
 	if err := d.QueryRow(`SELECT payload::text FROM exploration_nodes WHERE id=$1`, nodeID).Scan(&payload); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(payload, "拿到凭据的深度利用") || !strings.Contains(payload, "critical") {
+	if !strings.Contains(payload, "認証情報奪取後の深掘り悪用") || !strings.Contains(payload, "critical") {
 		t.Errorf("node payload not synced: %s", payload)
 	}
-	// 再次上报同 intent:边幂等,仍合并
+	// 同一 intent で再報告：辺は冪等、引き続きマージされる
 	out2 := record(RecordFindingInput{
-		VulnClass: "SQLi", Severity: "high", Summary: "拿到凭据的深度利用",
-		Evidence: "又一次证据", Worker: "w2", IntentID: intentID, AssetIDs: []int64{assetA},
+		VulnClass: "SQLi", Severity: "high", Summary: "認証情報奪取後の深掘り悪用",
+		Evidence: "さらに別のエビデンス", Worker: "w2", IntentID: intentID, AssetIDs: []int64{assetA},
 	})
 	if !out2.Merged || out2.FindingID != fid {
 		t.Fatalf("re-merge: %+v", out2)
@@ -277,13 +277,13 @@ func TestRecordFindingTxMerge(t *testing.T) {
 		t.Fatalf("edge idempotency: count=%d err=%v", edges, err)
 	}
 
-	// 2) pending 占位也参与合并(压测 0 触发的根因修复):同主资产较新的
-	// pending 行被命中(ORDER BY id DESC),证据聚合进去,status 保持 pending
-	// 由验证管线(C2 增量重验)裁决,不在合并处提前判真伪。
+	// 2) pending のプレースホルダもマージ対象（負荷試験で 0 件になった根因の修正）：主資産が同じで
+	// より新しい pending 行がヒットし（ORDER BY id DESC）、エビデンスを集約する。status は pending のまま
+	// 検証パイプライン（C2 の増分再検証）の判断に委ね、マージ時点で真偽を先に決めない。
 	pfid, _ := mkFinding("sqli", FindingPending, []int64{assetA})
 	out3 := record(RecordFindingInput{
-		VulnClass: "SQL Injection (Blind)", Severity: "low", Summary: "另一条",
-		Evidence: "pending 合并证据", AssetIDs: []int64{assetA},
+		VulnClass: "SQL Injection (Blind)", Severity: "low", Summary: "別の 1 件",
+		Evidence: "pending マージ時エビデンス", AssetIDs: []int64{assetA},
 	})
 	if !out3.Merged || out3.FindingID != pfid {
 		t.Fatalf("pending must merge into %d: %+v", pfid, out3)
@@ -295,12 +295,12 @@ func TestRecordFindingTxMerge(t *testing.T) {
 	if pf.Status != FindingPending {
 		t.Fatalf("merge must not change status, got %q", pf.Status)
 	}
-	if !strings.Contains(pf.Evidence, "pending 合并证据") ||
+	if !strings.Contains(pf.Evidence, "pending マージ時エビデンス") ||
 		!strings.Contains(pf.Evidence, `本次 vulnclass 原文 "SQL Injection (Blind)"`) {
 		t.Errorf("pending merged evidence missing segment/drift note:\n%s", pf.Evidence)
 	}
 
-	// 3) 归一化后不同类别 → 新建
+	// 3) 正規化後に別カテゴリ → 新規作成
 	mkFinding("xss", FindingConfirmed, []int64{assetA})
 	out4 := record(RecordFindingInput{
 		VulnClass: "ssrf", Severity: "low", Summary: "ssrf", AssetIDs: []int64{assetA},
@@ -310,34 +310,34 @@ func TestRecordFindingTxMerge(t *testing.T) {
 	}
 	defer func() { _, _ = d.DeleteFinding(out4.FindingID) }()
 
-	// 4) 终态排除 + 主资产不同:assetB 上有一条 false_positive 的 sqli,
-	// 终态不参与合并;assetB 上无 confirmed/pending sqli → 新建
+	// 4) 終了状態は除外し主資産も異なる：assetB 上に false_positive の sqli が 1 件あるが
+	// 終了状態はマージ対象外。assetB 上に confirmed/pending の sqli はない → 新規作成
 	fpfid, _ := mkFinding("sqli", FindingFalsePositive, []int64{assetB})
 	out5 := record(RecordFindingInput{
-		VulnClass: "sqli", Severity: "low", Summary: "别的资产", AssetIDs: []int64{assetB},
+		VulnClass: "sqli", Severity: "low", Summary: "別のアセット", AssetIDs: []int64{assetB},
 	})
 	if out5.Merged || out5.FindingID == fpfid {
 		t.Fatalf("terminal state must not merge (fp fid=%d): %+v", fpfid, out5)
 	}
 	defer func() { _, _ = d.DeleteFinding(out5.FindingID) }()
 
-	// 5) 无资产 → 合并键不完整,新建
-	out6 := record(RecordFindingInput{VulnClass: "sqli", Severity: "low", Summary: "无资产"})
+	// 5) 資産なし → マージキーが不完全なので新規作成
+	out6 := record(RecordFindingInput{VulnClass: "sqli", Severity: "low", Summary: "アセットなし"})
 	if out6.Merged {
 		t.Fatalf("asset-less report must not merge: %+v", out6)
 	}
 	defer func() { _, _ = d.DeleteFinding(out6.FindingID) }()
 
-	// 6) 合并键为主资产对等(asset_ids->0),不是包含:
-	// (a) 候选 [ep,svc] vs 输入 [svc] —— svc 只是候选的次资产,主资产不同,不合并;
-	// (b) 候选 [ep,svc] vs 输入 [ep] —— 主资产相同,合并。
+	// 6) マージキーは主資産の一致（asset_ids->0）であり、包含ではない：
+	// (a) 候補 [ep,svc] 対 入力 [svc] —— svc は候補の副資産にすぎず主資産が異なるのでマージしない。
+	// (b) 候補 [ep,svc] 対 入力 [ep] —— 主資産が同一なのでマージする。
 	epAsset := mkAsset("merge-ep.invalid")
 	svcAsset := mkAsset("merge-svc.invalid")
 	defer func() { _, _ = d.Exec(`DELETE FROM assets WHERE id=ANY($1::bigint[])`, []int64{epAsset, svcAsset}) }()
 
 	mfid, _ := mkFinding("csrf", FindingConfirmed, []int64{epAsset, svcAsset})
 	out7 := record(RecordFindingInput{
-		VulnClass: "csrf", Severity: "low", Summary: "挂在 service 上的另一条",
+		VulnClass: "csrf", Severity: "low", Summary: "service に紐づく別の 1 件",
 		AssetIDs: []int64{svcAsset},
 	})
 	if out7.Merged {
@@ -346,7 +346,7 @@ func TestRecordFindingTxMerge(t *testing.T) {
 	defer func() { _, _ = d.DeleteFinding(out7.FindingID) }()
 
 	out8 := record(RecordFindingInput{
-		VulnClass: "CSRF", Severity: "medium", Summary: "同入口加深",
+		VulnClass: "CSRF", Severity: "medium", Summary: "同一入口での深掘り",
 		AssetIDs: []int64{epAsset},
 	})
 	if !out8.Merged || out8.FindingID != mfid {

@@ -8,7 +8,7 @@ import (
 	"github.com/Autumn-27/norma/llm"
 )
 
-// 空转回合(仅思考、无正文无工具)的识别与续跑，见 steerHooks.Stop。
+// 空転ターン(思考のみで本文もツールもない)の識別と継続実行については steerHooks.Stop を参照。
 
 func assistantThinking(text string) llm.Message {
 	return llm.Message{Role: llm.RoleAssistant, Content: []llm.ContentBlock{
@@ -18,7 +18,7 @@ func assistantThinking(text string) llm.Message {
 
 func TestIsThinkingOnlyTurn(t *testing.T) {
 	toolUse := llm.Message{Role: llm.RoleAssistant, Content: []llm.ContentBlock{
-		{Type: llm.BlockThinking, Thinking: "先扫端口"},
+		{Type: llm.BlockThinking, Thinking: "まずポートスキャン"},
 		{Type: llm.BlockToolUse, ID: "t1", Name: "run_nuclei"},
 	}}
 	cases := []struct {
@@ -26,24 +26,24 @@ func TestIsThinkingOnlyTurn(t *testing.T) {
 		msgs []llm.Message
 		want bool
 	}{
-		{"仅思考", []llm.Message{llm.UserText("开始"), assistantThinking("想想")}, true},
-		{"思考+工具", []llm.Message{llm.UserText("开始"), toolUse}, false},
-		{"思考+正文", []llm.Message{assistantThinking("想想"), {
+		{"思考のみ", []llm.Message{llm.UserText("開始"), assistantThinking("考え中")}, true},
+		{"思考+ツール", []llm.Message{llm.UserText("開始"), toolUse}, false},
+		{"思考+本文", []llm.Message{assistantThinking("考え中"), {
 			Role:    llm.RoleAssistant,
-			Content: []llm.ContentBlock{{Type: llm.BlockThinking, Thinking: "x"}, llm.TextBlock("结论")},
+			Content: []llm.ContentBlock{{Type: llm.BlockThinking, Thinking: "x"}, llm.TextBlock("結論")},
 		}}, false},
-		{"正文只有空白字符", []llm.Message{{
+		{"本文が空白文字のみ", []llm.Message{{
 			Role:    llm.RoleAssistant,
 			Content: []llm.ContentBlock{{Type: llm.BlockThinking, Thinking: "x"}, llm.TextBlock("  \n ")},
 		}}, true},
-		{"完全空的 assistant 回合", []llm.Message{{Role: llm.RoleAssistant}}, true},
-		// 工具结果是 user 角色，判定必须回溯到它前面那条 assistant，而不是就近误判。
-		{"最后一条是工具结果", []llm.Message{toolUse, {
+		{"完全に空の assistant ターン", []llm.Message{{Role: llm.RoleAssistant}}, true},
+		// ツール結果は user ロールなので、判定はその直前の assistant まで遡る必要があり、直近のメッセージだけで誤判定してはならない。
+		{"最後の1件がツール結果", []llm.Message{toolUse, {
 			Role:    llm.RoleUser,
 			Content: []llm.ContentBlock{{Type: llm.BlockToolResult, ToolUseID: "t1"}},
 		}}, false},
-		{"没有 assistant 消息", []llm.Message{llm.UserText("开始")}, false},
-		{"空历史", nil, false},
+		{"assistant メッセージなし", []llm.Message{llm.UserText("開始")}, false},
+		{"履歴が空", nil, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestIsThinkingOnlyTurn(t *testing.T) {
 	}
 }
 
-// fakeHooks 是一个可编程的 inner HookRunner，用来验证 steerHooks 对 inner 决定的尊重。
+// fakeHooks はプログラム可能な inner の HookRunner で、steerHooks が inner の決定を尊重することを検証するために使う。
 type fakeHooks struct {
 	prevent  bool
 	blocking []string
@@ -70,77 +70,77 @@ func (f fakeHooks) Stop(context.Context, []llm.Message) (bool, []string, string)
 }
 
 func TestSteerHooksStopNudgesEmptyTurn(t *testing.T) {
-	empty := []llm.Message{assistantThinking("我应该先枚举子域名")}
+	empty := []llm.Message{assistantThinking("まずサブドメインを列挙すべきだ")}
 
-	t.Run("空转回合注入续跑指令", func(t *testing.T) {
+	t.Run("空転ターンに継続指示を注入する", func(t *testing.T) {
 		h := steerHooks{nudges: &atomic.Int64{}, limit: defaultEmptyTurnNudges, label: "worker-1 · #1"}
 		prevent, blocking, _ := h.Stop(context.Background(), empty)
 		if prevent {
-			t.Fatal("空转回合不应硬停")
+			t.Fatal("空転ターンは強制停止すべきでない")
 		}
 		if len(blocking) != 1 || blocking[0] != emptyTurnNudge {
 			t.Fatalf("blocking = %v, want [emptyTurnNudge]", blocking)
 		}
 	})
 
-	t.Run("有正文或工具时不介入", func(t *testing.T) {
+	t.Run("本文かツールがあれば介入しない", func(t *testing.T) {
 		h := steerHooks{nudges: &atomic.Int64{}, limit: defaultEmptyTurnNudges}
 		normal := []llm.Message{{
 			Role:    llm.RoleAssistant,
-			Content: []llm.ContentBlock{llm.TextBlock("已完成扫描，未发现开放端口")},
+			Content: []llm.ContentBlock{llm.TextBlock("スキャン完了、開いているポートは見つからない")},
 		}}
 		if _, blocking, _ := h.Stop(context.Background(), normal); blocking != nil {
-			t.Fatalf("正常收场被误判为空转: %v", blocking)
+			t.Fatalf("正常な終了が空転と誤判定された: %v", blocking)
 		}
 		if n := h.nudges.Load(); n != 0 {
-			t.Fatalf("未介入时不应计数, got %d", n)
+			t.Fatalf("介入しない場合はカウントしない, got %d", n)
 		}
 	})
 
-	t.Run("达到上限后放行收场", func(t *testing.T) {
-		const limit = 5 // 用户把「空响应重试次数」配成 5
+	t.Run("上限到達後は終了を許可する", func(t *testing.T) {
+		const limit = 5 // ユーザーが「空レスポンスの再試行回数」を 5 に設定した想定
 		h := steerHooks{nudges: &atomic.Int64{}, limit: limit}
 		for i := 1; i <= limit; i++ {
 			if _, blocking, _ := h.Stop(context.Background(), empty); len(blocking) != 1 {
-				t.Fatalf("第 %d 次应仍在配额内, blocking = %v", i, blocking)
+				t.Fatalf("%d 回目はまだ上限内のはず, blocking = %v", i, blocking)
 			}
 		}
 		if _, blocking, _ := h.Stop(context.Background(), empty); blocking != nil {
-			t.Fatalf("超出上限仍在注入: %v", blocking)
+			t.Fatalf("上限を超えても注入している: %v", blocking)
 		}
 	})
 
-	// 「空响应重试次数」配 -1 = 关掉这层，emptyTurnNudgeLimit 解析成 0。
-	t.Run("配置关闭时不介入", func(t *testing.T) {
+	// 「空レスポンスの再試行回数」を -1 にするとこの層が無効になり、emptyTurnNudgeLimit は 0 と解釈される。
+	t.Run("設定がオフなら介入しない", func(t *testing.T) {
 		h := steerHooks{nudges: &atomic.Int64{}, limit: 0}
 		if _, blocking, _ := h.Stop(context.Background(), empty); blocking != nil {
-			t.Fatalf("已关闭仍在注入: %v", blocking)
+			t.Fatalf("オフなのに注入している: %v", blocking)
 		}
 	})
 
-	t.Run("inner 决定硬停时不叠加", func(t *testing.T) {
-		h := steerHooks{inner: fakeHooks{prevent: true, msg: "guard 拒绝收场"}, nudges: &atomic.Int64{}, limit: defaultEmptyTurnNudges}
+	t.Run("inner が強制停止を決めたら重ねない", func(t *testing.T) {
+		h := steerHooks{inner: fakeHooks{prevent: true, msg: "guard が終了を拒否"}, nudges: &atomic.Int64{}, limit: defaultEmptyTurnNudges}
 		prevent, blocking, msg := h.Stop(context.Background(), empty)
-		if !prevent || msg != "guard 拒绝收场" || blocking != nil {
-			t.Fatalf("inner 的硬停被改写: prevent=%v blocking=%v msg=%q", prevent, blocking, msg)
+		if !prevent || msg != "guard が終了を拒否" || blocking != nil {
+			t.Fatalf("inner の強制停止が書き換えられた: prevent=%v blocking=%v msg=%q", prevent, blocking, msg)
 		}
 		if n := h.nudges.Load(); n != 0 {
-			t.Fatalf("让位给 inner 时不应消耗配额, got %d", n)
+			t.Fatalf("inner に譲るときは上限を消費しない, got %d", n)
 		}
 	})
 
-	t.Run("inner 已要续跑时不叠加", func(t *testing.T) {
-		h := steerHooks{inner: fakeHooks{blocking: []string{"guard 的续跑理由"}}, nudges: &atomic.Int64{}, limit: defaultEmptyTurnNudges}
+	t.Run("inner が継続を要求済みなら重ねない", func(t *testing.T) {
+		h := steerHooks{inner: fakeHooks{blocking: []string{"guard の継続理由"}}, nudges: &atomic.Int64{}, limit: defaultEmptyTurnNudges}
 		_, blocking, _ := h.Stop(context.Background(), empty)
-		if len(blocking) != 1 || blocking[0] != "guard 的续跑理由" {
-			t.Fatalf("inner 的续跑消息被改写: %v", blocking)
+		if len(blocking) != 1 || blocking[0] != "guard の継続理由" {
+			t.Fatalf("inner の継続メッセージが書き換えられた: %v", blocking)
 		}
 	})
 
-	t.Run("未装计数器时行为不变", func(t *testing.T) {
-		h := steerHooks{limit: defaultEmptyTurnNudges} // 例如未来其他调用点忘了传 nudges
+	t.Run("カウンタ未設定でも挙動は変わらない", func(t *testing.T) {
+		h := steerHooks{limit: defaultEmptyTurnNudges} // 例えば将来ほかの呼び出し元が nudges を渡し忘れた場合
 		if _, blocking, _ := h.Stop(context.Background(), empty); blocking != nil {
-			t.Fatalf("无计数器时不应注入: %v", blocking)
+			t.Fatalf("カウンタがない場合は注入しない: %v", blocking)
 		}
 	})
 }

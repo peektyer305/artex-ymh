@@ -12,7 +12,7 @@ import (
 )
 
 // =====================================================================
-// 统一资产表
+// 統一アセットテーブル
 // =====================================================================
 
 // Asset is a row in the assets table.
@@ -58,7 +58,7 @@ type Asset struct {
 	TaskSource        string         `json:"task_source,omitempty"`
 	TaskSourceSummary string         `json:"task_source_summary,omitempty"`
 	TaskSourceNodeID  *int64         `json:"task_source_node_id,omitempty"`
-	// 批 6 L1 蜜罐静态签名识别:0=无信号;evidence 为命中签名(JSON 数组文本)。
+	// バッチ 6 L1 ハニーポット静的シグネチャ識別：0=シグナルなし、evidence はヒットしたシグネチャ(JSON 配列テキスト)。
 	HoneypotScore    float64 `json:"honeypot_score"`
 	HoneypotEvidence string  `json:"honeypot_evidence,omitempty"`
 }
@@ -320,8 +320,8 @@ func ValidateAssetIP(value string) error {
 		return nil
 	}
 	return fmt.Errorf(
-		"%w: ip 必须是 IPv4/IPv6 地址，收到 %q。若这是主机名，请改用 type=subdomain 并填 domain 字段；"+
-			"若确实要登记地址，请先解析出 A/AAAA 记录，再用解析出的地址填 ip",
+		"%w: ip は IPv4/IPv6 アドレスである必要があります。受信値は %q です。これがホスト名なら type=subdomain に変更して domain フィールドを埋めてください。"+
+			"アドレスを登録したい場合は、まず A/AAAA レコードを解決し、解決したアドレスを ip に入力してください",
 		ErrAssetIPInvalid, value)
 }
 
@@ -1205,11 +1205,11 @@ func (s *AssetStore) CountByTask(taskID int64, typ string) (int, error) {
 	return n, err
 }
 
-// QueryByHost 全局(不受 task_ids 限制)按 host 粗筛资产:ip/domain/root_domain
-// 精确相等、root_domain 作为 host 的后缀(子域命中根域)、url 含 "://host"。
-// 供 report_finding 自动锚定(agent/finding_anchor.go)在 SQL 层先收敛候选,
-// 再由 Go 层按 endpoint/service/ip 优先级定夺。limit <= 0 时取默认上限 500,
-// 防止极端情况下候选项爆炸。host 来自正则提取的 hostname/IP,不含 LIKE 元字符。
+// QueryByHost はグローバル(task_ids に制限されない)に host でアセットを粗く絞り込む：ip/domain/root_domain
+// の完全一致、root_domain が host の接尾辞(サブドメインがルートドメインに一致)、url に "://host" を含む。
+// report_finding の自動アンカリング(agent/finding_anchor.go)が SQL 層でまず候補を絞り、
+// その後 Go 層が endpoint/service/ip の優先順で決定するために使う。limit <= 0 なら既定の上限 500 をとり、
+// 極端な状況で候補が爆発するのを防ぐ。host は正規表現で抽出した hostname/IP 由来で、LIKE のメタ文字を含まない。
 func (s *AssetStore) QueryByHost(host string, limit int) ([]*Asset, error) {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" {

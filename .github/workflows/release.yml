@@ -4,13 +4,13 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write # 创建 Release 需要
+  contents: write # Release 作成に必要
 
 jobs:
-  # ① Go 全量测试门：带真实 PostgreSQL 服务，db/agent/server 的 PG 测试不再
-  #    静默跳过（本地无 ARTEX_PG_DSN 时这些测试仍会 skip，见 db/testmain_test.go）。
-  #    注意：带 DSN 后会真实执行全部 PG 测试，若个别用例在 CI 环境暴露出既有
-  #    依赖问题，应修测试本身，而不是摘掉这个门。
+  # ① Go 全量テストゲート：実際の PostgreSQL サービスを用意し、db/agent/server の PG テストを
+  #    暗黙にスキップしない（ローカルで ARTEX_PG_DSN がない場合、これらのテストは依然 skip。db/testmain_test.go 参照）。
+  #    注意：DSN を設定すると全 PG テストが実際に実行されます。CI 環境で個別ケースが既存の
+  #    依存問題を露呈した場合は、このゲートを外すのではなくテスト自体を修正してください。
   test:
     runs-on: ubuntu-latest
     services:
@@ -37,7 +37,7 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
-  # ② 前端静态导出（一次），产物给交叉编译各平台复用；tsc 类型检查一并入门
+  # ② フロントエンドの静的エクスポート（1 回）。成果物は各プラットフォームのクロスコンパイルで再利用し、tsc の型チェックもゲートに含める
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -49,8 +49,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
-      # 类型检查是硬门；biome 全仓尚有百余个既有 lint error，先只对 src 出报告
-      # 不阻塞，待存量清理后再升级成硬门。
+      # 型チェックは必須ゲート。biome はリポジトリ全体に既存の lint error が 100 件以上あるため、当面は src のみ
+      # レポートし、ブロックはしない。既存分の整理後に必須ゲートへ格上げする。
       - run: npx tsc --noEmit
         working-directory: web
       - name: Biome lint report (src only, non-blocking)
@@ -64,7 +64,7 @@ jobs:
           name: web-dist
           path: web/out
 
-  # ③ 五平台交叉编译（内嵌前端）+ 打 zip
+  # ③ 5 プラットフォームのクロスコンパイル（フロントエンド埋め込み）+ zip 作成
   binaries:
     needs: [test, frontend]
     runs-on: ubuntu-latest
@@ -93,8 +93,8 @@ jobs:
           ARTEX_BUILD_VERSION: ${{ github.ref_name }}
           ARTEX_SKIP_FRONTEND: "1"
           ARTEX_SKIP_NPM_CI: "1"
-          # UPX 自解压 ELF 在部分 Linux 内核、虚拟化和安全策略下会崩溃。
-          # Release 使用 Go linker 裁剪和 zip 压缩，优先保证可移植性。
+          # UPX の自己解凍 ELF は一部の Linux カーネル、仮想化、セキュリティポリシーでクラッシュします。
+          # Release では Go リンカによる削減と zip 圧縮を使い、移植性を優先します。
           ARTEX_COMPRESS: "0"
           ARTEX_PACKAGE: "1"
           ARTEX_PACKAGE_DIR: dist
@@ -107,14 +107,14 @@ jobs:
         with:
           name: pkg-${{ matrix.goos }}-${{ matrix.goarch }}
           path: "dist/*.zip"
-      # Linux 生二进制单独上传，供 docker job 复用（免在镜像里重编前端+Go）
+      # Linux の生バイナリは個別にアップロードし、docker ジョブで再利用（イメージ内でのフロントエンド+Go の再ビルドを回避）
       - if: matrix.goos == 'linux'
         uses: actions/upload-artifact@v4
         with:
           name: bin-linux-${{ matrix.goarch }}
           path: dist/artex-linux-${{ matrix.goarch }}/artex
 
-  # ④ 汇总所有 zip → 签名校验和 → 创建 GitHub Release
+  # ④ すべての zip を集約 → チェックサム署名 → GitHub Release 作成
   release:
     needs: binaries
     runs-on: ubuntu-latest
@@ -127,10 +127,10 @@ jobs:
       - name: Generate checksums
         working-directory: dist
         run: sha256sum *.zip > SHA256SUMS
-      # 用 minisign 给 SHA256SUMS 签名，客户端（selfupdate）内置公钥验签，
-      # 缺签名或验不过一律拒装。MINISIGN_KEY 是 minisign 无口令私钥文件的完整
-      # 内容（两行），公钥硬编码在 selfupdate/minisign.go，两者必须成对更换。
-      # minisign 工具本身钉 0.12 并校验 SHA256，不用包管理器的浮动版本。
+      # minisign で SHA256SUMS に署名。クライアント（selfupdate）は内蔵公開鍵で検証し、
+      # 署名の欠落や検証失敗は一律インストール拒否。MINISIGN_KEY は minisign のパスフレーズなし秘密鍵ファイルの
+      # 全内容（2 行）。公開鍵は selfupdate/minisign.go にハードコードされており、両者は必ずペアで変更してください。
+      # minisign ツール自体は 0.12 に固定して SHA256 を検証し、パッケージマネージャの可変バージョンは使わない。
       - name: Sign checksums with minisign
         working-directory: dist
         env:
@@ -152,13 +152,13 @@ jobs:
             dist/SHA256SUMS.minisig
           generate_release_notes: true
 
-  # ⑤ 多架构镜像 → 推 Docker Hub（复用 binaries 编好的 Linux 二进制，
-  #    镜像里只装工具 + 放二进制；arm64 仅需模拟 apt 层，构建快很多）
+  # ⑤ マルチアーキテクチャイメージ → Docker Hub へ push（binaries でビルド済みの Linux バイナリを再利用。
+  #    イメージにはツールのインストールとバイナリ配置のみ。arm64 は apt 層のエミュレーションだけで済み、ビルドが大幅に高速化）
   docker:
     needs: binaries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4 # 取 Dockerfile 与 skills/
+      - uses: actions/checkout@v4 # Dockerfile と skills/ を取得
       - uses: actions/download-artifact@v4
         with:
           name: bin-linux-amd64

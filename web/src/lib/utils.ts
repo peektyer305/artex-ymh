@@ -5,16 +5,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// 抽屉/对话框(Sheet/Dialog)的 onInteractOutside 关闭判定辅助。
+// ドロワー/ダイアログ(Sheet/Dialog)の onInteractOutside による閉じ判定の補助。
 //
-// 背景:抽屉内的 Radix 弹层(Select 下拉、DropdownMenu、Popover 等)会 portal 到抽屉
-// 之外。开着弹层时点遮罩/抽屉外想收起它,这一次 pointerdown 会被 Select 和 Sheet 两个
-// DismissableLayer 同时处理;Select 先关闭且是 discrete 事件、React 会同步 flush,于是
-// 轮到 Sheet 的处理器时弹层的 data-state 早已翻成 closed —— 在"当下"检测弹层是否打开
-// 天然不可靠(实测已验证)。
+// 背景：ドロワー内の Radix ポップアップ（Select ドロップダウン、DropdownMenu、Popover など）は
+// ドロワーの外へ portal される。開いたままマスク/外側をクリックして閉じようとすると、この
+// pointerdown は Select と Sheet の両 DismissableLayer で同時に処理される。Select が先に閉じ、
+// discrete イベントで React が同期 flush するため、Sheet のハンドラの番には既に data-state は
+// closed になっている ——「その瞬間」に開いているかを判定するのは元々当てにならない（実測済み）。
 //
-// 正确做法:Radix 的 pointerdown 监听在冒泡阶段;我们在 capture 阶段(早于它)先把
-// "此刻有没有弹层开着"记录下来,onInteractOutside 再读这个记录值来决定是否放行关闭。
+// 正しい方法：Radix の pointerdown 監視はバブル段階にある。そこで capture 段階（それより前）で
+// 「この時点でポップアップが開いているか」を記録し、onInteractOutside がその記録値で
+// 閉じてよいか判断する。
 function isRadixOverlayOpenNow(): boolean {
   if (typeof document === "undefined") return false;
   return !!document.querySelector(
@@ -35,26 +36,26 @@ if (typeof document !== "undefined") {
     () => {
       overlayOpenAtLastPointerDown = isRadixOverlayOpenNow();
     },
-    true, // capture:抢在 Radix 冒泡阶段的 pointerdown 处理器之前记录
+    true, // capture:Radix のバブル段階の pointerdown ハンドラより先に記録する
   );
 }
 
-// radixOverlayWasOpenAtPointerDown 返回"最近一次 pointerdown 发生时是否有 Radix 弹层
-// 开着"。抽屉/对话框据此:开着弹层时点遮罩 → 只收弹层、不关自身。
+// radixOverlayWasOpenAtPointerDown は「直近の pointerdown 時に Radix ポップアップが開いていたか」を返す。
+// ドロワー/ダイアログは、開いている時はマスクをクリックしてもポップアップのみ閉じ、自身は閉じない。
 export function radixOverlayWasOpenAtPointerDown(): boolean {
   return overlayOpenAtLastPointerDown;
 }
 
-// copyText 把文本写入剪贴板,返回是否成功。
-// 背景:navigator.clipboard 仅在安全上下文(HTTPS / localhost)可用;通过 IP + HTTP
-// 访问时它为 undefined,此时降级到 execCommand("copy")。
+// copyText はテキストをクリップボードへ書き込み、成功したかを返す。
+// 背景：navigator.clipboard はセキュアコンテキスト(HTTPS / localhost)でのみ利用可能で、IP + HTTP
+// でアクセスすると undefined になる。その場合は execCommand("copy") へフォールバックする。
 export async function copyText(text: string): Promise<boolean> {
   if (navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {
-      // 继续走降级方案
+      // フォールバックへ進む
     }
   }
   try {

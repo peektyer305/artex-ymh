@@ -5,18 +5,18 @@ import (
 	"time"
 )
 
-// LLM 重试策略：五层重试的「次数 + 间隔」全局配置，见 docs/LLM重试设计.md。
-// 存在 settings 表的一个 JSON 值里 —— 它是整机一份的运行参数，不值得为它开一张表；
-// 读取走内置默认兜底，所以键不存在(全新库/从未配置过)时行为与写死常量时代完全一致。
+// LLM 再試行ポリシー：5 層の再試行の「回数 + 間隔」グローバル設定、docs/LLM重试设计.md 参照。
+// settings テーブルの 1 つの JSON 値に置く —— マシン全体で 1 つの実行パラメータであり、専用テーブルを作る価値はない。
+// 読み取りは組み込みデフォルトでフォールバックするため、キーが無い(新規 DB/未設定)場合の挙動は定数直書き時代と完全に同じ。
 
 const settingLLMRetryPolicy = "llm_retry_policy"
 
 // RetryRule is one layer's knob pair. The zero value means "unset":
 //
-//	Attempts   0 = 用内置默认次数; -1 = 关闭该层重试; >0 = 用该值
-//	IntervalMS 0 = 用该层原本的间隔策略(通常是指数退避); >0 = 改用固定毫秒间隔
+//	Attempts   0 = 組み込みのデフォルト回数; -1 = その層の再試行を無効化; >0 = その値を使用
+//	IntervalMS 0 = その層本来の間隔戦略(通常は指数バックオフ); >0 = 固定ミリ秒間隔に変更
 //
-// -1 是「显式关掉」而不是「0 次」，因为 0 已经被「未配置」占用了。
+// -1 は「明示的な無効化」であり「0 回」ではない。0 は「未設定」に使われているため。
 type RetryRule struct {
 	Attempts   int `json:"attempts"`
 	IntervalMS int `json:"interval_ms"`
@@ -76,20 +76,20 @@ func (o RetryOverride) Clamped() RetryOverride {
 	return o
 }
 
-// LLMRetryPolicy holds the五层 retry configuration. Connect/Empty/Stream are the
+// LLMRetryPolicy holds the 5-layer retry configuration. Connect/Empty/Stream are the
 // per-request layers (a profile may override them, see LLMProfile.Retry);
 // Breaker and Intent are process-wide by nature and live only here.
 type LLMRetryPolicy struct {
-	// Connect：SDK 建连重试(连接重置/超时/429/5xx，流开始前)。默认 3 次、指数退避。
+	// Connect：SDK の接続再試行(接続リセット/タイムアウト/429/5xx、ストリーム開始前)。デフォルト 3 回、指数バックオフ。
 	Connect RetryRule `json:"connect"`
-	// Empty：SDK 空响应重试(完成但无 content block，仅 openai 格式)。默认 2 次、指数退避。
+	// Empty：SDK の空レスポンス再試行(完了したが content block が無い、openai 形式のみ)。デフォルト 2 回、指数バックオフ。
 	Empty RetryRule `json:"empty"`
-	// Stream：同 provider 安全窗口重试(未交付输出前的断流重放)。默认 2 次、0.5s 起指数(封顶 4s)。
+	// Stream：同一 provider の安全ウィンドウ内での再試行(出力未送信時の切断リプレイ)。デフォルト 2 回、0.5s から指数(上限 4s)。
 	Stream RetryRule `json:"stream"`
-	// Breaker：轮询熔断。Attempts=连续几次瞬时失败触发熔断(默认 3，-1=瞬时失败不熔断，
-	// 硬失败如余额不足/密钥失效仍立即熔断)；IntervalMS=固定冷却时长(0=默认 1/5/30min 梯度)。
+	// Breaker：ポーリングのサーキットブレーカー。Attempts=連続何回の一時的失敗で遮断するか(デフォルト 3、-1=一時的失敗では遮断しない、
+	// 残高不足/キー失効などの恒久的失敗は即遮断)；IntervalMS=固定冷却時間(0=デフォルト 1/5/30min の段階)。
 	Breaker RetryRule `json:"breaker"`
-	// Intent：worker 以 model_error 收场后的整条意图重跑。默认 2 次、固定 3s。
+	// Intent：worker が model_error で終了した後の意図全体の再実行。デフォルト 2 回、固定 3s。
 	Intent RetryRule `json:"intent"`
 }
 

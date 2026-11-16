@@ -1,7 +1,7 @@
-// credentials.go 装配凭据一等实体的三个 host 工具(内网渗透期 2,
+// credentials.go は認証情報を一級エンティティとして扱う 3 つの host ツールを組み込む(イントラネット侵攻フェーズ 2,
 // INTRANET-PIVOT-DESIGN.md §4.4):add_credential/list_credentials/
-// credential_reuse_plan。与期 1a 会话工具同模式:普通工具调用,自动过 guard
-// 审批、自动进 activity 留痕;seed 进 tools 表、默认绑 worker。
+// credential_reuse_plan。フェーズ 1a のセッションツールと同じ方式:通常のツール呼び出しで、guard 承認を自動で通過し、
+// activity に自動で記録される;tools テーブルに seed し、デフォルトで worker に紐付ける。
 package server
 
 import (
@@ -14,8 +14,8 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 )
 
-// initCredentials 建凭据落库访问层(secret AES-GCM,密钥由 jwtKey 派生,
-// 与 sessions 不同域标签)。失败只记日志,不拖垮启动。
+// initCredentials は認証情報の永続化アクセス層を構築する(secret は AES-GCM、鍵は jwtKey から派生し、
+// sessions とは別のドメインラベルを使う)。失敗はログのみで、起動を妨げない。
 func (s *Server) initCredentials() {
 	if s.m.pg == nil {
 		return
@@ -23,7 +23,7 @@ func (s *Server) initCredentials() {
 	s.credStore = db.NewCredentialStore(s.m.pg, s.jwtKey)
 }
 
-// credentialTools 返回三个凭据工具。credStore 为 nil(DB 未就绪)时不提供。
+// credentialTools は 3 つの認証情報ツールを返す。credStore が nil(DB 未準備)のときは提供しない。
 func (s *Server) credentialTools() []actool.CoreTool {
 	if s.credStore == nil {
 		return nil
@@ -35,23 +35,23 @@ func (s *Server) credentialTools() []actool.CoreTool {
 	}
 }
 
-// addCredentialTool 把从目标收割的凭据登记为平台管理的一等实体(加密落库)。
+// addCredentialTool は対象から回収した認証情報をプラットフォーム管理の一級エンティティとして登録する(暗号化して永続化)。
 func (s *Server) addCredentialTool() actool.CoreTool {
 	return actool.Build(actool.Spec{
 		Name: "add_credential",
-		Description: "【凭据登记】把从目标读到的口令/hash/密钥/ticket 登记为平台管理的凭据(secret AES-GCM 加密落库)。" +
-			"一切收割到的凭据都应登记:复用打分(credential_reuse_plan)依赖它推断可横向的目标。" +
-			"来源(source)写清楚从哪来(如 \"sqli dump users 表\" / \"/etc/shadow\" / \"mimikatz lsass dump\")," +
-			"打分会把 source 里的 ssh/rdp/smb 等服务关键词纳入匹配。实测能登录后用 verify=true 重新登记或让平台标记 verified。",
+		Description: "【認証情報の登録】対象から読み取ったパスワード/hash/鍵/ticket をプラットフォーム管理の認証情報として登録する(secret は AES-GCM で暗号化して永続化)。" +
+			"回収した認証情報はすべて登録すべき:再利用スコアリング(credential_reuse_plan)がこれを基に横展開可能な対象を推測する。" +
+			"ソース(source)には取得元を明確に書く(例: \"sqli dump users テーブル\" / \"/etc/shadow\" / \"mimikatz lsass dump\")、" +
+			"スコアリングは source 内の ssh/rdp/smb などのサービスキーワードをマッチングに含める。実際にログインできた後は verify=true で再登録するか、プラットフォームに verified を付けさせる。",
 		Schema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"username":      strParam("用户名(可空,如 ticket/token 无用户名时留空)"),
-				"cred_type":     strParam("凭据类型:password / hash_nt / hash_lm / hash_sha1 / ticket / ssh_key / token"),
-				"secret":        strParam("凭据内容(口令明文/hash/私钥/ticket 串;加密存储,不明文落库)"),
-				"domain":        strParam("域(可选,如 CORP 或 corp.local;域凭据在复用打分中大幅加分)"),
-				"source":        strParam("来源描述(必填):从哪台主机/什么方式得到,如 \"10.0.0.5 /etc/shadow\"、\"sqli dump users 表\""),
-				"host_asset_id": map[string]any{"type": "integer", "description": "凭据来源主机的资产 id(可选;用于同网段打分)"},
+				"username":      strParam("ユーザー名(空でも可、ticket/token などユーザー名がない場合は空)"),
+				"cred_type":     strParam("認証情報の種類：password / hash_nt / hash_lm / hash_sha1 / ticket / ssh_key / token"),
+				"secret":        strParam("認証情報の内容(パスワード平文/hash/秘密鍵/ticket 文字列。暗号化して保存し、平文では永続化しない)"),
+				"domain":        strParam("ドメイン(任意、CORP や corp.local など。ドメイン認証情報は再利用スコアリングで大きく加点される)"),
+				"source":        strParam("ソースの説明(必須):どのホストから/どうやって取得したか。例: \"10.0.0.5 /etc/shadow\"、\"sqli dump users テーブル\""),
+				"host_asset_id": map[string]any{"type": "integer", "description": "認証情報の取得元ホストのアセット id(任意。同一セグメントのスコアリングに使う)"},
 			},
 			"required": []any{"cred_type", "secret", "source"},
 		},
@@ -68,17 +68,17 @@ func (s *Server) addCredentialTool() actool.CoreTool {
 			}
 			_ = json.Unmarshal(in, &a)
 			if !db.ValidCredType(a.CredType) {
-				return actool.Errorf("非法 cred_type " + a.CredType + "(password/hash_nt/hash_lm/hash_sha1/ticket/ssh_key/token)"), nil
+				return actool.Errorf("不正な cred_type " + a.CredType + "(password/hash_nt/hash_lm/hash_sha1/ticket/ssh_key/token)"), nil
 			}
 			if a.Secret == "" {
-				return actool.Errorf("secret 必填"), nil
+				return actool.Errorf("secret は必須です"), nil
 			}
 			if a.Source == "" {
-				return actool.Errorf("source 必填(复用打分与溯源都依赖它)"), nil
+				return actool.Errorf("source は必須です(再利用スコアリングと追跡の両方が依存します)"), nil
 			}
 			ri := agent.RunInfoFrom(ctx)
 			if ri.TaskID <= 0 {
-				return actool.Errorf("凭据必须在任务上下文登记(非任务运行无 task 归属)"), nil
+				return actool.Errorf("認証情報はタスクコンテキスト内で登録する必要があります(タスク実行外では task に紐付きません)"), nil
 			}
 			rec := &db.CredentialRecord{
 				TaskID: ri.TaskID, HostAssetID: a.HostAssetID, Username: a.Username,
@@ -86,19 +86,19 @@ func (s *Server) addCredentialTool() actool.CoreTool {
 			}
 			id, err := s.credStore.Create(ctx, rec)
 			if err != nil {
-				return actool.Errorf("凭据落库失败:" + err.Error()), nil
+				return actool.Errorf("認証情報の永続化に失敗しました:" + err.Error()), nil
 			}
 			return jsonResult(map[string]any{"credential_id": id})
 		},
 	})
 }
 
-// listCredentialsTool 返回本任务凭据的脱敏列表(secret 只露前后各 2 字符)。
+// listCredentialsTool は本タスクの認証情報のマスク済み一覧を返す(secret は前後各 2 文字だけ表示)。
 func (s *Server) listCredentialsTool() actool.CoreTool {
 	return actool.Build(actool.Spec{
 		Name: "list_credentials",
-		Description: "列出本任务已登记的全部凭据(脱敏:secret 只返回前后 2 字符掩码)。" +
-			"横向前先看已有凭据,避免重复收割;要打具体目标用 credential_reuse_plan 拿复用建议。",
+		Description: "本タスクに登録済みの認証情報をすべて一覧する(マスク表示：secret は前後 2 文字だけを返す)。" +
+			"横展開の前に既存の認証情報を確認し、重複した回収を避ける。特定の対象を攻撃するときは credential_reuse_plan で再利用の提案を得る。",
 		Schema: map[string]any{
 			"type":       "object",
 			"properties": map[string]any{},
@@ -108,11 +108,11 @@ func (s *Server) listCredentialsTool() actool.CoreTool {
 		Run: func(ctx context.Context, _ json.RawMessage, _ *actool.ToolContext) (actool.Result, error) {
 			ri := agent.RunInfoFrom(ctx)
 			if ri.TaskID <= 0 {
-				return actool.Errorf("list_credentials 需要任务上下文"), nil
+				return actool.Errorf("list_credentials にはタスクコンテキストが必要です"), nil
 			}
 			creds, err := s.credStore.ListByTask(ctx, ri.TaskID)
 			if err != nil {
-				return actool.Errorf("读取凭据失败:" + err.Error()), nil
+				return actool.Errorf("認証情報の読み込みに失敗しました:" + err.Error()), nil
 			}
 			items := []map[string]any{}
 			for _, c := range creds {
@@ -128,13 +128,13 @@ func (s *Server) listCredentialsTool() actool.CoreTool {
 	})
 }
 
-// credentialReusePlanTool 对本任务凭据 × 本任务资产跑服务端复用打分,返回 top 10。
+// credentialReusePlanTool は本タスクの認証情報 × 本タスクのアセットでサーバ側の再利用スコアリングを実行し、上位 10 件を返す。
 func (s *Server) credentialReusePlanTool() actool.CoreTool {
 	return actool.Build(actool.Spec{
 		Name: "credential_reuse_plan",
-		Description: "【凭据复用打分】对本任务已登记凭据 × 本任务已发现主机资产跑复用打分(纯规则:同网段/域凭据/服务重叠/PtH/已验证)," +
-			"返回得分最高的 top 10 条横向建议(凭据 × 目标资产 + 每条加分的理由)。建议只代表成功率先验," +
-			"实际横向(ssh/wmi/psexec/喷洒)属高动静动作,会过 guard 人工确认且须在 RoE 范围内。",
+		Description: "【認証情報の再利用スコアリング】本タスクに登録済みの認証情報 × 本タスクで発見済みのホストアセットに対して再利用スコアリングを実行し(純粋なルール:同一セグメント/ドメイン認証情報/サービス重複/PtH/検証済み)、" +
+			"スコア上位 10 件の横展開提案(認証情報 × 対象アセット + 各加点の理由)を返す。提案は成功率の事前見積りにすぎず、" +
+			"実際の横展開(ssh/wmi/psexec/パスワードスプレー)は痕跡の大きい操作なので、guard の手動確認を経て RoE の範囲内で行う必要がある。",
 		Schema: map[string]any{
 			"type":       "object",
 			"properties": map[string]any{},
@@ -144,18 +144,18 @@ func (s *Server) credentialReusePlanTool() actool.CoreTool {
 		Run: func(ctx context.Context, _ json.RawMessage, _ *actool.ToolContext) (actool.Result, error) {
 			ri := agent.RunInfoFrom(ctx)
 			if ri.TaskID <= 0 {
-				return actool.Errorf("credential_reuse_plan 需要任务上下文"), nil
+				return actool.Errorf("credential_reuse_plan にはタスクコンテキストが必要です"), nil
 			}
 			creds, err := s.credStore.ListByTask(ctx, ri.TaskID)
 			if err != nil {
-				return actool.Errorf("读取凭据失败:" + err.Error()), nil
+				return actool.Errorf("認証情報の読み込みに失敗しました:" + err.Error()), nil
 			}
 			if len(creds) == 0 {
-				return actool.Text("本任务还没有登记凭据(add_credential 先登记),无复用建议"), nil
+				return actool.Text("本タスクにはまだ認証情報が登録されていません(先に add_credential で登録してください)。再利用の提案はありません"), nil
 			}
 			assets, err := s.m.pg.Assets().QueryByTask(ri.TaskID, "ip", 2000, 0)
 			if err != nil {
-				return actool.Errorf("读取资产失败:" + err.Error()), nil
+				return actool.Errorf("アセットの読み込みに失敗しました:" + err.Error()), nil
 			}
 			cands, byID := reuseCandidates(assets)
 			type row struct {
@@ -177,7 +177,7 @@ func (s *Server) credentialReusePlanTool() actool.CoreTool {
 					flat = append(flat, row{c.ID, c.Username, c.CredType, sug.AssetID, sug.IP, sug.Score, sug.Reasons})
 				}
 			}
-			// 全局排序:得分降序,同分 cred_id/asset_id 升序(确定性)。
+			// 全体の並び替え:スコア降順、同スコアは cred_id/asset_id 昇順(決定的)。
 			for i := 0; i < len(flat); i++ {
 				for j := i + 1; j < len(flat); j++ {
 					if flat[j].Score > flat[i].Score ||
@@ -197,7 +197,7 @@ func (s *Server) credentialReusePlanTool() actool.CoreTool {
 	})
 }
 
-// reuseCandidates 把 ip 资产投影为打分候选(服务名取自 open_ports)。
+// reuseCandidates は ip アセットをスコアリング候補に射影する(サービス名は open_ports から取得)。
 func reuseCandidates(assets []*db.Asset) ([]db.ReuseCandidate, map[int64]*db.ReuseCandidate) {
 	out := []db.ReuseCandidate{}
 	byID := map[int64]*db.ReuseCandidate{}
@@ -219,14 +219,14 @@ func reuseCandidates(assets []*db.Asset) ([]db.ReuseCandidate, map[int64]*db.Reu
 	return out, byID
 }
 
-// seedCredentialTools 把三个凭据工具 seed 进 tools 表、默认绑定 worker
-// (与 seedSessionTools 同一套 SeedTool 首插入语义:老库的用户编辑不被覆盖)。
+// seedCredentialTools は 3 つの認証情報ツールを tools テーブルに seed し、デフォルトで worker に紐付ける
+// (seedSessionTools と同じ SeedTool の初回挿入セマンティクス:既存 DB のユーザー編集は上書きしない)。
 func (s *Server) seedCredentialTools() {
 	workerAgents, _ := json.Marshal([]string{"worker"})
 	for _, t := range s.credentialTools() {
 		schema, _ := json.Marshal(t.InputSchema())
 		if err := s.m.PG().SeedTool(t.Name(), t.Description(), schema, workerAgents); err != nil {
-			log.Printf("[tools] seed %s 失败: %v", t.Name(), err)
+			log.Printf("[tools] seed %s に失敗しました: %v", t.Name(), err)
 		}
 	}
 }

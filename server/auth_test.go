@@ -10,11 +10,11 @@ import (
 	"time"
 )
 
-// memKV 是 authKV 的内存实现,F6 的 auth 测试不依赖 PostgreSQL。
+// memKV は authKV のインメモリ実装で、F6 の auth テストは PostgreSQL に依存しない。
 type memKV struct {
 	mu  sync.Mutex
 	m   map[string]string
-	err error // 注入存储错误,验证 fail-closed
+	err error // ストアエラーを注入し、fail-closed を検証する
 }
 
 func newMemKV() *memKV { return &memKV{m: map[string]string{}} }
@@ -63,7 +63,7 @@ func TestAccessTokenVersionRevocation(t *testing.T) {
 		t.Fatal("fresh token (ver 0, unset setting) should validate")
 	}
 
-	// 改密 → 版本 +1 → 旧 token 立即失效
+	// パスワード変更 → バージョン +1 → 旧 token は即座に無効
 	if _, err := bumpAuthKeyVersion(kv); err != nil {
 		t.Fatalf("bump: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestAccessTokenVersionRevocation(t *testing.T) {
 		t.Fatal("token signed under old version must be rejected after bump")
 	}
 
-	// 新版本签发的 token 通过
+	// 新しいバージョンで発行した token は通る
 	tok2, err := signJWT(testJWTKey, 1)
 	if err != nil {
 		t.Fatalf("sign: %v", err)
@@ -80,7 +80,7 @@ func TestAccessTokenVersionRevocation(t *testing.T) {
 		t.Fatal("token signed under current version should validate")
 	}
 
-	// 错 key / 篡改直接拒
+	// 誤った key / 改ざんは即座に拒否
 	if s.validAccessToken(tok2 + "x") {
 		t.Fatal("tampered token must be rejected")
 	}
@@ -92,14 +92,14 @@ func TestAccessTokenVersionRevocation(t *testing.T) {
 		t.Fatal("token signed with a different key must be rejected")
 	}
 
-	// 存储错误 fail-closed
+	// ストアエラーは fail-closed
 	kv.err = errTest
 	if s.validAccessToken(tok2) {
 		t.Fatal("version read failure must fail closed")
 	}
 	kv.err = nil
 
-	// 无持久层时只做签名+过期校验(降级路径)
+	// 永続層が無い場合は署名+有効期限の検証だけを行う（縮退経路）
 	s2 := &Server{jwtKey: testJWTKey}
 	if !s2.validAccessToken(tok2) {
 		t.Fatal("nil store should fall back to signature/expiry validation")
@@ -122,14 +122,14 @@ func TestRefreshTokenLifecycle(t *testing.T) {
 	if len(rt) < 40 {
 		t.Fatalf("refresh token too short: %d chars", len(rt))
 	}
-	// 落库的是哈希,不是原文
+	// 保存されるのはハッシュであり、平文ではない
 	if _, ok, _ := kv.GetSetting(refreshSettingKey(rt)); ok {
 		t.Fatal("refresh token must be stored hashed, not in clear")
 	}
 	if _, ok := validateRefreshToken(kv, rt, 0); !ok {
 		t.Fatal("fresh refresh token should validate")
 	}
-	// 未知 token / 版本不符 一律拒
+	// 未知の token / バージョン不一致は一律拒否
 	if _, ok := validateRefreshToken(kv, rt+"x", 0); ok {
 		t.Fatal("unknown refresh token must be rejected")
 	}
@@ -137,7 +137,7 @@ func TestRefreshTokenLifecycle(t *testing.T) {
 		t.Fatal("refresh token from old version must be rejected after bump")
 	}
 
-	// 旋转(滑动续期):旧票作废,新票有效且过期时间重置
+	// ローテーション（スライディング更新）：旧チケットは失効し、新チケットは有効で有効期限もリセットされる
 	before := time.Now().Add(refreshTTL).Unix()
 	if err := kv.DeleteSetting(refreshSettingKey(hashRefreshToken(rt))); err != nil {
 		t.Fatalf("rotate delete: %v", err)
@@ -164,7 +164,7 @@ func TestRefreshTokenExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
-	// 手动把记录改成已过期
+	// 手動でレコードを期限切れに書き換える
 	expired, _ := json.Marshal(refreshRecord{Exp: time.Now().Add(-time.Hour).Unix(), Ver: 0})
 	if err := kv.SetSetting(refreshSettingKey(hashRefreshToken(rt)), string(expired)); err != nil {
 		t.Fatalf("set: %v", err)
@@ -190,7 +190,7 @@ func TestSSETicketSingleUseAndExpiry(t *testing.T) {
 		t.Fatal("unknown ticket must fail")
 	}
 
-	// 过期票据:直接往 map 里塞一个已过期的
+	// 期限切れのチケット：map に直接期限切れのものを入れる
 	tok2, err := store.issue()
 	if err != nil {
 		t.Fatalf("issue: %v", err)
@@ -212,7 +212,7 @@ func TestRequireAuthTicketPath(t *testing.T) {
 		w.WriteHeader(200)
 	}))
 
-	// 无凭证 → 401
+	// 認証情報なし → 401
 	r := httptest.NewRequest("GET", "/api/anything", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
@@ -220,7 +220,7 @@ func TestRequireAuthTicketPath(t *testing.T) {
 		t.Fatalf("no credentials: want 401, got %d", rec.Code)
 	}
 
-	// ?token= 已移除 → 401
+	// ?token= は削除済み → 401
 	tokJWT, _ := signJWT(testJWTKey, 0)
 	r = httptest.NewRequest("GET", "/api/anything?token="+tokJWT, nil)
 	rec = httptest.NewRecorder()
@@ -238,7 +238,7 @@ func TestRequireAuthTicketPath(t *testing.T) {
 		t.Fatalf("bearer: want 200, got %d (ok=%v)", rec.Code, ok)
 	}
 
-	// 一次性 ticket → 200,再用 → 401
+	// 使い捨て ticket → 200、再利用 → 401
 	ticket, err := s.tickets.issue()
 	if err != nil {
 		t.Fatalf("issue ticket: %v", err)
@@ -256,7 +256,7 @@ func TestRequireAuthTicketPath(t *testing.T) {
 		t.Fatalf("ticket replay: want 401, got %d", rec.Code)
 	}
 
-	// /api/auth/* 豁免
+	// /api/auth/* は除外
 	r = httptest.NewRequest("POST", "/api/auth/login", strings.NewReader("{}"))
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
@@ -288,7 +288,7 @@ func TestAuthRefreshEndpoint(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || out["token"] == nil {
 		t.Fatalf("refresh response should carry a new access token: %v %v", err, out)
 	}
-	// 响应同时下发旋转后的 refresh cookie
+	// レスポンスでローテーション後の refresh cookie も発行する
 	found := false
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == refreshCookieName && c.Value != "" {
@@ -301,12 +301,12 @@ func TestAuthRefreshEndpoint(t *testing.T) {
 	if !found {
 		t.Fatal("refresh must rotate the cookie")
 	}
-	// 旧票已作废
+	// 旧チケットは失効済み
 	if _, ok := validateRefreshToken(kv, rt, 0); ok {
 		t.Fatal("old refresh token must be invalidated after rotation")
 	}
 
-	// 无 cookie → 401
+	// cookie なし → 401
 	rec = httptest.NewRecorder()
 	s.authRefresh(rec, httptest.NewRequest("POST", "/api/auth/refresh", nil))
 	if rec.Code != 401 {
@@ -331,7 +331,7 @@ func TestAuthLogoutRevokes(t *testing.T) {
 	if _, ok := validateRefreshToken(kv, rt, 0); ok {
 		t.Fatal("logout must revoke the refresh token")
 	}
-	// cookie 被清
+	// cookie が消去される
 	cleared := false
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == refreshCookieName && c.MaxAge < 0 {

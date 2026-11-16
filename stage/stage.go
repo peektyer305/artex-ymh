@@ -1,12 +1,12 @@
-// stage 是受管文件投递暂存服务（F13；架构原则见 INTRANET-PIVOT-DESIGN.md 4.3a，
-// 语义参照 PivotHub filestage）：worker 把「工作区里已生成的工具/payload」交给平台，
-// 平台以 24 字节随机 token 路径（/s/<token>/<name>）提供下载，无目录列举、硬 TTL
-// （默认 15 分钟、上限 2h、到期自动销毁）、可选一次性下载即焚，全程记账
-// （Put/下载/过期/销毁）。下载路径无需 JWT（目标机器没有 token），用随机 token
-// + 每 token 速率限制防枚举；错误 token 与不存在路径的响应逐字节一致。
+// stage は管理されたファイル受け渡し用の一時保管サービス（F13。アーキテクチャ原則は INTRANET-PIVOT-DESIGN.md 4.3a、
+// セマンティクスは PivotHub filestage を参照）：worker が「ワークスペース内で生成済みのツール/payload」をプラットフォームに渡し、
+// プラットフォームは 24 バイトのランダムトークンのパス（/s/<token>/<name>）でダウンロードを提供する。ディレクトリ列挙なし、厳格な TTL
+// （デフォルト 15 分、上限 2h、期限切れで自動破棄）、任意でワンショット消去、全行程を記録
+// （Put/ダウンロード/期限切れ/破棄）。ダウンロードパスは JWT 不要（対象マシンはトークンを持たない）で、ランダムトークン
+// + トークンごとのレート制限により列挙を防ぐ。誤ったトークンと存在しないパスの応答はバイト単位で一致する。
 //
-// 边界：暂存只用于【向外投递工具】；战利品/凭据回流一律走会话读取/evidence，
-// 制度上保证暂存服务被打穿也没有敏感数据可泄。
+// 境界：一時保管は【外部へのツール受け渡し】にのみ使う。戦利品/認証情報の還流はすべてセッション読み取り/evidence を通し、
+// 制度的に、一時保管サービスが突破されても漏えいする機密データがないことを保証する。
 package stage
 
 import (
@@ -27,51 +27,51 @@ import (
 )
 
 const (
-	// DefaultTTL 是未显式指定时的存活期；MaxTTL 是硬上限——暂存不是存储，
-	// 超期即孤儿（python -m http.server 忘关的通病就是从这里来的）。
+	// DefaultTTL は明示指定がない場合の生存期間。MaxTTL は厳格な上限——一時保管はストレージではないので、
+	// 期限超過は即オーファン（python -m http.server を止め忘れる定番の失敗もここに由来する）。
 	DefaultTTL = 15 * time.Minute
 	MaxTTL     = 2 * time.Hour
 	minTTL     = time.Minute
 
-	tokenBytes = 24 // crypto/rand → base64url 32 字符
+	tokenBytes = 24 // crypto/rand → base64url で 32 文字
 
 	gcInterval = time.Minute
 
-	// 下载防枚举限速：单 token 每分钟尝试上限 + 单源 IP 每分钟尝试上限。
-	// 命中限速与「token 不存在」响应一致（同一个 404），不给枚举者任何信号。
+	// ダウンロードの列挙防止レート制限：単一トークンあたり毎分の試行上限 + 単一ソース IP あたり毎分の試行上限。
+	// 制限に掛かった場合と「トークンが存在しない」場合の応答は一致する（同じ 404）。列挙する側に一切の手掛かりを与えない。
 	tokenRateLimit  = 10
 	ipRateLimit     = 60
 	rateLimitWindow = time.Minute
 )
 
-// PutOpts 是一次暂存的选项。TTL<=0 取 DefaultTTL，超过 MaxTTL 被夹回 MaxTTL。
+// PutOpts は 1 回の一時保管のオプション。TTL<=0 なら DefaultTTL、MaxTTL を超える場合は MaxTTL に丸められる。
 type PutOpts struct {
 	TTL     time.Duration
-	OneShot bool   // 首次成功完整下载后即焚
-	TaskID  string // 归属任务（activity 记账用；空 = 无任务上下文）
+	OneShot bool   // 初回の完全なダウンロード成功後に消去
+	TaskID  string // 所属タスク（activity 記録用。空 = タスクコンテキストなし）
 }
 
-// Entry 是一条暂存记录的对外视图。
+// Entry は一時保管レコードの外部向けビュー。
 type Entry struct {
 	Token     string    `json:"token"`
 	Name      string    `json:"name"`
 	Size      int64     `json:"size"`
-	URL       string    `json:"url"` // baseURL 已知时为绝对地址，否则为 /s/ 相对路径
+	URL       string    `json:"url"` // baseURL が既知なら絶対アドレス、そうでなければ /s/ 相対パス
 	ExpiresAt time.Time `json:"expires_at"`
 	OneShot   bool      `json:"one_shot"`
 	TaskID    string    `json:"task_id,omitempty"`
-	Hits      int64     `json:"hits"`        // 成功完整下载次数
-	Bytes     int64     `json:"bytes_served"` // 累计实际写出字节数（含不完整下载）
+	Hits      int64     `json:"hits"`         // 完全なダウンロードに成功した回数
+	Bytes     int64     `json:"bytes_served"` // 実際に書き出した累計バイト数（不完全なダウンロードを含む）
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// Event 是一次记账事件（Put/下载/过期/销毁）。由 OnEvent 回调交给宿主写
-// activity / 日志；Kind 取值见 EventKind* 常量。
+// Event は 1 件の記録イベント（Put/ダウンロード/期限切れ/破棄）。OnEvent コールバック経由でホストに渡し、
+// activity / ログとして書き込まれる。Kind の値は EventKind* 定数を参照。
 type Event struct {
 	Kind   string // put | download | expire | destroy
 	Entry  Entry
-	Remote string // 下载来源 IP（仅 download）
-	Bytes  int64  // 本次写出字节数（仅 download）
+	Remote string // ダウンロード元 IP（download のみ）
+	Bytes  int64  // 今回書き出したバイト数（download のみ）
 }
 
 const (
@@ -81,37 +81,37 @@ const (
 	EventDestroy  = "destroy"
 )
 
-// Manager 是进程内暂存管理器。条目只活在本进程内存里——重启后 data/stage/
-// 下的残留文件已无台账，New 时会整体清空（过期资源绝不跨进程续命）。
+// Manager はプロセス内の一時保管マネージャ。エントリは本プロセスのメモリ内にのみ存在する——再起動後は data/stage/
+// 配下に残ったファイルの台帳がないため、New 時に全体を消去する（期限切れリソースをプロセスを跨いで延命させない）。
 type Manager struct {
 	dir string
 
 	mu      sync.Mutex
 	entries map[string]*Entry
 
-	baseURL string // 可选绝对基址（如 http://10.0.0.2:8787），决定 Entry.URL 形态
+	baseURL string // 任意の絶対ベースアドレス（例 http://10.0.0.2:8787）。Entry.URL の形を決める
 
-	// OnEvent 非 nil 时每个记账事件同步回调一次。回调必须快（在锁外调用，
-	// 但慢回调会拖住调用方 goroutine）。写 activity / 日志由宿主实现。
+	// OnEvent が非 nil なら、記録イベントごとに 1 回同期でコールバックする。コールバックは高速であること（ロック外で呼ぶが、
+	// 遅いコールバックは呼び出し元 goroutine を引きずる）。activity / ログの書き込みはホスト側で実装する。
 	OnEvent func(Event)
 
 	rateMu   sync.Mutex
-	tokenHit map[string][]time.Time // token → 最近的下载尝试时间
+	tokenHit map[string][]time.Time // token → 直近のダウンロード試行時刻
 	ipHit    map[string][]time.Time
 
 	stopGC context.CancelFunc
 }
 
-// New 创建管理器：目录 0700、清空上一进程的残留文件、启动周期清理 goroutine
-// （ctx 取消时退出并停表）。
+// New はマネージャを作成する：ディレクトリ 0700、前プロセスの残留ファイルを消去、定期クリーンアップ goroutine を起動
+// （ctx のキャンセルで終了しタイマーを停止）。
 func New(ctx context.Context, dir string) (*Manager, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("stage dir: %w", err)
 	}
-	if err := os.Chmod(dir, 0o700); err != nil { // 已存在的目录可能权限更宽
+	if err := os.Chmod(dir, 0o700); err != nil { // 既存ディレクトリは権限が緩い可能性がある
 		return nil, fmt.Errorf("stage dir chmod: %w", err)
 	}
-	// 台账是进程内的，重启即全部作废——残留文件没有存在的理由，清掉。
+	// 台帳はプロセス内のものなので再起動で全て無効になる——残留ファイルに存在理由はない。消す。
 	if errs := clearDir(dir); errs != nil {
 		return nil, fmt.Errorf("stage dir sweep: %w", errs[0])
 	}
@@ -127,22 +127,22 @@ func New(ctx context.Context, dir string) (*Manager, error) {
 	return m, nil
 }
 
-// Close 停掉后台清理 goroutine（不删除未过期条目，进程退出即台账作废）。
+// Close はバックグラウンドのクリーンアップ goroutine を停止する（未期限切れのエントリは削除せず、プロセス終了で台帳が無効になる）。
 func (m *Manager) Close() {
 	if m.stopGC != nil {
 		m.stopGC()
 	}
 }
 
-// SetBaseURL 设置对外绝对基址（拼进 Entry.URL 与工具返回）。空 = 只给相对路径，
-// 由调用方自行补主机（目标机器到平台的可达地址平台侧无从权威得知）。
+// SetBaseURL は外部向け絶対ベースアドレスを設定する（Entry.URL とツールの戻り値に組み込まれる）。空 = 相対パスのみを返し、
+// ホスト名は呼び出し元が補う（対象マシンからプラットフォームへの到達可能アドレスはプラットフォーム側では権威的に知り得ない）。
 func (m *Manager) SetBaseURL(u string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.baseURL = strings.TrimRight(u, "/")
 }
 
-// PutFile 暂存磁盘上已有的文件（按流拷贝，不吃内存）。name 取源文件 basename。
+// PutFile はディスク上に既にあるファイルを一時保管する（ストリームコピーでメモリを食わない）。name はソースファイルの basename。
 func (m *Manager) PutFile(srcPath string, o PutOpts) (*Entry, error) {
 	src, err := os.Open(srcPath)
 	if err != nil {
@@ -160,7 +160,7 @@ func (m *Manager) PutFile(srcPath string, o PutOpts) (*Entry, error) {
 	return m.put(name, src, o)
 }
 
-// PutContent 暂存一段内存内容，name 必填（会取 basename，防路径逃逸）。
+// PutContent はメモリ上の内容を一時保管する。name は必須（basename を取り、パス脱出を防ぐ）。
 func (m *Manager) PutContent(name string, data []byte, o PutOpts) (*Entry, error) {
 	return m.put(name, bytes.NewReader(data), o)
 }
@@ -221,7 +221,7 @@ func (m *Manager) put(name string, r io.Reader, o PutOpts) (*Entry, error) {
 	return e, nil
 }
 
-// List 返回当前存活条目（按创建时间倒序），供管理 API 使用。
+// List は現在生存しているエントリを作成日時の降順で返す（管理 API 用）。
 func (m *Manager) List() []Entry {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -229,7 +229,7 @@ func (m *Manager) List() []Entry {
 	for _, e := range m.entries {
 		out = append(out, *e)
 	}
-	// 简单插入排序即可——暂存条目量级很小。
+	// 単純な挿入ソートで十分——一時保管エントリはごく少数。
 	for i := 1; i < len(out); i++ {
 		for j := i; j > 0 && out[j].CreatedAt.After(out[j-1].CreatedAt); j-- {
 			out[j], out[j-1] = out[j-1], out[j]
@@ -238,14 +238,14 @@ func (m *Manager) List() []Entry {
 	return out
 }
 
-// Delete 提前销毁一个条目（管理 API）。返回是否命中。
+// Delete はエントリを前倒しで破棄する（管理 API）。ヒットしたかどうかを返す。
 func (m *Manager) Delete(token string) bool {
 	e := m.remove(token, EventDestroy)
 	return e != nil
 }
 
-// Download 服务一次下载（挂载在 GET /s/{token}/{name}）。防枚举要点：
-// token 不存在 / name 不匹配 / 已过期 / 命中限速——全部返回同一个 404。
+// Download はダウンロードを 1 回提供する（GET /s/{token}/{name} にマウント）。列挙防止の要点：
+// token が存在しない / name 不一致 / 期限切れ / レート制限超過——すべて同じ 404 を返す。
 func (m *Manager) Download(w http.ResponseWriter, r *http.Request, token, name string) {
 	ip := remoteIP(r)
 	if !m.allowAttempt(token, ip) {
@@ -271,7 +271,7 @@ func (m *Manager) Download(w http.ResponseWriter, r *http.Request, token, name s
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", e.Name))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", e.Size))
 	n, _ := io.Copy(w, f)
-	// 显式关闭而非 defer:一次性即焚下面马上要删文件,Windows 删不掉还开着的句柄。
+	// defer ではなく明示的に閉じる：ワンショット消去では直後にファイルを削除するが、Windows では開いたままのハンドルを削除できない。
 	_ = f.Close()
 
 	m.mu.Lock()
@@ -289,12 +289,12 @@ func (m *Manager) Download(w http.ResponseWriter, r *http.Request, token, name s
 
 	m.emit(Event{Kind: EventDownload, Entry: *snap, Remote: ip, Bytes: n})
 	if oneShotBurn {
-		// 一次性即焚：首次成功完整下载后立即销毁（记账里的 Hits 已先落上）。
+		// ワンショット消去：初回の完全なダウンロード成功後に即破棄する（記録上の Hits は先に反映済み）。
 		m.remove(token, EventDestroy)
 	}
 }
 
-// remove 摘除条目并删文件，返回被删条目（nil = 不存在）。kind 为记账事件类型。
+// remove はエントリを外してファイルを削除し、削除したエントリを返す（nil = 存在しない）。kind は記録イベントの種別。
 func (m *Manager) remove(token, kind string) *Entry {
 	m.mu.Lock()
 	e, ok := m.entries[token]
@@ -323,7 +323,7 @@ func (m *Manager) gcLoop(ctx context.Context) {
 	}
 }
 
-// sweep 销毁全部到期条目。拆出来供测试直接调用。
+// sweep は期限切れのエントリをすべて破棄する。テストから直接呼べるよう切り出してある。
 func (m *Manager) sweep(now time.Time) {
 	m.mu.Lock()
 	var expired []string
@@ -338,14 +338,14 @@ func (m *Manager) sweep(now time.Time) {
 	}
 }
 
-// allowAttempt 实现下载尝试限速：单 token 与单源 IP 双维度滑动窗口。
-// 过期窗口顺手清理，map 不会无限膨胀。
+// allowAttempt はダウンロード試行のレート制限を実装する：単一トークンと単一ソース IP の 2 軸のスライディングウィンドウ。
+// 期限切れのウィンドウはついでに掃除するので、map が無限に膨らむことはない。
 func (m *Manager) allowAttempt(token, ip string) bool {
 	now := time.Now()
 	cutoff := now.Add(-rateLimitWindow)
 	m.rateMu.Lock()
 	defer m.rateMu.Unlock()
-	if len(m.tokenHit) > 4096 { // 防内存被打爆：极限情况下直接整体重置
+	if len(m.tokenHit) > 4096 { // メモリ爆発の防止：極端な場合はいったん全体をリセットする
 		m.tokenHit = map[string][]time.Time{}
 	}
 	if len(m.ipHit) > 4096 {
@@ -388,14 +388,14 @@ func newToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// urlPathEscape 转义文件名进 URL 路径段（/ 与 % 都必须编掉）。
+// urlPathEscape はファイル名を URL パスセグメント向けにエスケープする（/ と % は必ずエンコードする）。
 func urlPathEscape(name string) string {
 	r := strings.NewReplacer("%", "%25", "/", "%2F", "?", "%3F", "#", "%23", " ", "%20")
 	return r.Replace(name)
 }
 
 func notFound(w http.ResponseWriter) {
-	// 逐字节一致的 404：错误 token、错误 name、已过期、限速命中全走这里。
+	// バイト単位で一致する 404：誤ったトークン、誤った name、期限切れ、レート制限超過はすべてここを通る。
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 	_, _ = io.WriteString(w, "404 page not found\n")
@@ -409,7 +409,7 @@ func remoteIP(r *http.Request) string {
 	return host
 }
 
-// clearDir 删除 dir 下全部内容（保留 dir 本身）。逐条收集错误。
+// clearDir は dir 配下の全内容を削除する（dir 自体は残す）。エラーは 1 件ずつ収集する。
 func clearDir(dir string) []error {
 	items, err := os.ReadDir(dir)
 	if err != nil {

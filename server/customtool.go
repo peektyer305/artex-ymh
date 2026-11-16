@@ -22,12 +22,12 @@ import (
 	"github.com/Autumn-27/artex/db"
 )
 
-// 本文件实现自定义工具执行器(docs/自定义工具设计.md)。system=false 的 tools 行按
-// kind 分派:command(渲染命令→复用 Bash 底层 run)、script(仅 Python;写临时文件、
-// stdin=参数 JSON + env TOOL_*、用配置的解释器)、http(原生请求+可设代理)。这些工具
-// 像流量/编排工具一样 seed 不需要(它们本就在 tools 表),经 hostTools 注入、按绑定过滤。
+// 本ファイルはカスタムツール実行器を実装する(docs/自定义工具设计.md)。system=false の tools 行を
+// kind で分派する：command(コマンドをレンダリング→Bash の下位 run を再利用)、script(Python のみ。一時ファイルを書き、
+// stdin=パラメータ JSON + env TOOL_*、設定済みのインタプリタを使用)、http(ネイティブリクエスト+プロキシ指定可)。これらのツールは
+// トラフィック/編成ツールと同様に seed は不要(もともと tools テーブルにある)で、hostTools 経由で注入され、紐付けで絞り込まれる。
 
-// ---------- 自定义工具 CRUD ----------
+// ---------- カスタムツール CRUD ----------
 
 type customToolReq struct {
 	Key         string          `json:"key"`
@@ -40,7 +40,7 @@ type customToolReq struct {
 	Deferred    bool            `json:"deferred"`
 }
 
-var reToolKey = reAgentKey // 同 agent key 规则:小写字母开头 + 小写字母/数字/下划线
+var reToolKey = reAgentKey // agent key と同じ規則:小文字始まり + 小文字/数字/アンダースコア
 
 func (s *Server) pgCreateCustomTool(w http.ResponseWriter, r *http.Request) {
 	pg := s.pg(w)
@@ -54,19 +54,19 @@ func (s *Server) pgCreateCustomTool(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Key = strings.TrimSpace(req.Key)
 	if !reToolKey.MatchString(req.Key) {
-		writeErr(w, 400, "key 需小写字母开头，仅含小写字母/数字/下划线")
+		writeErr(w, 400, "key は小文字始まりで、小文字/数字/アンダースコアのみ使用できます")
 		return
 	}
 	if req.Kind != "command" && req.Kind != "script" && req.Kind != "http" && req.Kind != "shell" {
-		writeErr(w, 400, "kind 需为 command / script / http / shell")
+		writeErr(w, 400, "kind は command / script / http / shell のいずれかです")
 		return
 	}
 	if req.Kind == "http" && !hasSchemaProps(req.Schema) {
-		writeErr(w, 400, "http 工具必须提供参数 JSON Schema(不能留空)")
+		writeErr(w, 400, "http ツールにはパラメータの JSON Schema が必須です(空にはできません)")
 		return
 	}
 	if exist, _ := pg.GetTool(req.Key); exist != nil {
-		writeErr(w, 409, "该 key 已存在(内置或自定义工具)")
+		writeErr(w, 409, "その key は既に存在します(組み込みまたはカスタムツール)")
 		return
 	}
 	if err := pg.CreateCustomTool(&db.Tool{
@@ -91,7 +91,7 @@ func (s *Server) pgUpdateCustomTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing == nil || existing.System {
-		writeErr(w, 400, "只能编辑自定义工具")
+		writeErr(w, 400, "編集できるのはカスタムツールのみです")
 		return
 	}
 	var req customToolReq
@@ -100,11 +100,11 @@ func (s *Server) pgUpdateCustomTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Kind != "command" && req.Kind != "script" && req.Kind != "http" && req.Kind != "shell" {
-		writeErr(w, 400, "kind 需为 command / script / http / shell")
+		writeErr(w, 400, "kind は command / script / http / shell のいずれかです")
 		return
 	}
 	if req.Kind == "http" && !hasSchemaProps(req.Schema) {
-		writeErr(w, 400, "http 工具必须提供参数 JSON Schema(不能留空)")
+		writeErr(w, 400, "http ツールにはパラメータの JSON Schema が必須です(空にはできません)")
 		return
 	}
 	if err := pg.UpdateCustomTool(&db.Tool{
@@ -150,7 +150,7 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 	}
 	var req testToolReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, 400, "无效的请求体")
+		writeErr(w, 400, "無効なリクエストボディ")
 		return
 	}
 	params := req.Params
@@ -169,16 +169,16 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 	case "http":
 		res, _ = s.runHTTPTool(ctx, req.Exec, params)
 	case "shell":
-		writeErr(w, 400, "shell 类型工具是 bash 环境声明，无可执行内容")
+		writeErr(w, 400, "shell タイプのツールは bash 環境の宣言であり、実行内容がありません")
 		return
 	default:
-		writeErr(w, 400, "未知工具类型: "+req.Kind)
+		writeErr(w, 400, "不明なツールタイプ: "+req.Kind)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"output": res.Flatten(), "is_error": res.IsError})
 }
 
-// ---------- Python 解释器(检测 + 入库 + 覆盖) ----------
+// ---------- Python インタプリタ(検出 + 保存 + 上書き) ----------
 
 const settingPythonInterp = "python_interpreter"
 
@@ -209,11 +209,11 @@ func (s *Server) seedPythonInterpreter() {
 	}
 	if p := detectPython(); p != "" {
 		_ = s.m.pg.SetSetting(settingPythonInterp, p)
-		log.Printf("[custom-tool] 自动检测到 python 解释器: %s", p)
+		log.Printf("[custom-tool] python インタプリタを自動検出しました: %s", p)
 	}
 }
 
-// ---------- exec 规格 ----------
+// ---------- exec 仕様 ----------
 
 type commandExec struct {
 	Command   string `json:"command"`
@@ -240,7 +240,7 @@ func timeoutOr(ms, def int) time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
 
-// ---------- 通用工具构造 ----------
+// ---------- 汎用ツールの構築 ----------
 
 // customTools builds CoreTools for every user-defined (system=false) tool row.
 // shell-kind tools are environment hints only — they surface in the Bash tool
@@ -260,8 +260,8 @@ func (s *Server) customTools() ([]actool.CoreTool, error) {
 	return out, nil
 }
 
-// buildCustomTool turns one custom-tool row into a CoreTool. Empty schema → a thin
-// {args:string} (薄壳工具), so command/http templates can use {args}.
+// buildCustomTool は 1 件のカスタムツール行を CoreTool に変換する。空の schema → 薄い
+// {args:string}(薄いラッパー)にし、command/http テンプレートで {args} を使えるようにする。
 func (s *Server) buildCustomTool(t *db.Tool) actool.CoreTool {
 	schema := ensureSchema(t.Schema)
 	key, kind, execRaw := t.Key, t.Kind, t.Exec
@@ -281,7 +281,7 @@ func (s *Server) buildCustomTool(t *db.Tool) actool.CoreTool {
 		case "http":
 			return s.runHTTPTool(ctx, execRaw, params)
 		default:
-			return actool.Errorf("未知自定义工具类型: " + kind), nil
+			return actool.Errorf("不明なカスタムツールタイプ: " + kind), nil
 		}
 	}
 	return actool.Build(actool.Spec{
@@ -321,22 +321,22 @@ func ensureSchema(raw json.RawMessage) map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"args": map[string]any{"type": "string", "description": "命令/参数(自由文本)"},
+			"args": map[string]any{"type": "string", "description": "コマンド/パラメータ(自由テキスト)"},
 		},
 	}
 }
 
-// ---------- command:渲染命令 → 复用 Bash 底层 run ----------
+// ---------- command:コマンドをレンダリング → Bash の下位 run を再利用 ----------
 
 func (s *Server) runCommandTool(ctx context.Context, execRaw json.RawMessage, params map[string]any, tc *actool.ToolContext) (actool.Result, error) {
 	var spec commandExec
 	_ = json.Unmarshal(execRaw, &spec)
 	if strings.TrimSpace(spec.Command) == "" {
-		return actool.Errorf("command 为空"), nil
+		return actool.Errorf("command が空です"), nil
 	}
 	cmd := renderTemplate(spec.Command, params, shellQuote)
-	// 复用 Bash 也在用的底层 run(经 Bash CoreTool.Call):自动继承安全 floor/超时/
-	// 代理 env/输出溢出。工具与 Bash 平级、共用底层,不经过 Bash 这个工具让模型调。
+	// Bash も使っている下位 run を再利用する(Bash CoreTool.Call 経由):安全 floor/タイムアウト/
+	// プロキシ env/出力オーバーフローを自動で継承する。ツールは Bash と同格で下位を共有し、モデルに Bash というツールを経由させない。
 	bashIn, _ := json.Marshal(map[string]any{"command": cmd})
 	if spec.TimeoutMs > 0 {
 		var cancel context.CancelFunc
@@ -346,17 +346,17 @@ func (s *Server) runCommandTool(ctx context.Context, execRaw json.RawMessage, pa
 	return actool.NewBash().Call(ctx, bashIn, tc)
 }
 
-// ---------- script(仅 Python):临时文件 + stdin JSON + env ----------
+// ---------- script(Python のみ):一時ファイル + stdin JSON + env ----------
 
 func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.RawMessage, params map[string]any, tc *actool.ToolContext) (actool.Result, error) {
 	var spec scriptExec
 	_ = json.Unmarshal(execRaw, &spec)
 	if strings.TrimSpace(spec.Code) == "" {
-		return actool.Errorf("script code 为空"), nil
+		return actool.Errorf("script code が空です"), nil
 	}
 	interp := s.pythonInterpreter()
 	if interp == "" {
-		return actool.Errorf("未配置且未检测到 python 解释器(在系统配置里设置)"), nil
+		return actool.Errorf("python インタプリタが未設定かつ未検出です(システム設定で設定してください)"), nil
 	}
 	workDir := s.m.dir
 	var sessionEnv []string
@@ -397,25 +397,25 @@ func execPython(ctx context.Context, interp, key, code string, params map[string
 	defer cancel()
 	c := exec.CommandContext(runCtx, interp, tmp)
 	c.Dir = workDir
-	c.Env = append(os.Environ(), sessionEnv...) // 会话代理 env
-	for k, v := range params {                  // 标量参数镜像成 TOOL_<NAME>
+	c.Env = append(os.Environ(), sessionEnv...) // セッションのプロキシ env
+	for k, v := range params {                  // スカラーパラメータを TOOL_<NAME> にミラー
 		if sv, ok := scalarStr(v); ok {
 			c.Env = append(c.Env, "TOOL_"+strings.ToUpper(k)+"="+sv)
 		}
 	}
 	pj, _ := json.Marshal(params)
-	c.Stdin = bytes.NewReader(pj) // 参数 JSON 走 stdin
+	c.Stdin = bytes.NewReader(pj) // パラメータ JSON は stdin 経由
 	out, err := c.CombinedOutput()
 	body := string(out)
 	if runCtx.Err() == context.DeadlineExceeded {
-		body += "\n... [超时终止] ..."
+		body += "\n... [タイムアウトで終了] ..."
 	} else if err != nil {
 		body += "\n[exit: " + err.Error() + "]"
 	}
 	return body, nil
 }
 
-// ---------- http:原生请求 + 代理 ----------
+// ---------- http:ネイティブリクエスト + プロキシ ----------
 
 func (s *Server) runHTTPTool(ctx context.Context, execRaw json.RawMessage, params map[string]any) (actool.Result, error) {
 	var spec httpExec
@@ -426,7 +426,7 @@ func (s *Server) runHTTPTool(ctx context.Context, execRaw json.RawMessage, param
 	}
 	rawURL := renderTemplate(spec.URL, params, identity)
 	if strings.TrimSpace(rawURL) == "" {
-		return actool.Errorf("http url 为空"), nil
+		return actool.Errorf("http url が空です"), nil
 	}
 	var bodyReader io.Reader
 	if spec.Body != "" {
@@ -447,7 +447,7 @@ func (s *Server) runHTTPTool(ctx context.Context, execRaw json.RawMessage, param
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return actool.Errorf("请求失败: " + err.Error()), nil
+		return actool.Errorf("リクエストに失敗しました: " + err.Error()), nil
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -539,5 +539,5 @@ func clipOutput(s string, tc *actool.ToolContext) string {
 	if len(s) <= max {
 		return s
 	}
-	return s[:max] + fmt.Sprintf("\n... [截断，共 %d 字节] ...", len(s))
+	return s[:max] + fmt.Sprintf("\n... [切り詰め、全 %d バイト] ...", len(s))
 }

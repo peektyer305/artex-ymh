@@ -19,14 +19,14 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 )
 
-// 受管文件投递(F13;stage 包语义见 stage/stage.go 头注释)。本文件做三件事:
-//   1. 装配:创建 stage.Manager 并把记账事件写进任务 activity(无任务上下文则只打日志);
-//   2. 下载路由 GET /s/{token}/{name}(root mux,JWT 之外——目标机器没有 token;
-//      gate 门控对 /s/ 前缀放行,见 gate.go);
-//   3. 管理 API(POST/GET/DELETE /api/stage*,JWT 之后)+ worker 的 stage_share host 工具。
+// 管理下ファイル配布（F13。stage パッケージの意味は stage/stage.go の先頭コメントを参照）。本ファイルの役割は 3 つ:
+//   1. 組み立て: stage.Manager を生成し、記帳イベントをタスクの activity へ書き込む（タスクコンテキストがなければログのみ）;
+//   2. ダウンロードルート GET /s/{token}/{name}（root mux、JWT の外——対象マシンはトークンを持たない。
+//      gate のゲートは /s/ プレフィックスを除外する。gate.go を参照）;
+//   3. 管理 API（POST/GET/DELETE /api/stage*、JWT の後）+ worker の stage_share host ツール。
 
-// initStage 创建进程内暂存管理器并接好记账。失败只记日志(降级为无暂存服务),
-// 不拖垮启动。
+// initStage はプロセス内のステージングマネージャを生成し、記帳を接続する。失敗時はログのみ
+// （ステージングサービスなしへ降格）で、起動を止めない。
 func (s *Server) initStage(dataDir string) {
 	m, err := stage.New(s.ctx, filepath.Join(dataDir, "stage"))
 	if err != nil {
@@ -35,30 +35,30 @@ func (s *Server) initStage(dataDir string) {
 	}
 	m.OnEvent = s.recordStageEvent
 	s.stage = m
-	log.Printf("[stage] 受管暂存服务已就绪: GET /s/<token>/<name> (TTL 默认 %v,上限 %v)", stage.DefaultTTL, stage.MaxTTL)
+	log.Printf("[stage] 管理下ステージングサービス準備完了: GET /s/<token>/<name>（TTL デフォルト %v、上限 %v）", stage.DefaultTTL, stage.MaxTTL)
 }
 
-// SetStageBaseURL 设置拼进暂存 URL 的对外基址(通常是主监听地址)。目标机器能
-// 用哪个地址回连平台取决于部署,这里只是给 stage_share 的返回一个可直接用的绝对 URL。
+// SetStageBaseURL はステージング URL に組み込む対外ベースアドレス（通常はメインのリッスンアドレス）を設定する。対象マシンが
+// どのアドレスでプラットフォームへ戻れるかは配備次第なので、ここでは stage_share の戻り値にそのまま使える絶対 URL を用意するだけ。
 func (s *Server) SetStageBaseURL(addr string) {
 	if s.stage == nil {
 		return
 	}
 	host := addr
 	if strings.HasPrefix(host, "0.0.0.0") {
-		host = strings.Replace(host, "0.0.0.0", "127.0.0.1", 1) // 监听全接口时给回环占位,实际按目标可达地址替换
+		host = strings.Replace(host, "0.0.0.0", "127.0.0.1", 1) // 全インターフェースをリッスンするときはループバックの仮値を入れ、実際には対象から到達できるアドレスで置き換える
 	}
 	s.stage.SetBaseURL("http://" + host)
 }
 
-// recordStageEvent 把 stage 记账事件写进归属任务的 activity(参照 engine.emitActivity
-// 的 system/text 模式);任务已结束或无任务上下文时至少留服务端日志。
+// recordStageEvent は stage の記帳イベントを帰属タスクの activity へ書き込む（engine.emitActivity の
+// system/text モードを参照）。タスクが終了済み、またはタスクコンテキストがないときは少なくともサーバー側ログを残す。
 func (s *Server) recordStageEvent(ev stage.Event) {
 	e := ev.Entry
 	summary := fmt.Sprintf("stage %s: %s (token=%s… size=%d bytes, expires %s)",
 		ev.Kind, e.Name, e.Token[:8], e.Size, e.ExpiresAt.Format(time.RFC3339))
 	if ev.Kind == stage.EventDownload {
-		summary = fmt.Sprintf("stage download: %s 被 %s 拉取 %d/%d 字节(累计命中 %d 次)",
+		summary = fmt.Sprintf("stage download: %s が %s により %d/%d バイト取得されました（累計ヒット %d 回）",
 			e.Name, ev.Remote, ev.Bytes, e.Size, e.Hits)
 	}
 	log.Printf("[stage] task=%s %s", orDash(e.TaskID), summary)
@@ -69,7 +69,7 @@ func (s *Server) recordStageEvent(ev stage.Event) {
 	t := s.m.tasks[e.TaskID]
 	s.m.mu.Unlock()
 	if t == nil || t.Store == nil {
-		return // 任务句柄已不在(结束/删除),日志已留
+		return // タスクハンドルはすでに存在しない（終了／削除）。ログは残した
 	}
 	if _, err := t.Store.AppendActivity(db.Activity{
 		Worker: "system", Kind: "text", Tool: "stage_share",
@@ -77,7 +77,7 @@ func (s *Server) recordStageEvent(ev stage.Event) {
 		Detail:  fmt.Sprintf("token=%s name=%s size=%d one_shot=%v expires_at=%s remote=%s bytes=%d hits=%d",
 			e.Token, e.Name, e.Size, e.OneShot, e.ExpiresAt.Format(time.RFC3339), ev.Remote, ev.Bytes, e.Hits),
 	}); err != nil {
-		log.Printf("[stage] activity 写入失败(task=%s): %v", e.TaskID, err)
+		log.Printf("[stage] activity の書き込みに失敗しました（task=%s）: %v", e.TaskID, err)
 	}
 }
 
@@ -88,8 +88,8 @@ func orDash(s string) string {
 	return s
 }
 
-// stageDownload 服务下载。挂 root mux(JWT 之外);防枚举的一致性 404 与限速
-// 都在 stage.Manager.Download 里。
+// stageDownload はダウンロードを提供する。root mux に接続し（JWT の外）、列挙対策の一貫した 404 とレート制限は
+// いずれも stage.Manager.Download にある。
 func (s *Server) stageDownload(w http.ResponseWriter, r *http.Request) {
 	if s.stage == nil {
 		http.NotFound(w, r)
@@ -98,15 +98,15 @@ func (s *Server) stageDownload(w http.ResponseWriter, r *http.Request) {
 	s.stage.Download(w, r, r.PathValue("token"), r.PathValue("name"))
 }
 
-// --- 管理 API(JWT 之后,供 worker 工具与 UI 使用) ---
+// --- 管理 API（JWT の後、worker ツールと UI が使用） ---
 
 type stageCreateReq struct {
-	Path          string `json:"path"`            // 平台侧已有文件(与 content 二选一)
-	Name          string `json:"name"`            // content 模式必填
-	ContentBase64 string `json:"content_base64"`  // content 模式
-	TTLMinutes    int    `json:"ttl_minutes"`     // 0 = 默认 15 分钟,上限 120
-	OneShot       bool   `json:"one_shot"`        // 首次成功完整下载后即焚
-	TaskID        string `json:"task_id"`         // 归属任务(activity 记账)
+	Path          string `json:"path"`           // プラットフォーム側に既存のファイル（content と二択）
+	Name          string `json:"name"`           // content モードでは必須
+	ContentBase64 string `json:"content_base64"` // content モード
+	TTLMinutes    int    `json:"ttl_minutes"`    // 0 = デフォルト 15 分、上限 120
+	OneShot       bool   `json:"one_shot"`       // 最初の完全なダウンロード成功後に即破棄
+	TaskID        string `json:"task_id"`        // 帰属タスク（activity 記帳）
 }
 
 func (s *Server) stageCreate(w http.ResponseWriter, r *http.Request) {
@@ -132,12 +132,12 @@ func (s *Server) stageCreate(w http.ResponseWriter, r *http.Request) {
 	case req.ContentBase64 != "":
 		data, derr := base64.StdEncoding.DecodeString(req.ContentBase64)
 		if derr != nil {
-			writeErr(w, 400, "content_base64 解码失败: "+derr.Error())
+			writeErr(w, 400, "content_base64 のデコードに失敗しました: "+derr.Error())
 			return
 		}
 		e, err = s.stage.PutContent(req.Name, data, opts)
 	default:
-		writeErr(w, 400, "path 与 content_base64 至少提供一个")
+		writeErr(w, 400, "path と content_base64 の少なくとも一方を指定してください")
 		return
 	}
 	if err != nil {
@@ -167,26 +167,26 @@ func (s *Server) stageDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"deleted": r.PathValue("token")})
 }
 
-// --- stage_share host 工具(默认绑 worker;经 tools 表按 agent 过滤) ---
+// --- stage_share host ツール（デフォルトで worker にバインド。tools テーブルで agent ごとに絞り込む） ---
 
-// stageShareTool 让 worker 把「工作区里已生成的文件」交给受管暂存服务,拿回
-// 随机 token URL + 过期时间。TaskID 从 RunInfo 权威注入,不暴露给模型。
+// stageShareTool は worker が「ワークスペース内で生成済みのファイル」を管理下ステージングサービスへ渡し、
+// ランダムなトークン URL + 有効期限を受け取れるようにする。TaskID は RunInfo から権威的に注入し、モデルには公開しない。
 func (s *Server) stageShareTool() actool.CoreTool {
 	allow := func(context.Context, json.RawMessage, permission.Context) permission.Decision {
 		return permission.Allowed()
 	}
 	return actool.Build(actool.Spec{
 		Name: "stage_share",
-		Description: "把工作区里已生成的文件交给平台受管暂存服务投递给目标:返回随机 token 下载 URL(/s/<token>/<name>,无目录列举)与过期时间。" +
-			"硬 TTL 默认 15 分钟(ttl_minutes 可调,上限 120),到期自动销毁;one_shot=true 时目标首次完整下载后立即即焚。" +
-			"【只用于向目标投递工具/payload】——不要投递战利品/凭据,数据回流一律走会话读取/evidence。" +
-			"返回的 URL 主机是平台监听地址;目标机器不可达该地址时,用目标可达的平台地址/隧道替换主机部分(路径与 token 不变)。",
+		Description: "ワークスペース内で生成済みのファイルを、プラットフォームの管理下ステージングサービスで対象へ配布する: ランダムなトークンのダウンロード URL（/s/<token>/<name>、ディレクトリ一覧なし）と有効期限を返す。" +
+			"ハード TTL はデフォルト 15 分（ttl_minutes で調整可能、上限 120）で、期限が来ると自動破棄される。one_shot=true なら対象が最初に完全にダウンロードした直後に即破棄する。" +
+			"【対象へのツール／payload 配布にのみ使用】——戦利品／認証情報を配布しないこと。データの回収は必ずセッション読み取り／evidence 経由で行う。" +
+			"返される URL のホストはプラットフォームのリッスンアドレスである。対象マシンからそのアドレスに到達できないときは、対象から到達できるプラットフォームのアドレス／トンネルでホスト部分を置き換える（パスとトークンは変えない）。",
 		Schema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"path":        map[string]any{"type": "string", "description": "要投递的本地文件绝对路径(工作区里已生成的工具/payload)"},
-				"ttl_minutes": map[string]any{"type": "integer", "description": "存活分钟数,默认 15,上限 120"},
-				"one_shot":    map[string]any{"type": "boolean", "description": "true = 目标首次成功完整下载后立即销毁(默认 false)"},
+				"path":        map[string]any{"type": "string", "description": "配布するローカルファイルの絶対パス（ワークスペース内で生成済みのツール／payload）"},
+				"ttl_minutes": map[string]any{"type": "integer", "description": "生存時間（分）。デフォルト 15、上限 120"},
+				"one_shot":    map[string]any{"type": "boolean", "description": "true = 対象が最初に完全なダウンロードに成功した直後に破棄（デフォルト false）"},
 			},
 			"required": []any{"path"},
 		},
@@ -194,7 +194,7 @@ func (s *Server) stageShareTool() actool.CoreTool {
 		Permissions: allow,
 		Run: func(ctx context.Context, in json.RawMessage, _ *actool.ToolContext) (actool.Result, error) {
 			if s.stage == nil {
-				return actool.Errorf("stage 暂存服务未启用"), nil
+				return actool.Errorf("stage ステージングサービスは有効になっていません"), nil
 			}
 			var a struct {
 				Path       string `json:"path"`
@@ -203,11 +203,11 @@ func (s *Server) stageShareTool() actool.CoreTool {
 			}
 			_ = json.Unmarshal(in, &a)
 			if strings.TrimSpace(a.Path) == "" {
-				return actool.Errorf("path 为必填参数"), nil
+				return actool.Errorf("path は必須パラメータです"), nil
 			}
 			ri := agent.RunInfoFrom(ctx)
 			taskID := ""
-			if ri.TaskID > 0 { // 0 = 非任务 run(聊天会话),无任务上下文
+			if ri.TaskID > 0 { // 0 = タスク以外の run（チャットセッション）で、タスクコンテキストなし
 				taskID = strconv.FormatInt(ri.TaskID, 10)
 			}
 			e, err := s.stage.PutFile(strings.TrimSpace(a.Path), stage.PutOpts{
@@ -223,19 +223,19 @@ func (s *Server) stageShareTool() actool.CoreTool {
 				"expires_at": e.ExpiresAt.Format(time.RFC3339),
 				"one_shot":   e.OneShot,
 				"size":       e.Size,
-				"note":       "目标机用 curl/wget 拉取该 URL;到期或(开启 one_shot 时)首次完整下载后自动销毁。URL 主机为平台监听地址,目标不可达时按目标可达地址替换主机部分。",
+				"note":       "対象マシンは curl/wget でこの URL を取得する。期限切れ、または（one_shot 有効時は）最初の完全なダウンロード後に自動破棄される。URL のホストはプラットフォームのリッスンアドレスで、対象から到達できないときは対象から到達できるアドレスでホスト部分を置き換える。",
 			})
 		},
 	})
 }
 
-// seedStageShareTool 把 stage_share seed 进 tools 表、默认绑定 worker(与流量
-// host 工具同一套 SeedTool 首插入语义:老库的用户编辑不被覆盖)。
+// seedStageShareTool は stage_share を tools テーブルへ seed し、デフォルトで worker にバインドする（トラフィックの
+// host ツールと同じ SeedTool の初回挿入セマンティクス: 既存 DB のユーザー編集は上書きしない）。
 func (s *Server) seedStageShareTool() {
 	t := s.stageShareTool()
 	schema, _ := json.Marshal(t.InputSchema())
 	workerAgents, _ := json.Marshal([]string{"worker"})
 	if err := s.m.PG().SeedTool(t.Name(), t.Description(), schema, workerAgents); err != nil {
-		log.Printf("[tools] seed %s 失败: %v", t.Name(), err)
+		log.Printf("[tools] %s の seed に失敗しました: %v", t.Name(), err)
 	}
 }

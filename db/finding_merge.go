@@ -7,30 +7,32 @@ import (
 	"time"
 )
 
-// 档 A 同入口 finding 自动合并(FIXPLAN 需求一 / ROADMAP C2·C4)。
+// アプローチ A：同一入口の finding 自動マージ（FIXPLAN 要件一 / ROADMAP C2·C4）。
 //
-// RecordFindingTx 在插入前按 (task_id, 归一化 vulnclass, 主 asset_id) 查同任务
-// 未关闭且 status IN ('confirmed','pending') 的既有 finding;命中则不新增
-// 行/节点,改为追加 evidence、severity 取最高、summary 以最新深度利用为准
-// (旧的挪进 evidence 存档)、新 intent 的 yields 边指向既有节点,流量快照绑到
-// 既有 finding。查重与插入同处任务级证据锁(LockTaskEvidenceTx)内,天然串行化,
-// 无并发双插窗口。
+// RecordFindingTx は挿入前に (task_id, 正規化 vulnclass, 主 asset_id) で同一タスクの
+// 未クローズかつ status IN ('confirmed','pending') の既存 finding を検索する。ヒット時は
+// 行/ノードを新規作成せず、evidence を追記し、severity は最高を採用、summary は最新の
+// 深掘り利用を優先（旧いものは evidence へ退避）、新 intent の yields 辺は既存ノードを
+// 指し、トラフィックのスナップショットを既存 finding へ紐づける。重複判定と挿入は同じ
+// タスク単位のエビデンスロック（LockTaskEvidenceTx）内にあり、自然に直列化されるため、
+// 並行二重挿入の窓はない。
 //
-// pending 也参与合并的依据:压测中第二条上报到达时第一条往往还在 pending,
-// 仅认 confirmed 会导致合并 0 触发。未验证结论先聚合、再由验证管线裁决——
-// C2 已有合并后增量重验兜底(evidence.Store.OnMerged →
-// server.RequestFindingCheck);若后被裁为误报,false_positive 处置时其合并
-// 进来的证据段仍留在 evidence 里可审计。终态(fixed/false_positive/duplicate
-// 等)仍排除,不污染聚合。
+// pending もマージ対象とする根拠：負荷試験では 2 件目の報告が届く時点で 1 件目がまだ
+// pending であることが多く、confirmed だけを対象にするとマージが 0 件になる。未検証の
+// 結論もまず集約し、その後に検証パイプラインが判断する——C2 にはマージ後の増分再検証が
+// ある（evidence.Store.OnMerged → server.RequestFindingCheck）。後に誤検知と裁定されても、
+// false_positive 処理時にマージで入ったエビデンス段は evidence に残り監査できる。終了状態
+// （fixed/false_positive/duplicate など）は除外し、集約を汚さない。
 //
-// 不参与合并的情形(均落回原有新建路径):
-//   - 无 task(TaskID<=0)或无主资产(AssetIDs 为空)——合并键不完整;
-//   - 候选 status 为终态(fixed/false_positive/duplicate 等);
-//   - 候选无探索节点(node_id IS NULL)——合并必须保持 1节点↔1行 契约。
+// マージ対象外のケース（いずれも従来の新規作成パスに戻る）：
+//   - task なし（TaskID<=0）または主資産なし（AssetIDs が空）——マージキーが不完全;
+//   - 候補の status が終了状態（fixed/false_positive/duplicate など）;
+//   - 候補に探索ノードがない（node_id IS NULL）——マージは 1ノード↔1行 の契約を保つ。
 
-// vulnClassAliases 把常见漏洞类目收敛到粗类;未知名目原样小写保留(仍参与判等,
-// 只是不做跨名目合并)。键必须先经 normalizeVulnClassKey 同款折叠(小写、空白/
-// 下划线/连字符折叠为单连字符)。
+// vulnClassAliases はよくある脆弱性カテゴリを粗い分類へ収束させる。未知の項目は
+// そのまま小文字で保持する（判等には参加し、カテゴリを跨ぐマージはしない）。キーは
+// 先に normalizeVulnClassKey と同じ折り畳み（小文字、空白/アンダースコア/ハイフンを
+// 単一ハイフンに）を通す必要がある。
 var vulnClassAliases = map[string]string{
 	"sqli":                           "sqli",
 	"sql-injection":                  "sqli",
@@ -74,8 +76,9 @@ var vulnClassAliases = map[string]string{
 	"other":                          "other",
 }
 
-// normalizeVulnClassKey 折叠 vulnclass:小写、去首尾空白,空白/下划线/连字符/
-// 斜杠折叠为单连字符。别名表的键与模糊段的关键词都是同款折叠后的形式。
+// normalizeVulnClassKey は vulnclass を折り畳む：小文字化し、前後の空白を除去し、
+// 空白/アンダースコア/ハイフン/スラッシュを単一ハイフンにする。別名表のキーも
+// 曖昧一致段のキーワードも同じ折り畳み形式である。
 func normalizeVulnClassKey(v string) string {
 	v = strings.ToLower(strings.TrimSpace(v))
 	return strings.Join(strings.FieldsFunc(v, func(r rune) bool {
@@ -83,10 +86,11 @@ func normalizeVulnClassKey(v string) string {
 	}), "-")
 }
 
-// vulnClassFuzzyKeywords 模糊段关键词表,按优先级顺序从上到下匹配,命中即收敛
-// 到规范粗类。保守原则:刻意不收裸 "injection"——SSTI 等含 "injection" 但不
-// 是 SQLi;"sql" 词根才是 sqli 的强信号。blind sqli 归到 sqli 而非独立
-// sqli-blind:与既有粗类保持一致,盲注是 sqli 的利用手法而非新类目。
+// vulnClassFuzzyKeywords は曖昧一致段のキーワード表。上から優先順に照合し、ヒット
+// したら正規の粗い分類へ収束させる。保守的な方針：裸の "injection" は意図的に収録
+// しない——SSTI などは "injection" を含むが SQLi ではない。"sql" 語根こそ sqli の
+// 強いシグナルである。blind sqli は独立した sqli-blind ではなく sqli に寄せる：
+// 既存の粗い分類と揃え、ブラインドは sqli の利用手法であって新しい分類ではない。
 var vulnClassFuzzyKeywords = []struct {
 	keys  []string
 	class string
@@ -108,7 +112,7 @@ var vulnClassFuzzyKeywords = []struct {
 	{[]string{"logic", "逻辑"}, "logic"},
 }
 
-// fuzzyVulnClass 对折叠后的 key 做关键词包含扫描,命中返回粗类。
+// fuzzyVulnClass は折り畳み後の key にキーワード包含スキャンを行い、ヒット時は粗い分類を返す。
 func fuzzyVulnClass(key string) (string, bool) {
 	for _, kw := range vulnClassFuzzyKeywords {
 		for _, k := range kw.keys {
@@ -120,8 +124,9 @@ func fuzzyVulnClass(key string) (string, bool) {
 	return "", false
 }
 
-// parenContents 提取折叠后 key 中各对(半角/全角)括号内的内容,用于模型惯用的
-// "Stored Cross-Site Scripting (XSS)" / "任意文件上传 (CVE-2017-12615)" 写法。
+// parenContents は折り畳み後の key から各対の（半角/全角）括弧内の内容を抽出する。
+// モデルが慣用する "Stored Cross-Site Scripting (XSS)" /
+// "任意ファイルアップロード (CVE-2017-12615)" といった書き方に対応するため。
 func parenContents(key string) []string {
 	var out []string
 	for _, pair := range [][2]rune{{'(', ')'}, {'（', '）'}} {
@@ -145,11 +150,11 @@ func parenContents(key string) []string {
 	return out
 }
 
-// NormalizeVulnClass 归一化漏洞类别到粗类,两段式:
-//  1. 别名表:大小写/空白/连字符折叠后精确命中 vulnClassAliases;
-//  2. 模糊段:未命中时,先取括号内内容、再取折叠后全文,各自先回查别名表、
-//     再做关键词包含扫描(优先级见 vulnClassFuzzyKeywords);
-//  3. 都不中:保持折叠后原样小写(仍参与判等,只是不做跨名目合并)。
+// NormalizeVulnClass は脆弱性カテゴリを粗い分類へ正規化する。二段構え：
+//  1. 別名表：大文字小文字/空白/ハイフンを折り畳んだ後に vulnClassAliases へ完全一致;
+//  2. 曖昧一致段：未ヒット時はまず括弧内の内容、次に折り畳み後の全文を取り、それぞれ
+//     別名表を再照会してからキーワード包含スキャンを行う（優先順位は vulnClassFuzzyKeywords）;
+//  3. いずれも不中：折り畳み後の小文字をそのまま保持（判等には参加し、カテゴリを跨ぐマージはしない）。
 func NormalizeVulnClass(v string) string {
 	key := normalizeVulnClassKey(v)
 	if canon, ok := vulnClassAliases[key]; ok {
@@ -169,7 +174,7 @@ func NormalizeVulnClass(v string) string {
 	return key
 }
 
-// severityRank 把 severity 映射为可比大小;未知/空为 0(最低)。
+// severityRank は severity を比較可能な値へ写像する。未知/空は 0（最小）。
 func severityRank(s string) int {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case SeverityCritical:
@@ -184,7 +189,7 @@ func severityRank(s string) int {
 	return 0
 }
 
-// MaxSeverity 返回两者中更高的 severity;平级或都未知时返回 a。
+// MaxSeverity は 2 つのうち高い severity を返す。同格またはどちらも未知なら a を返す。
 func MaxSeverity(a, b string) string {
 	if severityRank(b) > severityRank(a) {
 		return b
@@ -192,8 +197,8 @@ func MaxSeverity(a, b string) string {
 	return a
 }
 
-// appendMergeSegment 在 evidence 尾部追加一个带来源标记的段落;note 非空时
-// 附加到段标记里(目前用于 vulnclass 措辞漂移审计)。
+// appendMergeSegment は evidence の末尾にソースマーカー付きの段落を追加する。note が
+// 非空なら段落マーカーへ付加する（現在は vulnclass の表現揺らぎ監査に使用）。
 func appendMergeSegment(evidence, label, body string, now time.Time, intentID int64, worker, note string) string {
 	marker := fmt.Sprintf("\n\n--- [%s] 合并于 %s", label, now.UTC().Format(time.RFC3339))
 	if intentID > 0 {
@@ -208,11 +213,12 @@ func appendMergeSegment(evidence, label, body string, now time.Time, intentID in
 	return evidence + marker + " ---\n" + body
 }
 
-// mergeFindingFields 计算合并后的 severity/summary/evidence(纯函数,可测):
-// severity 取最高;新 summary 与旧不同则以"最新深度利用"为准替换,旧的挪进
-// evidence 存档;新 evidence 作为带时间戳与 intent 标记的段落追加,原文保留。
-// 若本次上报 vulnclass 原文与既有行不同(归一化后才相等,纯属模型措辞漂移),
-// 在追加的段标记里标注原文,便于审计。
+// mergeFindingFields はマージ後の severity/summary/evidence を計算する（純粋関数で
+// テスト可能）：severity は最高を採用。新 summary が旧と異なれば「最新の深掘り利用」を
+// 優先して置換し、旧いものは evidence へ退避。新 evidence はタイムスタンプと intent
+// マーカー付きの段落として追加し、原文は保持する。今回報告の vulnclass 原文が既存行と
+// 異なる場合（正規化後に等しい、モデルの表現揺らぎにすぎない）は、追加する段落マーカーに
+// 原文を注記して監査しやすくする。
 func mergeFindingFields(old DBFinding, in RecordFindingInput, now time.Time) (severity, summary, evidence string) {
 	severity = MaxSeverity(old.Severity, in.Severity)
 	summary = old.Summary
@@ -233,21 +239,23 @@ func mergeFindingFields(old DBFinding, in RecordFindingInput, now time.Time) (se
 		evidence = appendMergeSegment(evidence, "新证据", in.Evidence, now, in.IntentID, in.Worker, drift)
 		appended = true
 	}
-	// 无段落可挂但确有措辞漂移:单独留一个审计段,避免漂移痕迹丢失。
+	// 付けられる段落はないが表現揺らぎはある：監査用の段落を単独で残し、揺らぎの痕跡を失わない。
 	if drift != "" && !appended {
 		evidence = appendMergeSegment(evidence, "新证据", "(仅 vulnclass 措辞漂移,无新证据正文)", now, in.IntentID, in.Worker, drift)
 	}
 	return
 }
 
-// findMergeCandidateTx 在事务内(调用方须已持任务级证据锁)查可合并的既有
-// finding:同 task、status IN ('confirmed','pending')(终态排除,依据见文件头
-// 注释)、归一化 vulnclass 相同、主资产对等(候选 asset_ids->0 = 输入 AssetIDs
-// 第一个)、且有探索节点。命中多行时取最新一条。
-// 主资产对等而非包含:候选 [ep,svc] 与输入 [svc] 不是同一入口(svc 只是候选的
-// 次资产),包含判等会把挂在 service 上的异入口漏洞误并进来;[ep,svc] 与 [ep]
-// 主资产相同,仍正确合并。asset_ids 为空或输入主资产为空时 ->0 为 NULL,天然
-// 不参与合并。
+// findMergeCandidateTx はトランザクション内（呼び出し側はタスク単位のエビデンス
+// ロックを保持済みであること）でマージ可能な既存 finding を検索する：同一 task、
+// status IN ('confirmed','pending')（終了状態は除外。根拠はファイル冒頭のコメント）、
+// 正規化 vulnclass が同一、主資産が一致（候補の asset_ids->0 = 入力 AssetIDs の
+// 先頭）、かつ探索ノードがあるもの。複数行ヒット時は最新の 1 件を取る。
+// 主資産の一致であり包含ではない：候補 [ep,svc] と入力 [svc] は同一入口ではない
+// （svc は候補の副資産にすぎない）ため、包含で判等すると service に紐づく別入口の
+// 脆弱性を誤って併合してしまう。[ep,svc] と [ep] は主資産が同じなので正しく
+// マージされる。asset_ids が空、または入力の主資産が空なら ->0 は NULL となり、
+// 自然にマージ対象外となる。
 func findMergeCandidateTx(tx *sql.Tx, in RecordFindingInput) (*DBFinding, error) {
 	if in.TaskID <= 0 || len(in.AssetIDs) == 0 {
 		return nil, nil
@@ -275,24 +283,26 @@ FOR UPDATE`, in.TaskID, FindingConfirmed, FindingPending, in.AssetIDs[0])
 	return nil, rows.Err()
 }
 
-// mergeFindingTx 执行合并:更新既有 finding 行与节点 payload,追加血缘边与
-// 流量快照,返回指向既有记录的 RecordedFinding(Merged=true)。
+// mergeFindingTx はマージを実行する：既存 finding 行とノードの payload を更新し、
+// 系譜辺とトラフィックのスナップショットを追加し、既存レコードを指す
+// RecordedFinding（Merged=true）を返す。
 func mergeFindingTx(tx *sql.Tx, cand *DBFinding, in RecordFindingInput, prepared []PreparedTrafficEvidence) (*RecordedFinding, error) {
 	severity, summary, evidence := mergeFindingFields(*cand, in, time.Now())
 	if _, err := tx.Exec(`UPDATE findings SET severity=$2, summary=$3, evidence=$4 WHERE id=$1`,
 		cand.ID, severity, summary, evidence); err != nil {
 		return nil, err
 	}
-	// 节点 payload 同步(与 setFindingCol 同款 jsonb_set),保持按任务 发现 Tab
-	// (读节点 payload)与 findings 表一致。
+	// ノードの payload を同期（setFindingCol と同じ jsonb_set）。タスク別の
+	// ファインディングタブ（ノード payload を読む）と findings 表の一致を保つ。
 	if _, err := tx.Exec(`UPDATE exploration_nodes
 SET payload = jsonb_set(jsonb_set(jsonb_set(payload, '{severity}', to_jsonb($2::text)),
 	'{summary}', to_jsonb($3::text)), '{evidence,poc}', to_jsonb($4::text))
 WHERE id=$1 AND kind='finding'`, *cand.NodeID, severity, summary, evidence); err != nil {
 		return nil, err
 	}
-	// 血缘:新 intent 的 yields 边指向既有节点(保留"同一入口被反复加深"的历史)。
-	// 目标节点必须属于本 exploration;边主键天然幂等。
+	// 系譜：新 intent の yields 辺は既存ノードを指す（「同一入口が繰り返し深掘り
+	// された」履歴を保つ）。対象ノードはこの exploration に属する必要がある。辺の
+	// 主キーにより自然に冪等。
 	if in.IntentID > 0 {
 		if _, err := tx.Exec(`INSERT INTO exploration_edges(exploration_id,src_id,rel,dst_id)
 SELECT $1,$2,$3,$4 WHERE EXISTS(SELECT 1 FROM exploration_nodes WHERE id=$4 AND exploration_id=$1)
@@ -303,7 +313,8 @@ ON CONFLICT DO NOTHING`, in.ExplorationID, in.IntentID, RelYields, *cand.NodeID)
 	if err := AddFindingTrafficTx(tx, cand.ID, prepared); err != nil {
 		return nil, err
 	}
-	// 文本证据/summary 变化同样使既有报告过期(与流量绑定共用一个版本列)。
+	// テキストエビデンス/summary の変化も既存レポートを陳腐化させる（トラフィック
+	// 紐づけと同じバージョン列を共用）。
 	if err := bumpEvidenceVersionTx(tx, cand.ID); err != nil {
 		return nil, err
 	}

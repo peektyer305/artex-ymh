@@ -88,9 +88,10 @@ func (m *MainAgent) SetKillWork(fn func(intentID int64) error) { m.killWork = fn
 // worker's. Must be called before Chat; safe to call multiple times.
 func (m *MainAgent) SetGuard(g *guard.Guard) { m.guard = g }
 
-// mainAgentDefaultTmpl is the built-in EDITABLE body (段 [A]) of the main agent
-// prompt, seeded into agent_prompts. Goal is a {{.Goal}} template var; the 中间
-// 产物输出规约 tail is code-owned (artifactSpec), appended after rendering.
+// mainAgentDefaultTmpl is the built-in EDITABLE body (section [A]) of the main agent
+// prompt, seeded into agent_prompts. Goal is a {{.Goal}} template var; the
+// intermediate-artifact output spec tail is code-owned (artifactSpec), appended
+// after rendering.
 const mainAgentDefaultTmpl = `你是一个授权渗透测试系统的"主 agent"，是人类操作员的接口。你不亲自探索、也不自主连续生成意图（那是规划者的工作）。你的职责：
 
 1. 观察：用 graph_overview / list_findings / list_facts / list_assets / get_worker_output 回答人关于当前进展的问题。
@@ -127,17 +128,17 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	tsx.SetTaskID(taskID)
 	tsx.SetCoverageEnabled(as == nil || as.CoverageEnabled(taskID))
 	tsx.SetNotify(notify)         // add_hint wakes this task's planner (debounced)
-	tsx.SetResumeTask(resume)     // set_goals 新增目标 → 把已完成/暂停的任务拉回 running
-	tsx.SetNotifyGoal(notifyGoal) // set_goals 新增目标 → 给 planner 记一条「人新增了目标：…」触发
+	tsx.SetResumeTask(resume)     // set_goals が目標を追加 → 完了/一時停止中のタスクを running に戻す
+	tsx.SetNotifyGoal(notifyGoal) // set_goals が目標を追加 → planner に「人が目標を追加:…」を記録して起動
 	tsx.steerWork = m.steerWork   // enable steer_work tool (nil = unavailable)
 	tsx.killWork = m.killWork     // enable kill_work tool (nil = unavailable)
-	// 领域工具 + 基础默认工具集（Read/Write/Edit/MultiEdit/LS/Glob/Grep/Bash）
-	// 资产覆盖度功能关闭时剔除 add_task_scope/list_untested_assets（不入 prompt）。
+	// ドメインツール + 基本の既定ツールセット（Read/Write/Edit/MultiEdit/LS/Glob/Grep/Bash）
+	// アセットカバレッジ機能が無効なときは add_task_scope/list_untested_assets を除外する（prompt に入れない）。
 	base := append(tsx.DropCoverageTools(tsx.MainAgentTools()), actool.DefaultTools()...)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts)})
 	tools, def, cleanup := AugmentTools(ctx, "mainagent", base)
 	defer cleanup()
-	// 本任务的工作目录 <workDir>/tasks/<taskID>，先建好。
+	// 本タスクの作業ディレクトリ <workDir>/tasks/<taskID> を先に作成する。
 	mainDir := ensureRunDir(m.workDir, taskID, 0)
 	ctx = intercept.WithReviewWorkingDirectory(ctx, mainDir)
 	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir), def)
@@ -149,11 +150,12 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,
-		EnableWebFetch:  true, // 走记录代理留痕；载入代理 CA 验证 MITM 重签的 HTTPS 证书
+		EnableWebFetch:  true, // 記録プロキシ経由で痕跡を残す;プロキシの CA を読み込み、MITM で再署名された HTTPS 証明書を検証する
 		WebFetchProxy:   m.proxyAddr,
 		WebFetchCACert:  m.proxyCACert,
-		// 联网搜索(可选)。ddgs 无需 key；brave-free 需 BraveKey；tavily 需 TavilyKey。
-		// WebSearchProxy 是独立出口代理(http/https/socks5)，与记录流量的 MITM 代理无关；空则直连。
+		// ウェブ検索（任意）。ddgs はキー不要、brave-free は BraveKey、tavily は TavilyKey が必要。
+		// WebSearchProxy は独立した出口プロキシ（http/https/socks5）で、記録用の MITM プロキシとは
+		// 関係しない。空なら直接接続する。
 		EnableWebSearch:       m.webSearch.Enabled,
 		WebSearchBackend:      m.webSearch.Backend,
 		BraveSearchAPIKey:     m.webSearch.BraveKey,
@@ -162,18 +164,19 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 		DeepSeekSearchAPIKey:  m.webSearch.DeepSeekAPIKey,
 		DeepSeekSearchModel:   m.webSearch.DeepSeekModel,
 		WebSearchProxy:        m.webSearch.Proxy,
-		BashEnv:               proxyEnv(m.proxyAddr, m.proxyCACert), // Bash 子命令默认走代理+信任 CA
-		WorkingDir:            mainDir,                              // 本任务工作目录 <workDir>/tasks/<taskID>
+		BashEnv:               proxyEnv(m.proxyAddr, m.proxyCACert), // Bash の子コマンドは既定でプロキシ経由 + CA を信頼
+		WorkingDir:            mainDir,                              // 本タスクの作業ディレクトリ <workDir>/tasks/<taskID>
 		ToolOutputDir:         cmdOutDir(mainDir),
 		MaxTurns:              m.maxTurns,                             // 0 = unlimited (configurable in agent management)
 		Compaction:            compactionConfig(m.compactionWindow()), // long chats stay within the window
-		Todos:                 actool.NewTodoStore(),                  // 会话级临时待办（TodoWrite），纯规划用，退出即丢
-		// 命中预算(步数)→ SDK 跑收尾:向用户输出一句进展总结。Prompt 与收尾轮数可后台编辑(默认 10 轮)。
+		Todos:                 actool.NewTodoStore(),                  // セッション単位の一時 ToDo（TodoWrite）。計画用のみで、終了時に破棄
+		// 予算（ステップ数）に達したら SDK が終了処理を実行:ユーザーへ進捗の一言まとめを出力する。
+		// Prompt と終了処理のターン数は管理画面で編集できる（既定 10 ターン）。
 		Settlement:   wrapupSettlement("mainagent", nil),
-		NonStreaming: m.nonStreaming(), // 该 profile 选非流式时走 Provider.Complete
-		MaxTokens:    m.maxTokens(),    // 0 = 不发上限,由服务端默认值决定
+		NonStreaming: m.nonStreaming(), // この profile が非ストリーミングなら Provider.Complete を通る
+		MaxTokens:    m.maxTokens(),    // 0 = 上限を送らず、サーバ側の既定値に任せる
 	}
-	if m.guard != nil { // 审批门:PreToolUse 拦截由 hooks 执行,不依赖 PermissionMode(保持 ModeBypass)
+	if m.guard != nil { // 承認ゲート：PreToolUse のインターセプトは hooks が実行し、PermissionMode に依存しない（ModeBypass のまま）
 		opts.Hooks = m.guard.Hooks()
 	}
 	if m.tx != nil { // persist raw human↔AI conversation; one accumulating file per segment

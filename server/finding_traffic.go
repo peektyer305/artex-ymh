@@ -21,7 +21,7 @@ import (
 
 func (s *Server) evidenceStore() *evidence.Store {
 	store := evidence.New(s.m.pg, s.m.traffic, filepath.Join(s.m.dir, "evidence"))
-	// C2:档 A 合并(新证据并入已 confirmed 的 finding)后触发增量重验。
+	// C2:段階 A のマージ(新しいエビデンスを confirmed 済みの finding へ統合)後に増分再検証をトリガーする。
 	store.OnMerged = s.onFindingMerged
 	return store
 }
@@ -131,7 +131,7 @@ func (s *Server) findingTrafficAccess(w http.ResponseWriter, r *http.Request, wr
 			return 0, false
 		}
 		if write && inherited {
-			writeErr(w, 403, "继承漏洞只读，请在来源任务中修改")
+			writeErr(w, 403, "継承した脆弱性は読み取り専用です。ソースタスクで変更してください")
 			return 0, false
 		}
 	}
@@ -174,7 +174,7 @@ func (s *Server) bindFindingTraffic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(body.Refs) == 0 {
-		writeErr(w, 400, "请选择流量")
+		writeErr(w, 400, "トラフィックを選択してください")
 		return
 	}
 	out, err := s.evidenceStore().Bind(r.Context(), id, body.Refs)
@@ -197,14 +197,14 @@ func (s *Server) editFindingTraffic(w http.ResponseWriter, r *http.Request) {
 		Order   []string `json:"binding_ids"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil || body.Version == nil {
-		writeErr(w, 400, "version 和有效请求体必填")
+		writeErr(w, 400, "version と有効なリクエストボディは必須です")
 		return
 	}
 	var order []int64
 	bindingID := int64(0)
 	if r.Method == http.MethodPut {
 		if body.Order == nil {
-			writeErr(w, 400, "binding_ids 必填")
+			writeErr(w, 400, "binding_ids は必須です")
 			return
 		}
 		order = []int64{}
@@ -243,7 +243,7 @@ type evidencePreview struct {
 
 func readEvidencePreview(store *evidence.Store, snapshot db.TrafficEvidenceSnapshot, side string, offset, length int64) (out evidencePreview, err error) {
 	if offset < 0 || length < 0 {
-		return out, errors.New("offset / length 不能为负数")
+		return out, errors.New("offset / length に負の値は指定できません")
 	}
 	if length == 0 || length > 8192 {
 		length = 8192
@@ -254,7 +254,7 @@ func readEvidencePreview(store *evidence.Store, snapshot db.TrafficEvidenceSnaps
 	}
 	defer f.Close()
 	if offset > total {
-		return out, errors.New("offset 超出正文长度")
+		return out, errors.New("offset が本文の長さを超えています")
 	}
 	if _, err = f.Seek(offset, io.SeekStart); err != nil {
 		return out, err
@@ -277,7 +277,7 @@ func readEvidencePreview(store *evidence.Store, snapshot db.TrafficEvidenceSnaps
 	out = evidencePreview{Offset: offset, Total: total, NextOffset: offset + int64(len(raw)), Truncated: offset+int64(len(raw)) < total,
 		Binary: bytes.IndexByte(raw, 0) >= 0 || (offset == 0 && !utf8.Valid(raw))}
 	if out.Binary {
-		out.Content = fmt.Sprintf("[二进制正文，%d 字节；请下载查看]", total)
+		out.Content = fmt.Sprintf("[バイナリ本文、%d バイト。ダウンロードして確認してください]", total)
 	} else {
 		out.Content = string(bytes.ToValidUTF8(raw, []byte("�")))
 	}

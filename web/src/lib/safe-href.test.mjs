@@ -14,7 +14,7 @@ test("safeHref rejects pseudo schemes and malformed input", () => {
   assert.equal(safeHref("data:text/html,<script>1</script>"), undefined);
   assert.equal(safeHref("vbscript:msgbox(1)"), undefined);
   assert.equal(safeHref("file:///etc/passwd"), undefined);
-  // 控制字符嵌在 scheme 里的伪装形式。
+  // 制御文字を scheme に埋め込んだ偽装形式。
   assert.equal(safeHref("java\tscript:alert(1)"), undefined);
   assert.equal(safeHref("java\nscript:alert(1)"), undefined);
 });

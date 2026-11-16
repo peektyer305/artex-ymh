@@ -88,7 +88,7 @@ func (b *contextBuilder) summarize(ctx context.Context, prior, text string) (str
 			return "", err
 		}
 		if b.calls >= 12 {
-			return "", errors.New("旁路上下文整理已达到本次处理上限，请缩小问题范围后重试")
+			return "", errors.New("サイドクエスチョンのコンテキスト整理が今回の処理上限に達しました。質問の範囲を絞って再試行してください")
 		}
 		overhead := EstimateInputTokens(llm.CompletionRequest{System: []string{summaryInstruction}, Messages: []llm.Message{llm.UserText("[此前摘要]\n" + prior + "\n[新材料片段]\n")}})
 		chunkBytes := min(32000, b.window-2048-overhead-512) * 3
@@ -115,14 +115,14 @@ func (b *contextBuilder) summarize(ctx context.Context, prior, text string) (str
 			return "", ctx.Err()
 		}
 		if err != nil {
-			return "", fmt.Errorf("旁路摘要失败：%w", err)
+			return "", fmt.Errorf("サイドクエスチョンの要約に失敗しました：%w", err)
 		}
 		result := strings.TrimSpace(msg.Text())
 		if result == "" || stop == "max_tokens" || stop == "length" || len(msg.ToolUses()) > 0 {
-			return "", errors.New("旁路摘要未完整生成，请重试")
+			return "", errors.New("サイドクエスチョンの要約が完全に生成されませんでした。再試行してください")
 		}
 		if EstimateInputTokens(llm.CompletionRequest{Messages: []llm.Message{llm.UserText(result)}}) > 2200 {
-			return "", errors.New("旁路摘要未缩减到预算内，请重试")
+			return "", errors.New("サイドクエスチョンの要約が予算内に収まりませんでした。再試行してください")
 		}
 		prior, text = result, text[n:]
 	}
@@ -169,7 +169,7 @@ func (b *contextBuilder) loadHistory(ctx context.Context) error {
 		}
 		for _, e := range page {
 			if e.Ordinal <= after || e.Status != "completed" {
-				return errors.New("旁路历史游标无效")
+				return errors.New("サイドクエスチョン履歴のカーソルが不正です")
 			}
 			after = e.Ordinal
 			b.recent = append(b.recent, e)
@@ -351,7 +351,7 @@ func (s SideQuestionService) Respond(ctx context.Context, snapshot Snapshot, que
 			return
 		}
 		if attempt > 0 && EstimateInputTokens(req) >= previousSize {
-			err = errors.New("旁路压缩未能进一步缩减上下文，已停止重试")
+			err = errors.New("サイドクエスチョンの圧縮ではコンテキストをこれ以上縮小できず、再試行を停止しました")
 			return
 		}
 		previousSize = EstimateInputTokens(req)

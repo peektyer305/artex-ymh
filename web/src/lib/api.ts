@@ -129,8 +129,8 @@ async function httpInner<T>(path: string, init: RequestInit | undefined, retried
     },
   });
   if (r.status === 401) {
-    // access token(2h)过期:先凭 HttpOnly refresh cookie 换新 token 重试一次;
-    // /auth/* 自身(含 refresh)的 401 不再递归,直接算登出(F6)。
+    // access token(2h)の期限切れ:まず HttpOnly refresh cookie で新 token を取り、1 回だけ再試行。
+    // /auth/* 自身(refresh 含む)の 401 は再帰せず、そのままログアウト扱い(F6)。
     if (!retried && !path.startsWith("/auth/") && (await refreshAccessToken())) {
       return httpInner<T>(path, init, true);
     }
@@ -138,7 +138,7 @@ async function httpInner<T>(path: string, init: RequestInit | undefined, retried
       auth.clearToken();
       window.location.href = "/login";
     }
-    throw new Error("未授权");
+    throw new Error("未認証");
   }
   if (!r.ok) {
     const fallback = `${init?.method ?? "GET"} ${path}: ${r.status}`;
@@ -163,31 +163,31 @@ async function httpInner<T>(path: string, init: RequestInit | undefined, retried
 // We therefore connect straight to the Go backend, whose CORS is open. Override
 // with NEXT_PUBLIC_SSE_BASE; set it to "" to force same-origin (e.g. behind a
 // production reverse proxy that flushes SSE correctly).
-// 凭据(F6):先 POST /api/sse-ticket(走 /api 代理,带 Authorization 头)换 60s
-// 一次性 ticket 再拼 ?ticket=——access token 不再出现在 URL/访问日志里。ticket
-// 用后即焚,所以 EventSource 自带的自动重连会在第二次握手时 401;调用点必须在
-// 连接彻底关闭(readyState === CLOSED)后重新走一遍本函数换票重连。
+// 認証情報(F6):まず POST /api/sse-ticket(/api 代理経由、Authorization ヘッダ付き)で 60s
+// 有効な使い捨て ticket を取り ?ticket= に付ける——access token は URL/アクセスログに出さない。ticket
+// は使用後に失効するので、EventSource の自動再接続は 2 回目のハンドシェイクで 401 になる;呼び出し側は
+// 接続が完全に閉じた(readyState === CLOSED)後に本関数を呼び直して ticket を取り直し再接続する。
 // mockReport returns a canned Markdown report for the demo.
 function mockReport(_task?: string): string {
-  return `# ARTEX 渗透测试报告 — Acme Corp
+  return `# ARTEX ペネトレーションテストレポート — Acme Corp
 
-## 概览
-- 范围：acme.com（含 www / admin / api / shop / vpn 子域）
-- 已确认发现：6 项（高危 3 · 中危 3 · 低危 2）
-- 引擎模式：exploring
+## 概要
+- 範囲：acme.com（www / admin / api / shop / vpn サブドメインを含む）
+- 確認済みファインディング：6 件（高 3 · 中 3 · 低 2）
+- エンジンモード：exploring
 
-## 关键发现
-1. **[高] 后台默认口令** admin.acme.com admin/admin123 → 可完全接管后台。
-2. **[高] SQL 注入** www.acme.com/search?q= → 可读取 acme_prod 库。
-3. **[高] IDOR** api.acme.com/v1/orders?id= → 可越权读取他人订单（含手机号/地址）。
-4. **[中] 反射型 XSS**、**暴露 .git 源码**、**登录无速率限制**。
+## 主要なファインディング
+1. **[高] 管理画面のデフォルトパスワード** admin.acme.com admin/admin123 → 管理画面を完全に掌握できる。
+2. **[高] SQL インジェクション** www.acme.com/search?q= → acme_prod データベースを読み取れる。
+3. **[高] IDOR** api.acme.com/v1/orders?id= → 権限外で他人の注文（電話番号/住所を含む）を読み取れる。
+4. **[中] 反射型 XSS**、**.git のソース露出**、**ログインにレート制限なし**。
 
-## 建议
-- 后台强制改密 + 启用 MFA、封禁默认口令。
-- search 接口参数化查询、输出编码。
-- API 增加对象级授权校验（IDOR）、更换强 JWT 密钥。
+## 推奨
+- 管理画面はパスワード変更を強制 + MFA 有効化、デフォルトパスワードを禁止。
+- search エンドポイントはパラメータ化クエリ、出力エンコーディング。
+- API にオブジェクト単位の認可チェック（IDOR）を追加、強力な JWT 鍵へ変更。
 
-> （demo）本报告由 mock 数据生成，仅用于界面演示。`;
+> （demo）本レポートは mock データから生成したもので、画面デモ専用です。`;
 }
 
 export async function sseUrl(path: string): Promise<string> {
@@ -212,11 +212,11 @@ const del = <T>(p: string, body?: unknown) =>
 // Go serializes nil slices as JSON null — coerce to [].
 const arr = <T>(x: T[] | null | undefined): T[] => x ?? [];
 const tq = (task?: string, sep: "?" | "&" = "?") => (task ? `${sep}task=${encodeURIComponent(task)}` : "");
-// 内网作战页四个列表的 ?task_id= 过滤参数(空 = 全局视图)。
+// イントラネット運用ページの 4 つのリストの ?task_id= フィルタパラメータ(空 = グローバルビュー)。
 const taskQuery = (taskId?: string) => (taskId ? `?task_id=${encodeURIComponent(taskId)}` : "");
 
-// findingFilterParams 把发现页的筛选条件序列化成 query string。列表 / 分组 /
-// 资产树 / 导出共用同一份,新增筛选项只改这里(后端也只解析这一份)。
+// findingFilterParams はファインディングページの絞り込み条件を query string に直す。リスト / グループ /
+// アセットツリー / エクスポートが同じ 1 本を共有し、絞り込み項目の追加はここだけ(バックエンドもこの 1 本だけ解析する)。
 function findingFilterParams(q: Omit<FindingQuery, "page" | "pageSize">): URLSearchParams {
   const p = new URLSearchParams();
   if (q.severity && q.severity !== "all") p.set("severity", q.severity);
@@ -237,7 +237,7 @@ function interceptPageQuery(page: number, size: number, filter: InterceptApprova
 }
 
 export const api = {
-  // 后端应用版本号（release 时由 ldflags 注入，默认 "dev"）。
+  // バックエンドのアプリバージョン（release 時に ldflags で注入、デフォルト "dev"）。
   health: () => get<{ ok: boolean; service: string; version: string }>("/health"),
 
   // ---- auth ----
@@ -246,8 +246,8 @@ export const api = {
   initPassword: (password: string) => post<{ token: string }>("/auth/init", { password }),
   changePassword: (oldPassword: string, newPassword: string) =>
     post<{ ok: boolean }>("/auth/change-password", { old_password: oldPassword, new_password: newPassword }),
-  // 登出:吊销服务端 refresh token 并清 HttpOnly cookie;失败(如已过期)也照常
-  // 清本地登录态,由调用方兜底。
+  // ログアウト:サーバ側の refresh token を失効させ HttpOnly cookie を消す;失敗(期限切れなど)しても
+  // 従来通りローカルのログイン状態を消し、呼び出し側が後始末する。
   logout: () => post<{ ok: boolean }>("/auth/logout"),
 
   // ---- tasks ----
@@ -277,8 +277,8 @@ export const api = {
       company_ids: input.companyIds ?? [],
       timeout_seconds: input.timeoutSeconds ?? 0,
       seed_first_intent: input.seedFirstIntent ?? false,
-      plan_heartbeat_seconds: input.planHeartbeatSeconds ?? 0, // 0 = 后端归一到默认 600(10min)
-      coverage_enabled: input.coverageEnabled ?? true, // 默认开;false=关闭资产覆盖度功能
+      plan_heartbeat_seconds: input.planHeartbeatSeconds ?? 0, // 0 = バックエンドがデフォルトの 600(10min)に正規化
+      coverage_enabled: input.coverageEnabled ?? true, // デフォルトはオン;false=アセットカバレッジ機能をオフ
     }),
   taskCategories: () => get<{ categories: TaskCategory[] }>("/task-categories").then((r) => arr(r.categories)),
   updateTask: (id: string, input: { name?: string; pinned?: boolean }) => patch<Task>(`/tasks/${id}`, input),
@@ -289,7 +289,7 @@ export const api = {
   deleteTaskCategory: (id: number) => del<{ deleted: number }>(`/task-categories/${id}`),
   updateTaskCategory: (taskId: string, categoryId?: number) =>
     patch<Task>(`/tasks/${taskId}/category`, { category_id: categoryId ?? null }),
-  // categoryId 省略/undefined = 移出分类（后端收到 null）
+  // categoryId 省略/undefined = カテゴリから外す（バックエンドは null を受け取る）
   updateTasksCategory: (taskIds: string[], categoryId?: number) =>
     post<{ items: BatchCategoryItem[]; category: TaskCategory | null }>("/tasks/category/batch", {
       task_ids: taskIds,
@@ -344,7 +344,7 @@ export const api = {
     intentId: string,
     action: "pause" | "resume" | "cancel",
     reason?: string,
-    // cancel 专用:soft(默认,假删除,意图置 deleted + 记删除原因)| hard(真删除,级联移除独占子孙)。
+    // cancel 専用：soft(デフォルト、仮削除、意図を deleted にして削除理由を記録)| hard(実削除、独占の子孫を連鎖削除)。
     mode?: "soft" | "hard",
   ) =>
     post<{
@@ -360,65 +360,65 @@ export const api = {
       request_id: string;
     }>(`/tasks/${taskId}/intents/${intentId}/messages`, { message, request_id: requestId }),
   taskLLMResolution: (id: string) => get<TaskLLMResolutions>(`/tasks/${id}/llm/resolution`),
-  // 重跑一条没跑成功的意图(blocked/exhausted/stopped)：置回 open，worker 会重新认领、从头再跑。
+  // うまく走らなかった意図(blocked/exhausted/stopped)を再実行する：open に戻すと worker が再び引き取り、最初から走らせる。
   rerunIntent: (taskId: string, intentId: string) =>
     post<{ id: string; reopened: number }>(`/tasks/${taskId}/intents/${intentId}/rerun`),
-  // 批量重跑本任务全部 blocked 意图（一次网络/LLM 断连导致多条 blocked 时一键全部重试）。
+  // 本タスクの blocked 意図をまとめて再実行（ネットワーク/LLM の断で blocked が複数出た時に一括で再試行）。
   rerunBlocked: (taskId: string) => post<{ id: string; reopened: number }>(`/tasks/${taskId}/intents/rerun-blocked`),
   setActive: (id: string) => post<{ active: string }>("/active", { id }),
   // ---- stats ----
   stats: (task?: string) => get<Stats>(`/stats${tq(task)}`),
-  // 资产测试覆盖度(粗估，供参考)：范围内资产被 fact 碰过的占比 + 按类型的 总数/已测。
+  // アセットのテストカバレッジ(粗い推定、参考値)：範囲内アセットが fact に触れられた割合 + タイプ別の 総数/テスト済み。
   taskCoverage: (id: string) =>
     get<{
-      enabled: boolean; // 资产覆盖度功能是否开启；false 时其余字段为零值
+      enabled: boolean; // アセットカバレッジ機能が有効か；false の時は他のフィールドはゼロ値
       scope_rows: number;
       denominator: number;
       tested: number;
       pct: number | null;
       by_type: { type: string; total: number; tested: number }[];
     }>(`/tasks/${id}/coverage`),
-  // 资产覆盖图：范围内全部资产 + 连接用的根域名/公司节点，含 tested/in_scope。
+  // アセットカバレッジグラフ：範囲内の全アセット + 接続用のルートドメイン/企業ノード、tested/in_scope を含む。
   taskCoverageGraph: (id: string) => get<CoverageGraphData>(`/tasks/${id}/coverage-graph`),
-  // 全局 llm_usage 聚合（仪表盘新版 token 视图）：按 profile 总量 + 按天分桶。
+  // グローバル llm_usage 集計（ダッシュボードの新 token ビュー）：profile 別の合計 + 日別バケット。
   usageStats: (days = 365) => get<UsageStats>(`/tokens/usage?days=${days}`),
-  // ---- 目标管理（总览）----
-  // 本任务全部目标（text/vulnclass/state）。
+  // ---- ゴール管理（概要）----
+  // 本タスクの全ゴール（text/vulnclass/state）。
   taskGoals: (id: string) =>
     get<{ goals: TaskGoal[] | null }>(`/tasks/${id}/goals`).then((response) => ({ goals: arr(response.goals) })),
-  // 人工新增目标：写入图谱并通知 planner、复活任务。
+  // 手動でゴールを追加：グラフへ書き込み planner に通知し、タスクを復活させる。
   addGoal: (id: string, text: string, vulnclass?: string) =>
     post<TaskGoal>(`/tasks/${id}/goals`, { text, vulnclass: vulnclass ?? "" }),
-  // 人工修改目标文本（及 vulnclass）：通知 planner「由 old 变为 new」、复活任务。
+  // 手動でゴールのテキスト（と vulnclass）を変更：planner に「old から new へ」通知し、タスクを復活させる。
   updateGoal: (id: string, goalId: string, text: string, vulnclass?: string) =>
     patch<TaskGoal>(`/tasks/${id}/goals/${goalId}`, { text, vulnclass: vulnclass ?? "" }),
-  // 人工删除目标（硬删除）：通知 planner，删除不复活任务。
+  // 手動でゴールを削除（ハード削除）：planner に通知し、削除ではタスクを復活させない。
   deleteGoal: (id: string, goalId: string) => del<{ ok: boolean }>(`/tasks/${id}/goals/${goalId}`),
 
-  // ---- 操作约束管理（总览）----
-  // 本任务全部操作约束（allow/deny）。
+  // ---- 操作制約管理（概要）----
+  // 本タスクの全操作制約（allow/deny）。
   taskConstraints: (id: string) =>
     get<{ constraints: TaskConstraint[] | null }>(`/tasks/${id}/constraints`).then((response) => ({
       constraints: arr(response.constraints),
     })),
-  // 新增约束（不通知 planner，下一轮规划自然读到）。
+  // 制約を追加（planner へは通知せず、次回の計画が自然に読む）。
   addConstraint: (id: string, text: string, kind: TaskConstraint["kind"]) =>
     post<TaskConstraint>(`/tasks/${id}/constraints`, { text, kind }),
-  // 修改约束（文本 + allow/deny）。
+  // 制約を変更（テキスト + allow/deny）。
   updateConstraint: (id: string, constraintId: string, text: string, kind: TaskConstraint["kind"]) =>
     patch<TaskConstraint>(`/tasks/${id}/constraints/${constraintId}`, { text, kind }),
-  // 删除约束。
+  // 制約を削除。
   deleteConstraint: (id: string, constraintId: string) =>
     del<{ ok: boolean }>(`/tasks/${id}/constraints/${constraintId}`),
 
-  // 本任务测试范围列表（含继承自来源任务的范围）。
+  // 本タスクのテスト範囲リスト（元タスクから継承した範囲を含む）。
   taskScope: (id: string) => get<{ scope: TaskScopeRow[] }>(`/tasks/${id}/scope`),
-  // 手动新增一条测试范围（kind=company/root_domain/subdomain/ip/cidr）。
+  // 手動でテスト範囲を 1 件追加（kind=company/root_domain/subdomain/ip/cidr）。
   addTaskScope: (id: string, kind: string, value: string, reason?: string) =>
     post<TaskScopeRow>(`/tasks/${id}/scope`, { kind, value, reason }),
-  // 删除本任务的一条测试范围。
+  // 本タスクのテスト範囲を 1 件削除。
   deleteTaskScope: (id: string, scopeId: number) => del<{ ok: boolean }>(`/tasks/${id}/scope/${scopeId}`),
-  // 某资产在本任务里关联的意图 / 事实 / 发现（覆盖图节点抽屉用）。
+  // あるアセットが本タスクで関連する意図 / ファクト / ファインディング（カバレッジグラフのノードドロワー用）。
   taskAssetRefs: (id: string, assetId: number) => get<CoverageAssetRefs>(`/tasks/${id}/asset-refs?asset_id=${assetId}`),
 
   // ---- workspace file manager (workDir) ----
@@ -438,19 +438,19 @@ export const api = {
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: fd,
     });
-    if (!r.ok) throw new Error(`上传失败: ${r.status}`);
+    if (!r.ok) throw new Error(`アップロードに失敗しました: ${r.status}`);
     return r.json() as Promise<{ uploaded: number }>;
   },
   workspaceDownload: async (path: string) => {
     let blob: Blob;
     if (MOCK) {
-      blob = new Blob([`（demo）${path} 的下载内容示例。`], { type: "text/plain" });
+      blob = new Blob([`（demo）${path} のダウンロード内容サンプル。`], { type: "text/plain" });
     } else {
       const token = getToken();
       const r = await fetch(`/api/workspace/download?path=${encodeURIComponent(path)}`, {
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
-      if (!r.ok) throw new Error(`下载失败: ${r.status}`);
+      if (!r.ok) throw new Error(`ダウンロードに失敗しました: ${r.status}`);
       blob = await r.blob();
     }
     const objUrl = URL.createObjectURL(blob);
@@ -499,7 +499,7 @@ export const api = {
   taskIntentAssets: (taskId: string) =>
     get<{ assets: IntentAsset[] }>(`/tasks/${taskId}/intent-assets`).then((r) => arr(r.assets)),
 
-  // ---- companies (企业 + 资产范围；归属唯一来源) ----
+  // ---- companies (企業 + アセット範囲；帰属の唯一のソース) ----
   companies: () => get<Company[]>("/companies").then(arr),
   createCompany: (name: string, scope: CompanyScopeRule[]) =>
     post<{ id: number; created: boolean; scope_added?: number; scope_invalid?: number; scope_errors?: string[] }>(
@@ -541,13 +541,13 @@ export const api = {
     p.set("limit", String(q.pageSize));
     return get<FindingGroupsPage>(`/exploration/findings/groups?${p.toString()}`);
   },
-  // findingAssetTree 取「按资产」视图的左侧树:只含有发现的资产及其祖先,
-  // 节点带子树聚合计数。不分页——树是导航结构,一次取完。
+  // findingAssetTree は「アセット別」ビューの左ツリーを取る:ファインディングのあるアセットとその祖先のみを含み、
+  // ノードは子孫の集計カウントを持つ。ページングしない——ツリーはナビゲーション構造なので一度に全部取る。
   findingAssetTree: (q: Omit<FindingQuery, "page" | "pageSize">) =>
     get<FindingAssetTree>(`/exploration/findings/asset-tree?${findingFilterParams(q).toString()}`),
   findingStats: () => get<FindingStats>("/exploration/findings/stats"),
-  // exportFindings 触发发现页导出并下载文件。scope=selected 时传 ids(finding_id 列表);
-  // scope=filtered 时传当前筛选(沿用 FindingQuery 的筛选字段);scope=all 忽略筛选。
+  // exportFindings はファインディングページのエクスポートを実行しファイルをダウンロードする。scope=selected なら ids(finding_id のリスト)を渡す;
+  // scope=filtered なら現在の絞り込み(FindingQuery の絞り込みフィールド)を渡す;scope=all は絞り込みを無視。
   exportFindings: async (opts: {
     format: "md-single" | "md-zip" | "csv" | "json";
     scope: "filtered" | "all" | "selected";
@@ -566,7 +566,7 @@ export const api = {
     });
     if (!r.ok) throw new Error(`export: ${r.status}`);
     const blob = await r.blob();
-    // 文件名优先取后端 Content-Disposition,取不到则用默认名。
+    // ファイル名はバックエンドの Content-Disposition を優先し、取れなければデフォルト名を使う。
     const disp = r.headers.get("Content-Disposition") ?? "";
     const m = disp.match(/filename="?([^"]+)"?/);
     const filename = m?.[1] ?? `findings-export`;
@@ -639,8 +639,8 @@ export const api = {
       { headers: token ? { Authorization: `Bearer ${token}` } : {} },
     );
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "下载失败" }));
-      throw new Error(error.error ?? "下载失败");
+      const error = await response.json().catch(() => ({ error: "ダウンロードに失敗しました" }));
+      throw new Error(error.error ?? "ダウンロードに失敗しました");
     }
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
@@ -650,16 +650,16 @@ export const api = {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
-  // 漏洞链路:该漏洞节点回溯到任务初始节点的子图(节点 + 关系)。
+  // 脆弱性チェーン:その脆弱性ノードからタスク初期ノードまで遡るサブグラフ(ノード + リレーション)。
   findingLineage: (id: string) => get<{ nodes: TaskNode[]; edges: Edge[] }>(`/exploration/findings/${id}/lineage`),
   setFindingStatus: (id: string, status: FindingStatus) => patch<Finding>(`/exploration/findings/${id}`, { status }),
   setFindingSeverity: (id: string, severity: Severity) => patch<Finding>(`/exploration/findings/${id}`, { severity }),
-  // 一次保存漏洞的名称/类别/严重等级(发现列表行内编辑用),只传出现的字段。
+  // 脆弱性の名前/カテゴリ/深刻度をまとめて保存(ファインディング一覧のインライン編集用)、送るのは登場するフィールドだけ。
   updateFinding: (
     id: string,
     fields: { name?: string; vulnclass?: string; severity?: Severity; status?: FindingStatus },
   ) => patch<Finding>(`/exploration/findings/${id}`, fields),
-  // 删除漏洞:移除 findings 记录 + 来源探索节点(从发现列表/任务发现 Tab/探索图一并消失)。
+  // 脆弱性を削除：findings レコード + 由来の探索ノードを削除(ファインディング一覧/タスクのファインディング Tab/探索グラフから一斉に消える)。
   deleteFinding: (id: string) => del<{ deleted: boolean; id: number }>(`/exploration/findings/${id}`),
   findingRetests: (id: string) =>
     get<{ retests: FindingRetest[] }>(`/exploration/findings/${encodeURIComponent(id)}/retests`).then((r) =>
@@ -779,7 +779,7 @@ export const api = {
   chat: (message: string, task?: string, attachments?: ChatAttachment[], seg?: number) =>
     post<{ reply: string; mode: string }>(`/chat${tq(task)}`, { message, attachments, seg }),
   chatStatus: (taskId: string) => get<{ running: boolean }>(`/tasks/${taskId}/chat/status`),
-  // 方式1 文件上传:落到会话/任务工作目录 uploads/，返回可供 agent Read 的相对路径。
+  // 方式1 ファイルアップロード:セッション/タスクの作業ディレクトリ uploads/ に置き、agent が Read できる相対パスを返す。
   chatUpload: async (scope: "task" | "session" | "staging", id: string, files: File[]) => {
     if (MOCK)
       return {
@@ -798,7 +798,7 @@ export const api = {
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: fd,
     });
-    if (!r.ok) throw new Error(`上传失败: ${r.status} ${await r.text()}`);
+    if (!r.ok) throw new Error(`アップロードに失敗しました: ${r.status} ${await r.text()}`);
     return r.json() as Promise<{ attachments: ChatAttachment[] }>;
   },
   stopChat: (taskId: string) => post<{ status: string }>(`/tasks/${taskId}/chat/stop`, {}),
@@ -838,10 +838,10 @@ export const api = {
     thinking_type = "",
     reasoning_effort = "",
     profile_id?: number,
-    streaming = true, // 用该配置真实的收发模式来测，别让"流式能通、非流式不通"漏到会话里
-    session_header_key = "", // 非空=测试请求也带该自定义会话头（值为一次性 session id）
+    streaming = true, // この設定の実際の送受信モードでテストし、"ストリーミングは通るが非ストリーミングは通らない"を見逃さない
+    session_header_key = "", // 非空=テストリクエストにもそのカスタムセッションヘッダを付ける（値は使い捨ての session id）
   ) =>
-    // reply = 模型实际回复(已截断);一个字都不回的配置后端直接判失败
+    // reply = モデルの実際の応答(切り詰め済み);1 文字も返さない設定はバックエンドが即失敗と判定
     post<{ ok: boolean; error?: string; latency_ms?: number; model?: string; reply?: string }>("/llm/test", {
       provider,
       model,
@@ -866,23 +866,23 @@ export const api = {
     rate_per_second?: number;
     rate_per_minute?: number;
     context_window_k?: number;
-    thinking_type?: string; // ""(不发送)|"disabled"|"enabled"
-    reasoning_effort?: string; // ""(不发送)|"low"|"medium"|"high"|"xhigh"|"max"
-    priority?: number; // 轮询顺位，越大越先用
-    pool_exclude?: boolean; // true=不作为故障转移目标
-    streaming?: boolean; // true(默认)=流式 | false=非流式
-    max_tokens?: number; // 单次回复输出上限；0=不发送，由服务端默认值决定
-    max_tokens_field?: string; // ""=max_tokens(默认) | "max_completion_tokens"（仅 openai 格式）
-    session_header_key?: string; // 非空=每次请求带该 HTTP 头，头值=当前会话 session id；""=不发送
-    retry?: LLMRetryOverride; // 本配置的重试覆盖；各项留 0 = 跟随全局重试策略
+    thinking_type?: string; // ""(送信しない)|"disabled"|"enabled"
+    reasoning_effort?: string; // ""(送信しない)|"low"|"medium"|"high"|"xhigh"|"max"
+    priority?: number; // ポーリング順位、大きいほど先に使う
+    pool_exclude?: boolean; // true=フェイルオーバー先にしない
+    streaming?: boolean; // true(デフォルト)=ストリーミング | false=非ストリーミング
+    max_tokens?: number; // 1 回の応答出力の上限；0=送信せず、サーバ側のデフォルト値で決まる
+    max_tokens_field?: string; // ""=max_tokens(デフォルト) | "max_completion_tokens"（openai 形式のみ）
+    session_header_key?: string; // 非空=毎回のリクエストにその HTTP ヘッダを付け、値=現在のセッション session id；""=送信しない
+    retry?: LLMRetryOverride; // この設定の再試行オーバーライド；各項目 0 のまま = グローバルの再試行ポリシーに従う
   }) => post<{ id: number }>("/llm/profiles", p),
   deleteLLMProfile: (id: string) => del<{ deleted: number }>(`/llm/profiles/${id}`),
   activateLLMProfile: (id: string) => post<{ ok: boolean }>("/llm/profiles/active", { id: Number(id) }),
-  // 轮询链的实际顺序 + 各配置的熔断状态。
+  // ポーリングチェーンの実際の順序 + 各設定のサーキットブレーカー状態。
   llmPool: () => get<LLMPoolStatus>("/llm/pool"),
-  // 清除熔断，让下一次调用立刻重试该配置；不传 id = 全部清除。
+  // サーキットブレーカーを解除し、次の呼び出しでこの設定をすぐ再試行させる；id を渡さない = 全部解除。
   resetLLMPool: (id?: string) => post<LLMPoolStatus>("/llm/pool/reset", { id: id ? Number(id) : 0 }),
-  // 全局重试策略（五层各自的次数+间隔）。全 0 = 全部走内置默认。
+  // グローバルの再試行ポリシー（5 層それぞれの回数+間隔）。全て 0 = 全て組み込みのデフォルト。
   llmRetryPolicy: () => get<LLMRetryPolicy>("/llm/retry-policy"),
   saveLLMRetryPolicy: (p: LLMRetryPolicy) => post<LLMRetryPolicy>("/llm/retry-policy", p),
   fetchLLMModels: (provider: string, base_url: string, api_key: string, proxy = "", profile_id?: number) =>
@@ -937,13 +937,13 @@ export const api = {
   saveAgentPrompt: (key: string, template: string, note = "") =>
     put<{ version: number }>(`/agents/${key}/prompt`, { template, note }),
   resetAgentPrompt: (key: string) => post<{ version: number }>(`/agents/${key}/prompt/reset`, {}),
-  // 收尾提示词(超时/步数耗尽的 settlement 提示);prompt 空串=清除覆盖、用内置默认;
-  // max_turns 省略则不动、传 0=用内置默认轮数
+  // 終了時プロンプト(タイムアウト/ステップ数枯渇時の settlement プロンプト);prompt 空文字=上書きを消して組み込みデフォルトを使う;
+  // max_turns を省略するとそのまま、0 を渡す=組み込みのデフォルトターン数
   saveAgentWrapup: (key: string, prompt: string, maxTurns?: number) =>
     put<{ ok: boolean }>(`/agents/${key}/wrapup`, { prompt, max_turns: maxTurns }),
   resetAgentWrapup: (key: string) =>
     post<{ ok: boolean; wrapup_default: string; wrapup_max_turns_default: number }>(`/agents/${key}/wrapup/reset`, {}),
-  // 任务级超时收尾词(仅 worker/planner);prompt 空=清除、用内置默认
+  // タスクレベルのタイムアウト終了時プロンプト(worker/planner のみ);prompt 空=消して組み込みデフォルトを使う
   saveAgentTaskTimeoutWrapup: (key: string, prompt: string, maxTurns?: number) =>
     put<{ ok: boolean }>(`/agents/${key}/wrapup/task-timeout`, { prompt, max_turns: maxTurns }),
   resetAgentTaskTimeoutWrapup: (key: string) =>
@@ -951,7 +951,7 @@ export const api = {
       `/agents/${key}/wrapup/task-timeout/reset`,
       {},
     ),
-  // P3 triggers (仅自定义 agent)
+  // P3 triggers (カスタム agent のみ)
   agentTriggers: (key: string) =>
     get<{ triggers: AgentTrigger[] }>(`/agents/${key}/triggers`).then((r) => arr(r.triggers)),
   createTrigger: (key: string, t: Omit<AgentTrigger, "id" | "agent_key" | "last_fire">) =>
@@ -962,7 +962,7 @@ export const api = {
   saveAgentConfig: (
     key: string,
     patch: {
-      llm_profile_id?: number | null; // number=绑定；null=解绑(跟随任务/全局)；缺省=不动
+      llm_profile_id?: number | null; // number=バインド；null=バインド解除(タスク/グローバルに従う)；省略=変更しない
       max_turns?: number;
       run_seconds?: number;
       web_search?: boolean;
@@ -982,12 +982,12 @@ export const api = {
   setAgentVisibility: (key: string, mcp: number[], skill: string[]) =>
     put<{ ok: boolean }>(`/agents/${key}/visibility`, { mcp, skill }),
 
-  // ---- tools (内置工具目录) ----
+  // ---- tools (組み込みツールカタログ) ----
   tools: () => get<{ tools: Tool[] }>("/tools").then((r) => arr(r.tools)),
   saveTool: (key: string, patch: Pick<Tool, "description" | "schema" | "agents" | "enabled">) =>
     put<{ ok: boolean }>(`/tools/${key}`, patch),
   resetTool: (key: string) => post<{ ok: boolean }>(`/tools/${key}/reset`, {}),
-  // custom tools (自定义工具)
+  // custom tools (カスタムツール)
   createCustomTool: (
     t: Pick<Tool, "key" | "description" | "schema" | "agents" | "enabled" | "kind" | "exec" | "deferred">,
   ) => post<{ key: string }>("/tools/custom", t),
@@ -1007,7 +1007,7 @@ export const api = {
   mcpTools: (id: number) => get<{ tools: MCPTool[] }>(`/mcp/${id}/tools`).then((r) => arr(r.tools)),
   refreshMcpServer: (id: number) => post<{ tools: MCPTool[] }>(`/mcp/${id}/refresh`, {}).then((r) => arr(r.tools)),
 
-  // ---- 资产同步 (ScopeSentry 数据源) ----
+  // ---- アセット同期 (ScopeSentry データソース) ----
   ssStatus: () =>
     get<{ exists: boolean; configured: boolean; enabled: boolean; reachable: boolean; url?: string; tools: string[] }>(
       "/sync/scopesentry/status",
@@ -1036,7 +1036,7 @@ export const api = {
       errors: string[] | null;
     }>("/sync/scopesentry/sync", body),
 
-  // ---- skills (文件系统) ----
+  // ---- skills (ファイルシステム) ----
   skills: () => get<{ skills: SkillItem[] }>("/skills").then((r) => arr(r.skills)),
   createSkill: (s: {
     name: string;
@@ -1047,7 +1047,7 @@ export const api = {
     instructions?: string;
   }) => post<{ name: string }>("/skills", s),
   // uploadSkill installs a skill from a .zip (multipart). Surfaces the backend
-  // error text (e.g. 已存在 / 缺少 SKILL.md) so the UI can show a precise message.
+  // error text (e.g. 既に存在します / SKILL.md がありません) so the UI can show a precise message.
   uploadSkill: async (file: File, overwrite = false): Promise<{ name: string; files: number }> => {
     if (MOCK) return { name: file.name.replace(/\.zip$/i, ""), files: 1 };
     const fd = new FormData();
@@ -1059,7 +1059,7 @@ export const api = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     const body = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(body?.error || `上传失败(${r.status})`);
+    if (!r.ok) throw new Error(body?.error || `アップロードに失敗しました(${r.status})`);
     return body;
   },
   deleteSkill: (name: string) => del<{ deleted: string }>(`/skills/${name}`),
@@ -1085,7 +1085,7 @@ export const api = {
   toggleVisibility: (agentId: string, kind: string, resourceId: number, visible: boolean) =>
     post<{ ok: boolean }>("/visibility/toggle", { agent_id: agentId, kind, resource_id: resourceId, visible }),
 
-  // ---- visibility (Skill，按名称) ----
+  // ---- visibility (Skill、名前指定) ----
   skillVisibility: (name: string) => get<{ agents: string[] }>(`/visibility/skill/${name}`).then((r) => arr(r.agents)),
   toggleSkillVisibility: (agentId: string, skillName: string, visible: boolean) =>
     post<{ ok: boolean }>("/visibility/skill/toggle", { agent_id: agentId, skill_name: skillName, visible }),
@@ -1126,7 +1126,7 @@ export const api = {
       total: r.total ?? r.items?.length ?? 0,
     })),
 
-  // ---- intercept tool-config (全局工具拦截范围) ----
+  // ---- intercept tool-config (グローバルなツールインターセプト範囲) ----
   interceptGetToolConfig: async (): Promise<{ enabled_tools: string[] }> => {
     if (MOCK) return { enabled_tools: ["bash"] };
     const token = getToken();
@@ -1150,23 +1150,23 @@ export const api = {
     if (!r.ok) throw new Error(await r.text());
   },
 
-  // ---- intercept LLM judge (模型兜底审批,全局配置) ----
+  // ---- intercept LLM judge (モデルのフォールバック承認,グローバル設定) ----
   interceptGetJudgeConfig: () => get<JudgeConfig>("/intercept/judge"),
   interceptSetJudgeConfig: (cfg: JudgeConfig) => put<{ ok: boolean }>("/intercept/judge", cfg),
 
-  // ---- guard auto-allow (一键放行,带时限的 ask 自动批准) ----
+  // ---- guard auto-allow (ワンクリック許可,期限付きの ask 自動承認) ----
   getAutoAllow: () => get<AutoAllowState>("/guard/auto-allow"),
   setAutoAllow: (enabled: boolean, hours: number) =>
     put<AutoAllowState>("/guard/auto-allow", { enabled, hours }),
 
-  // ---- 待授权网段(引擎在授权边界外探测到的网段,待人工扩权) ----
-  // 默认只返回 pending;all=true 含已决(approved/dismissed)。
+  // ---- 承認待ちのネットワークセグメント(エンジンが承認境界の外で検出したセグメント,人手による権限拡大待ち) ----
+  // デフォルトは pending のみ;all=true なら決定済み(approved/dismissed)も含む。
   pendingScope: (taskId: string, all = false) =>
     get<{ items: PendingScopeRow[] }>(
       `/tasks/${encodeURIComponent(taskId)}/pending-scope${all ? "?all=1" : ""}`,
     ).then((r) => arr(r.items)),
-  // approve 把网段写入任务 scope,guard 后续放行;dismiss 忽略。
-  // 409 = 已被(并发)决定,调用方刷新列表即可。
+  // approve はセグメントをタスク scope に書き込み、以後 guard が許可する;dismiss は無視。
+  // 409 = 既に(並行して)決定済み,呼び出し側はリストを更新すればよい。
   decidePendingScope: (id: number, action: "approve" | "dismiss") =>
     post<PendingScopeRow>(`/pending-scope/${id}/decide`, { action }),
 
@@ -1179,7 +1179,7 @@ export const api = {
     sp.set("size", String(params?.size ?? 50));
     return get<{ commands: CommandRecord[]; total: number }>(`/commands?${sp}`);
   },
-  // 各工具调用次数；沿用列表的 task/q 筛选，统计的是整个结果集而非当前页。
+  // 各ツールの呼び出し回数；リストの task/q 絞り込みを引き継ぎ、統計は現在のページではなく結果セット全体。
   commandStats: (params?: { task?: string; q?: string }) => {
     const sp = new URLSearchParams();
     if (params?.task) sp.set("task", params.task);
@@ -1200,24 +1200,25 @@ export const api = {
   llmRecordDetail: (id: number) => get<LLMRecordDetail>(`/llm/records/${id}`),
   llmTasks: () => get<{ tasks: LLMTask[] }>(`/llm/records/tasks`),
   llmRecordsDeleteTask: (task: string) => del<{ deleted: number }>(`/llm/records?task=${encodeURIComponent(task)}`),
-  // 按模型聚合本任务的 token 用量（来自常开的 llm_usage 计量账本，逐次调用精确，
-  // per-agent 绑定 / 轮询 / 中断消耗都覆盖）。
+  // 本タスクの token 使用量をモデル別に集計（常時記録の llm_usage 計量台帳から、呼び出しごとに正確、
+  // per-agent バインド / ポーリング / 中断の消費もカバー）。
   tokensByModel: (task: string) =>
     get<{ models: ModelTokenStat[] }>(`/llm/records/by-model?task=${encodeURIComponent(task)}`),
 
-  // ---- 一键更新 ----
-  // 检查以后端为准：下载是后端做的，浏览器能连 GitHub 而服务器连不上的情况很常见
-  // （服务器在内网、代理只配在浏览器上），那时点更新必然失败。
-  // 后端对 GitHub 的查询结果有 30 分钟缓存（未认证的 GitHub API 是 60 次/小时/IP，
-  // 顶栏每次整页加载都会查一次，不缓存会很快耗光配额）。force=true 强制回源，
-  // 留给用户显式点「检查更新」时用。
+  // ---- ワンクリック更新 ----
+  // 確認はバックエンド基準:ダウンロードはバックエンドが行うので、ブラウザは GitHub に繋がるが
+  // サーバからは繋がらない(サーバがイントラネット内、プロキシはブラウザ側だけ)状況はよくあり、
+  // その時に更新を押すと必ず失敗する。
+  // バックエンドの GitHub への問い合わせ結果は 30 分キャッシュする(未認証の GitHub API は 60 回/時/IP、
+  // トップバーはページ全体の読み込みごとに 1 回問い合わせるので、キャッシュしないとすぐに枠を使い切る)。force=true で強制的に再取得し、
+  // ユーザーが明示的に「更新を確認」を押した時に使う。
   checkUpdate: (force = false) => get<UpdateCheck>(`/update/check${force ? "?force=1" : ""}`),
-  // 202 即返回，实际下载在后台跑，进度走 /api/update/stream。
+  // 202 で即返し、実際のダウンロードはバックグラウンドで走り、進捗は /api/update/stream で流す。
   applyUpdate: () => post<{ ok: boolean; target: string }>(`/update/apply`),
   rollbackUpdate: () => post<{ ok: boolean }>(`/update/rollback`),
 
-  // ---- 内网作战（拓扑 / 会话 / 隧道 / 凭据）----
-  // 四个列表都支持可选 taskId(拼 ?task_id=);不传保持全局视图。
+  // ---- イントラネット運用（トポロジ / セッション / トンネル / 認証情報）----
+  // 4 つのリストは任意の taskId に対応(?task_id= を付ける);渡さなければグローバルビュー。
   intranetTopology: (taskId?: string) =>
     get<IntranetTopology>(`/intranet/topology${taskQuery(taskId)}`).then((r) => ({
       nodes: arr(r.nodes),
@@ -1226,7 +1227,7 @@ export const api = {
     })),
   shellSessions: (taskId?: string) =>
     get<{ items: ShellSession[] }>(`/sessions${taskQuery(taskId)}`).then((r) => arr(r.items)),
-  // timeout 单位为秒，省略则由后端用默认值。
+  // timeout の単位は秒、省略するとバックエンドがデフォルト値を使う。
   sessionExec: (id: string, command: string, timeout?: number) =>
     post<SessionExecResult>(`/sessions/${encodeURIComponent(id)}/exec`, {
       command,
@@ -1243,11 +1244,11 @@ export const api = {
       path,
       content_base64: contentBase64,
     }),
-  // 人工探活:成功 alive=true;失败 alive=false 且 error 带原因(后端已诚实标 dead)。
+  // 手動の生存確認:成功なら alive=true;失敗なら alive=false で error に理由(バックエンドは既に正直に dead を付ける)。
   probeSession: (id: string) =>
     post<{ alive: boolean; ms?: number; error?: string }>(`/sessions/${encodeURIComponent(id)}/probe`),
-  // 移交内网:以该会话的立足点主机为初始 scope 创建新内网任务,返回新任务 id(字符串)。
-  // 400 = 无法确定立足点 IP;404 = 会话不存在。
+  // イントラネットへ引き継ぎ:そのセッションのフットホールドホストを初期 scope にして新しいイントラネットタスクを作り、新タスク id(文字列)を返す。
+  // 400 = フットホールドの IP を特定できない;404 = セッションが存在しない。
   handoffSession: (id: string) => post<{ task_id: string }>(`/sessions/${encodeURIComponent(id)}/handoff`),
   deleteSession: (id: string) => del<{ ok: boolean }>(`/sessions/${encodeURIComponent(id)}`),
   tunnels: (taskId?: string) =>

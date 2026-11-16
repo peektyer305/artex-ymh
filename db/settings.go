@@ -26,7 +26,7 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, key
 }
 
 // DeleteSetting removes a setting row; a missing key is not an error.
-// (F6: refresh token 旋转/登出时删除哈希记录。)
+// (F6: refresh token のローテーション/ログアウト時にハッシュレコードを削除する。)
 func (d *DB) DeleteSetting(key string) error {
 	_, err := d.Exec(`DELETE FROM settings WHERE key=$1`, key)
 	return err

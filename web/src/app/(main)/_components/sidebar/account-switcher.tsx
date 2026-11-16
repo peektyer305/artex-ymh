@@ -33,11 +33,11 @@ export function AccountSwitcher({
   const [pwOpen, setPwOpen] = useState(false);
 
   function handleLogout() {
-    // 先吊销服务端 refresh token(F6),再清本地登录态;refresh 已失效也照常登出。
+    // 先にサーバー側の refresh トークンを失効させ（F6）、その後ローカルのログイン状態を消す。refresh が失効済みでも通常どおりログアウトする。
     void api
       .logout()
       .catch(() => {
-        // refresh 已失效也照常登出,本地清理在 finally 里完成。
+        // refresh が失効済みでも通常どおりログアウトし、ローカルの後始末は finally で行う。
       })
       .finally(() => {
         auth.clearToken();
@@ -89,11 +89,11 @@ export function AccountSwitcher({
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setPwOpen(true)}>
             <KeyRound />
-            修改密码
+            パスワード変更
           </DropdownMenuItem>
           <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
             <LogOut />
-            退出登录
+            ログアウト
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

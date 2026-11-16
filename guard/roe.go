@@ -14,16 +14,16 @@ import (
 
 // RoEConfig wires the RoE authorization-scope check (F5 / AUDIT-REPORT H2) into
 // the PreToolUse chain. All fields are optional; a nil Scope disables the check
-// entirely (保持现状语义).
+// entirely (現行セマンティクスを維持).
 type RoEConfig struct {
-	// Mode returns the enforcement mode from settings 键 roe_enforcement:
-	// "off" | "warn" | "strict". 空/未知值按 warn(默认)。
+	// Mode returns the enforcement mode from settings キー roe_enforcement:
+	// "off" | "warn" | "strict"。空/不明な値は warn（デフォルト）。
 	Mode func() string
-	// Scope returns the task's registered scope rules; server 装配时从
-	// db task_scope 拉取。空列表 = 未登记范围 → Unknown → 放行。
+	// Scope returns the task's registered scope rules; server の組み立て時に
+	// db task_scope から取得する。空リスト = 未登録範囲 → Unknown → 通過。
 	Scope func(taskID int64) []ScopeRule
-	// TaskIDOf extracts the task id from the hook ctx (server 注入
-	// agent.RunInfoFrom;guard 不反向依赖 agent 包)。nil → 0 → Unknown。
+	// TaskIDOf extracts the task id from the hook ctx (server が
+	// agent.RunInfoFrom を注入。guard は agent パッケージに逆依存しない)。nil → 0 → Unknown。
 	TaskIDOf func(ctx context.Context) int64
 }
 
@@ -34,7 +34,7 @@ func (g *Guard) SetRoE(cfg RoEConfig) {
 	g.mu.Unlock()
 }
 
-// roeMode normalizes the configured mode; 默认 warn。
+// roeMode normalizes the configured mode; デフォルトは warn。
 func (c RoEConfig) mode() string {
 	if c.Mode == nil {
 		return "warn"
@@ -69,11 +69,11 @@ func (g *Guard) checkRoE(ctx context.Context, ev hook.Event, cmd string) (hook.R
 		taskID = cfg.TaskIDOf(ctx)
 	}
 	if taskID <= 0 {
-		return hook.Result{}, false // 非任务运行(chat 等),无范围可查 → Unknown → 放行
+		return hook.Result{}, false // タスク実行以外（chat など）で照合する範囲がない → Unknown → 通過
 	}
 	hosts := roeHosts(ev.ToolName, ev.Input, cmd)
 	if len(hosts) == 0 {
-		return hook.Result{}, false // 提取不出目标 = 无目标,不拦截(保守取向)
+		return hook.Result{}, false // ターゲットを抽出できない = ターゲットなし。ブロックしない（保守的方針）
 	}
 	matcher := NewScopeMatcher(cfg.Scope(taskID))
 	var out []string
@@ -87,19 +87,19 @@ func (g *Guard) checkRoE(ctx context.Context, ev hook.Event, cmd string) (hook.R
 		}
 	}
 	if len(out) == 0 {
-		return hook.Result{}, false // In 或 Unknown → 放行
+		return hook.Result{}, false // In または Unknown → 通過
 	}
 	if unknown {
-		// 部分目标出了已登记范围、部分无规则可依 —— 按 Out 处理已有的违规即可。
-		log.Printf("[guard][roe] task %d 部分目标无范围规则可依: %v", taskID, hosts)
+		// 一部のターゲットは登録範囲外、一部は適用できるルールがない —— 既存の違反は Out として扱えばよい。
+		log.Printf("[guard][roe] task %d 一部のターゲットに適用できる範囲ルールがありません: %v", taskID, hosts)
 	}
 	reason := roeMessage(out, cfg.Scope(taskID))
 	if mode == "strict" {
 		return g.roeAsk(ctx, ev, reason)
 	}
-	// warn:放行,但写 guard 审计 + 日志。
+	// warn:通過させるが、guard の監査 + ログは記録する。
 	g.record(ev.ToolName, "allow", reason, cmd)
-	log.Printf("[guard][roe] task %d 范围外目标(warn 放行): %s", taskID, reason)
+	log.Printf("[guard][roe] task %d 範囲外のターゲット（warn で通過）: %s", taskID, reason)
 	return hook.Result{}, false
 }
 
@@ -110,36 +110,36 @@ func (g *Guard) roeAsk(ctx context.Context, ev hook.Event, reason string) (hook.
 		return g.block(ev.ToolName, systemBlockMessage(reason), ""), true
 	}
 	if ctx.Err() != nil {
-		return g.block(ev.ToolName, systemBlockMessage("工作已取消，平台安全管控阻止执行"), ""), true
+		return g.block(ev.ToolName, systemBlockMessage("作業はキャンセルされました。プラットフォームの安全制御により実行を阻止します"), ""), true
 	}
-	dec := intercept.Decision{Action: "ask", RuleName: "内置 RoE 范围强制", Message: reason}
+	dec := intercept.Decision{Action: "ask", RuleName: "ビルトイン RoE 範囲強制", Message: reason}
 	convID := intercept.ConvIDFromContext(ctx)
 	if !g.interceptor.HandleAsk(ctx, convID, dec, ev.ToolName, ev.Input) {
-		return g.block(ev.ToolName, systemBlockMessage("RoE 范围外目标，人工审批未通过（用户拒绝或审批超时）"), ""), true
+		return g.block(ev.ToolName, systemBlockMessage("RoE 範囲外のターゲットです。手動承認が得られませんでした（ユーザーによる拒否または承認タイムアウト）"), ""), true
 	}
-	// 审批通过只豁免 RoE 这一道,其余拦截规则照常评估(不借 RoE 审批绕过 deny 规则)。
+	// 承認通過は RoE のこの関門だけを免除する。他のインターセプトルールは通常どおり評価する（RoE 承認で deny ルールを迂回できない）。
 	g.interceptor.Log(ctx, convID, dec, ev.ToolName, ev.Input, "allowed")
 	return hook.Result{}, false
 }
 
 // roeMessage builds the human/agent-facing justification for an out-of-scope
-// verdict: 命中的 host、登记的范围规则、如何关闭/降级。
+// verdict: 命中した host、登録された範囲ルール、無効化/緩和の方法。
 func roeMessage(out []string, rules []ScopeRule) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "RoE 授权范围检查:目标 %s 不在本任务已登记范围内", strings.Join(out, ", "))
+	fmt.Fprintf(&sb, "RoE 認可範囲チェック:ターゲット %s はこのタスクの登録範囲外です", strings.Join(out, ", "))
 	if len(rules) > 0 {
 		parts := make([]string, 0, len(rules))
 		for _, r := range rules {
 			parts = append(parts, r.Kind+"="+r.Value)
 		}
-		fmt.Fprintf(&sb, "（登记范围: %s）", strings.Join(parts, ", "))
+		fmt.Fprintf(&sb, "（登録範囲: %s）", strings.Join(parts, ", "))
 	}
-	sb.WriteString("。如需放行:把目标加入任务范围(add_task_scope),或在系统设置把 roe_enforcement 改为 warn(仅告警)/off(关闭)。")
+	sb.WriteString("。通過させるには:ターゲットをタスク範囲に追加する（add_task_scope）か、システム設定で roe_enforcement を warn（警告のみ）/off（無効）に変更してください。")
 	return sb.String()
 }
 
 // roeHosts returns the interaction targets of a tool call: ExtractHosts over
-// the shell surface for Bash 类工具,URL host for WebFetch。
+// the shell surface for Bash 系ツール、WebFetch は URL の host。
 func roeHosts(toolName string, input []byte, cmd string) []string {
 	if cmd != "" {
 		return ExtractHosts(cmd)

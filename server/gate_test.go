@@ -12,21 +12,21 @@ import (
 	"time"
 )
 
-// newTestGate 构造一个固定参数的门控(不经过环境变量解析)。
+// newTestGate は固定パラメータのゲートを構築する（環境変数の解析は経由しない）。
 func newTestGate() *Gate {
 	return newGate("/g-testtoken1234567890ab", "testtoken1234567890ab",
 		[]byte("0123456789abcdef0123456789abcdef"), time.Hour)
 }
 
-// innerReached 是被门控保护的内层 handler;响应体用于区分"放行"与"伪装"。
+// innerReached はゲートで保護される内側の handler。レスポンスボディで「許可」と「偽装」を区別する。
 func innerReached() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("INNER-REACHED"))
 	})
 }
 
-// TestGateDecoyWithoutCookie 无 cookie 时各路径(SPA 根、/api/*、health、
-// favicon、错误路径)一律返回逐字节一致的伪装页。
+// TestGateDecoyWithoutCookie は cookie が無いとき、各パス（SPA ルート、/api/*、health、
+// favicon、誤ったパス）がすべてバイト単位で同一の偽装ページを返すことを確認する。
 func TestGateDecoyWithoutCookie(t *testing.T) {
 	h := newTestGate().wrap(innerReached())
 	var ref []byte
@@ -50,7 +50,8 @@ func TestGateDecoyWithoutCookie(t *testing.T) {
 	}
 }
 
-// TestGateLoginPage GET 入口路径显示门禁页:无外链资源、title 不含 artex。
+// TestGateLoginPage は GET の入口パスでゲート画面を表示する：外部リンクのリソースが無く、
+// title に artex を含まない。
 func TestGateLoginPage(t *testing.T) {
 	g := newTestGate()
 	rec := httptest.NewRecorder()
@@ -67,7 +68,7 @@ func TestGateLoginPage(t *testing.T) {
 	}
 }
 
-// TestGateHandshakeAndCookiePassthrough 正确口令握手 → 签名 cookie → 放行。
+// TestGateHandshakeAndCookiePassthrough は正しいパスワードでハンドシェイク → 署名済み cookie → 許可。
 func TestGateHandshakeAndCookiePassthrough(t *testing.T) {
 	g := newTestGate()
 	h := g.wrap(innerReached())
@@ -106,7 +107,8 @@ func TestGateHandshakeAndCookiePassthrough(t *testing.T) {
 	}
 }
 
-// TestGateWrongPasswordIdenticalToWrongPath 错误口令与错误路径的响应逐字节一致。
+// TestGateWrongPasswordIdenticalToWrongPath は誤ったパスワードと誤ったパスのレスポンスが
+// バイト単位で一致することを確認する。
 func TestGateWrongPasswordIdenticalToWrongPath(t *testing.T) {
 	g := newTestGate()
 	h := g.wrap(innerReached())
@@ -137,13 +139,13 @@ func TestGateWrongPasswordIdenticalToWrongPath(t *testing.T) {
 	}
 }
 
-// TestGateTamperedCookie 篡改签名的 cookie 被拒绝(回伪装页)。
+// TestGateTamperedCookie は署名を改ざんした cookie が拒否されること（偽装ページに戻る）を確認する。
 func TestGateTamperedCookie(t *testing.T) {
 	g := newTestGate()
 	h := g.wrap(innerReached())
 
 	good := g.signCookie()
-	// 翻转签名段的最后一个十六进制字符。
+	// 署名部分の最後の 16 進文字を反転する。
 	last := good[len(good)-1]
 	flip := byte('0')
 	if last == '0' {
@@ -166,7 +168,7 @@ func TestGateTamperedCookie(t *testing.T) {
 	}
 }
 
-// TestGateExpiredCookie 过期 cookie 被拒绝(用 ttl<0 直接签出已过期值)。
+// TestGateExpiredCookie は期限切れの cookie が拒否されること（ttl<0 で期限切れの値を直接署名する）を確認する。
 func TestGateExpiredCookie(t *testing.T) {
 	g := newTestGate()
 	g.ttl = -time.Hour
@@ -181,7 +183,8 @@ func TestGateExpiredCookie(t *testing.T) {
 	}
 }
 
-// TestGateRateLimit 口令尝试超过每 IP 每分钟上限后,连正确口令也拿到伪装页。
+// TestGateRateLimit はパスワード試行が IP あたり毎分の上限を超えると、正しいパスワードでも
+// 偽装ページが返ることを確認する。
 func TestGateRateLimit(t *testing.T) {
 	g := newTestGate()
 	h := g.wrap(innerReached())
@@ -201,7 +204,7 @@ func TestGateRateLimit(t *testing.T) {
 	}
 }
 
-// TestGateOffPassthrough 门控关闭(nil Gate)时一切直通。
+// TestGateOffPassthrough はゲートが無効（nil Gate）のとき、すべて素通りすることを確認する。
 func TestGateOffPassthrough(t *testing.T) {
 	var g *Gate
 	h := g.wrap(innerReached())
@@ -214,26 +217,26 @@ func TestGateOffPassthrough(t *testing.T) {
 	}
 }
 
-// TestNewGateResolution 环境变量与监听地址的开关解析 + 入口文件落盘。
+// TestNewGateResolution は環境変数と待ち受けアドレスによるスイッチ解決 + 入口ファイルの保存。
 func TestNewGateResolution(t *testing.T) {
 	dataDir := t.TempDir()
 	keyDir := t.TempDir()
 
-	// 显式关闭优先于非 loopback 默认开启。
+	// 明示的な無効化は、非 loopback での既定有効より優先される。
 	t.Setenv("ARTEX_GATE", "off")
 	g, err := NewGate("0.0.0.0:8787", dataDir, keyDir)
 	if err != nil || g != nil {
 		t.Fatalf("ARTEX_GATE=off: gate=%v err=%v", g, err)
 	}
 
-	// loopback 默认关闭。
+	// loopback では既定で無効。
 	t.Setenv("ARTEX_GATE", "")
 	g, err = NewGate("127.0.0.1:8787", dataDir, keyDir)
 	if err != nil || g != nil {
 		t.Fatalf("loopback default: gate=%v err=%v", g, err)
 	}
 
-	// 非 loopback 默认开启,随机 /g- 入口,落盘 gate.path 与 gate.key。
+	// 非 loopback では既定で有効。ランダムな /g- 入口を生成し、gate.path と gate.key を保存する。
 	g, err = NewGate("0.0.0.0:8787", dataDir, keyDir)
 	if err != nil || g == nil {
 		t.Fatalf("non-loopback default: gate=%v err=%v", g, err)
@@ -253,10 +256,10 @@ func TestNewGateResolution(t *testing.T) {
 		t.Fatalf("gate.key file: len=%d err=%v", len(kf), err)
 	}
 
-	// 显式入口路径与口令。
+	// 明示的な入口パスとパスワード。
 	t.Setenv("ARTEX_GATE_PATH", "/custom-entrance")
 	t.Setenv("ARTEX_GATE_TOKEN", "s3cret")
-	g, err = NewGate("127.0.0.1:8787", dataDir, keyDir) // ARTEX_GATE 未设 → loopback 默认关?显式 PATH 不算开关
+	g, err = NewGate("127.0.0.1:8787", dataDir, keyDir) // ARTEX_GATE 未設定 → loopback では既定で無効？明示的な PATH はスイッチとはみなさない
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +274,7 @@ func TestNewGateResolution(t *testing.T) {
 	if g.path != "/custom-entrance" || g.token != "s3cret" {
 		t.Fatalf("explicit path/token not honored: %q %q", g.path, g.token)
 	}
-	// 密钥复用:两次 NewGate 用同一 keyDir,cookie 可互相验证。
+	// 鍵の再利用：2 回の NewGate が同じ keyDir を使うため、cookie は相互に検証できる。
 	g2, err := NewGate("127.0.0.1:8787", dataDir, keyDir)
 	if err != nil || g2 == nil {
 		t.Fatalf("second NewGate: %v", err)

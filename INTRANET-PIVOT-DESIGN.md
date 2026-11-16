@@ -1,142 +1,145 @@
-# ARTEX 原生内网渗透能力设计(两阶段作战编想)
+# ARTEX ネイティブ・イントラネット浸透能力設計（二段階作戦構想）
 
-> 日期:2026-09-13。状态:**方向已确认**(作者提出,经评估可行)。
-> 前置阅读:`PIVOTHUB-AUDIT-AND-FUSION-EVALUATION.md`(PivotHub 原理与可借鉴点)、`AUDIT-REPORT.md`、`CHAINS-INTEGRATION-DESIGN.md`(chains 四层架构)。
-> 定位:**不做系统对接**。参考 PivotHub 的工作原理/工作过程,在代码层面为 ARTEX 增加原生内网渗透能力,实现"外网突破 → 立足点移交 → 内网纵深"两阶段自主作战。
+> 日付：2026-09-13。ステータス：**方向性は確定済み**（著者提案、評価により実現可能と判断）。
+> 前提資料：`PIVOTHUB-AUDIT-AND-FUSION-EVALUATION.md`（PivotHub の原理と参考にすべき点）、`AUDIT-REPORT.md`、`CHAINS-INTEGRATION-DESIGN.md`（chains の四層アーキテクチャ）。
+> 位置付け：**システム連携は行わない**。PivotHub の動作原理／動作プロセスを参考に、コードレベルで ARTEX にネイティブなイントラネット浸透能力を追加し、「外部ネットワーク突破 → フットホールド移譲 → イントラネット深部」の二段階の自律作戦を実現する。
 
-## 1. 作战编想(作者原意)
+## 1. 作戦構想（著者の原意）
 
-- **阶段一(外网突破)**:现有 ARTEX 形态。planner 派 worker 群打外网 Web 面,目标是拿到 shell / webshell 立足点。
-- **移交**:立足点(webshell/反弹 shell/SSH)注册为平台管理的**会话资产**,内网侦察发现新网段,经**人工授权检查点**确认范围扩展。
-- **阶段二(内网渗透)**:后方另起一波 agent,经立足点建多层代理隧道,以"网络位置前移 + 目标侧执行"双模式打 L2/L3 内网,凭据收割与复用驱动横向,直至目标达成(如域控)。
+- **段階 1（外部ネットワーク突破）**：現行の ARTEX 形態。planner が worker 群を派遣して外部ネットワークの Web 面を攻撃し、shell / webshell のフットホールド獲得を目標とする。
+- **移譲**：フットホールド（webshell／リバースシェル／SSH）をプラットフォーム管理の**セッションアセット**として登録し、イントラネット偵察で新たなセグメントを発見したら、**人手による承認チェックポイント**を経て対象範囲の拡大を確認する。
+- **段階 2（イントラネット浸透）**：後方で新たに agent の波を起こし、フットホールド経由で多層プロキシトンネルを構築し、「ネットワーク位置の前進 + ターゲット側実行」の二モードで L2/L3 のイントラネットを攻撃する。認証情報の収集と再利用が横展開を駆動し、目標の達成（例：ドメインコントローラ）まで続ける。
 
-## 2. 可行性结论(证据)
+## 2. 実現可能性の結論（エビデンス）
 
-**能做到。原因是编想的每个环节在 ARTEX 已有机制里都有同构映射:**
+**実現できる。理由は、構想の各要素に ARTEX の既存機構における同型の対応関係が存在するからである：**
 
-| 编想环节 | ARTEX 现成机制 | 证据 |
+| 構想の要素 | ARTEX の既存機構 | エビデンス |
 |---|---|---|
-| 立足点产生后自动移交 | `agent_triggers` 触发器(on_finding / on_tool_call),Scheduler 水位线轮询后起会话 | `server/scheduler.go:152-182,284-320` |
-| "后方另起一波 agent" | 关联任务 + 黑板继承机制(已有专门测试) | `agent/blackboard_inheritance_test.go` |
-| 新态势唤醒规划 | fact 写回 → debounce 唤醒 planner → 派新意图 | `agent/worker.go:362` notifyFinding |
-| 内网知识(怎么横向/怎么选隧道) | chains pivot-\*(5)/ad-\*(10)/priv-\*(7),四层接入设计已定稿 | `CHAINS-INTEGRATION-DESIGN.md` L3 路由 |
-| 内网操作的审批与留痕 | guard PreToolUse 钩子 + activity 全程记录,会话类工具调用天然被覆盖 | `guard/guard.go:103-124` |
-| 隧道消费端 | `SetUpstreamProxy` 支持 socks5 带认证、原子热切换 | `traffic/traffic.go:205-233` |
-| 交互式 shell 设施 | `shell_open` 已明确面向 "ssh 交互/nc 反弹" 场景 | `server/assembly.go:238,312-314` |
+| フットホールド生成後の自動移譲 | `agent_triggers` トリガー（on_finding / on_tool_call）、Scheduler がウォーターマークをポーリングしてセッションを起動 | `server/scheduler.go:152-182,284-320` |
+| 「後方で新たに agent の波を起こす」 | 関連タスク + 黒板継承機構（専用テストあり） | `agent/blackboard_inheritance_test.go` |
+| 新たな状況による計画の起床 | fact の書き戻し → debounce で planner を起床 → 新しい意図を派遣 | `agent/worker.go:362` notifyFinding |
+| イントラネット知識（どう横展開するか／どうトンネルを選ぶか） | chains pivot-\*(5)/ad-\*(10)/priv-\*(7)、四層接続設計は確定稿 | `CHAINS-INTEGRATION-DESIGN.md` L3 ルーティング |
+| イントラネット操作の承認と証跡 | guard PreToolUse フック + activity への全記録、セッション系ツール呼び出しは自然にカバーされる | `guard/guard.go:103-124` |
+| トンネル消費側 | `SetUpstreamProxy` が認証付き socks5、アトミックなホットスイッチに対応 | `traffic/traffic.go:205-233` |
+| 対話型 shell の仕組み | `shell_open` は「ssh 対話／nc リバース」シナリオを明示的に想定済み | `server/assembly.go:238,312-314` |
 
-**真正缺失、必须新建的只有三块**:① 会话子系统(立足点的一等管理);② 隧道编排子系统(探测→选型→部署→验证→健康→拆除);③ 数据模型的内网扩展(host 归并/网段/链路/凭据)。这三块正是 PivotHub 验证过的三样东西——**借鉴其算法与判据,Go 重写其实现**。
+**本当に欠けており、新規に作る必要があるのは三つだけである**：① セッションサブシステム（フットホールドの第一級管理）、② トンネル編成サブシステム（プローブ→選定→デプロイ→検証→ヘルス→撤去）、③ データモデルのイントラネット拡張（host の統合／セグメント／リンク／認証情報）。この三つこそ PivotHub で検証済みの三要素である——**そのアルゴリズムと判定基準を参考に、実装は Go で書き直す**。
 
-## 3. 从 PivotHub 借鉴什么(原则,不是代码)
+## 3. PivotHub から何を取り入れるか（原則でありコードではない）
 
-| PivotHub 原理 | 证据 | ARTEX 采纳方式 |
+| PivotHub の原理 | エビデンス | ARTEX の採用方法 |
 |---|---|---|
-| 会话唯一出口:一切目标侧命令经 `SessionBase`(test/exec/file ops) | `pivothub/session/base.py:164` | 新建 Go `session` 包,同形接口;所有驱动实现同一抽象,agent 只看到"会话工具" |
-| 出网探测四探针 → 证据分档选型 | `service/probe.py:262-291,432-470` | 探测作为**会话上的工具**实现,报告结构化写回 fact,选型规则进 chains L3 骨架(pivot-tunnel-choice 合流) |
-| 多级中继自动推导(双网卡取第二段、找 alive 上游、三步命令) | `service/relay.py:31-135` | 同算法 Go 重写;**修正其缺陷**:上游活性必须真实探活(PivotHub 只信 DB status,`relay.py:49`),部署参数完整持久化以便自动重拉(PivotHub 未存 shellId) |
-| 隧道内决定性验证:本机通不算通,跳板侧实测才算 | `adapters/chisel.py:449-453` | 直接采纳为 deploy 的必要步骤;与验证 agent 的反证思想同源 |
-| 失败逐层回滚不留孤儿 | `adapters/chisel.py:489-509` | 直接采纳为 deploy 事务语义 |
-| filestage:随机 token + 15min TTL + 字节数校验 | `service/filestage.py:271-279,420` | 直接采纳为隧道二进制投递机制 |
-| 提权规则 verify/expect:"无验证步骤永不可标已执行" | `service/privesc.py:154-158` | 规则 JSON 格式可直接复用,匹配引擎 Go 重写,规则数据并入 chains |
-| 哨兵同步、引号规避、断线诚实 | `session/reverse.py:42-52`、`base.py:34-61` | 实现会话驱动时照抄这些血泪细节 |
-| 心跳只播状态不探活(缺陷) | `app.py:41-46` | **反面教材**:ARTEX 的链路健康必须真实探活 |
+| セッションを唯一の出口とする：ターゲット側のコマンドはすべて `SessionBase`（test/exec/file ops）を経由 | `pivothub/session/base.py:164` | 新規に Go の `session` パッケージを作り、同じ形のインターフェースにする。すべてのドライバが同一の抽象を実装し、agent からは「セッションツール」しか見えない |
+| 外向き通信の可否を判定する四つの探針 → エビデンスの階級分けによる選定 | `service/probe.py:262-291,432-470` | プローブは**セッション上のツール**として実装し、レポートを構造化して fact に書き戻す。選定ルールは chains の L3 骨格へ（pivot-tunnel-choice へ合流） |
+| 多段リレーの自動導出（デュアル NIC の第 2 区間、alive な上流の探索、3 ステップのコマンド） | `service/relay.py:31-135` | 同じアルゴリズムを Go で書き直す。**その欠陥は修正する**：上流の活性は実際にプローブする必要がある（PivotHub は DB の status を信じるだけ、`relay.py:49`）。デプロイパラメータは完全に永続化して自動再立ち上げを可能にする（PivotHub は shellId を保存していない） |
+| トンネル内での決定的検証：ローカルで通っても通ったうちに入らず、踏み台側での実測でのみ通と認める | `adapters/chisel.py:449-453` | deploy の必須ステップとしてそのまま採用。検証 agent の反証思想と同源 |
+| 失敗時は層ごとにロールバックし、孤児を残さない | `adapters/chisel.py:489-509` | deploy のトランザクション意味論としてそのまま採用 |
+| filestage：ランダムな token + 15min TTL + バイト数検証 | `service/filestage.py:271-279,420` | トンネルバイナリの投入機構としてそのまま採用 |
+| 権限昇格ルールの verify/expect：「検証ステップのないものは決して実行済みとマークできない」 | `service/privesc.py:154-158` | ルールの JSON 形式はそのまま再利用でき、マッチングエンジンは Go で書き直し、ルールデータは chains に統合する |
+| センチネル同期、クォート回避、切断の正直な扱い | `session/reverse.py:42-52`、`base.py:34-61` | セッションドライバを実装する際は、こうした苦い経験の細部をそのまま写す |
+| ハートビートが状態を通知するだけで活性をプローブしない（欠陥） | `app.py:41-46` | **反面教師**：ARTEX のリンクヘルスは実際にプローブしなければならない |
 
-## 4. 架构设计
+## 4. アーキテクチャ設計
 
-### 4.1 总览:新增三个子系统 + 两处现有机制扩展
+### 4.1 全体像：三つのサブシステム追加 + 既存機構の二か所拡張
 
 ```
-┌─ 阶段一(现状)─────────────┐   移交    ┌─ 阶段二(新增)────────────────┐
-│ planner + worker 群        │ ───────► │ 内网任务(关联任务,继承黑板)   │
-│ 外网 Web 渗透              │ 立足点   │ planner + worker 群           │
-│                            │ 注册会话 │  ├─ session 工具(目标侧执行)  │
-└────────────────────────────┘          │  ├─ tunnel 工具(网络位置前移) │
-                                        │  └─ 凭据库(收割/复用/喷洒)   │
-                                        └───────────────────────────────┘
-新增子系统:session/(会话抽象与驱动)  tunnel/(探测·选型·部署·健康)  数据模型扩展(host/网段/链路/凭据)
-扩展现有:proxyEnv 按任务注入(取代全局唯一代理)  guard 增内网专项规则  chains L3 路由 pivot/ad/priv
+┌─ フェーズ 1（現状） ───────┐       ┌─ フェーズ 2（追加） ─────────────────────────────────────┐
+│ planner + worker 群        │  ──►  │ 内部ネットワークタスク（関連タスクとして黒板を継承）     │
+│ 外部 Web 浸透              │       │ planner + worker 群                                      │
+│ （従来の受け持ち）         │       │   ├─ session ツール（目標側で実行）                      │
+└────────────────────────────┘       │   ├─ tunnel ツール（ネットワーク位置の前進）             │
+                                     │   └─ 認証情報ストア（収穫／再利用／スプレー）            │
+                                     └──────────────────────────────────────────────────────────┘
+
+（矢印：外部タスクから内部ネットワークタスクへの移管。フットホールドのセッション登録を契機に、
+　関連タスクとして引き継ぎ、黒板を継承する。）
+新規サブシステム：session/（セッション抽象と駆動）  tunnel/（探索・選型・配備・ヘルス）  データモデル拡張（host／セグメント／リンク／認証情報）
+既存の拡張：proxyEnv をタスク別に注入（グローバル単一プロキシを置き換え）  guard に内部ネットワーク専用ルールを追加  chains L3 ルーティング pivot/ad/priv
 ```
 
-### 4.2 子系统一:session(立足点一等管理)
+### 4.2 サブシステム 1：session（フットホールドの第一級管理）
 
-- **接口**:`Session { Test / Exec / ExecStream / ReadFile / WriteFile / Upload / Close }`,驱动:http_shell(php/jsp/aspx/asp)、reverse(监听器+回连登记)、ssh(用 `golang.org/x/crypto/ssh`——go.mod 已有 x/crypto 依赖,`go.mod:14`)。
-- **落库**:新表 `sessions`(kind/host_asset_id/连接参数加密/health/last_beat/created_by_intent),启动恢复监听器(PivotHub 的 `restore_reverse_listeners` 模式,`api/shells.py:929-950`)。
-- **agent 触达面**:新增工具 `register_session`(worker 拿到 webshell 后登记:URL+密码+语言)、`session_exec`、`session_read/write`、`session_list`——**全部是普通工具调用,自动过 guard 审批、自动进 activity 留痕**,这是相对 PivotHub 通道的本质优势(回答 fusion 评估的"问题一")。
-- **攻击机地址概念**:反弹回连需要"目标能连到的 ARTEX 地址"(PivotHub 的 attackIp,README §9)。ARTEX 跑在 Docker 时这是真实部署约束:需要配置项 `ARTEX_CALLBACK_ADDR` + compose 暴露监听端口,启动时校验可达性并显式告警。
-- **安全底线**(PivotHub 的教训):回连监听必须带一次性口令校验(其 `_accept_loop` 来者不拒,`reverse.py:140-149`);会话连接参数加密落库(其全明文,`models/credential.py:18`)。
-- **立足点策略(foothold ladder,2026-09-13 与作者确认)**:**webshell 优先,反弹 shell 降级为临时通道**。理由:① webshell 复用入站 HTTP 通道,零出网依赖(反弹的前提"目标能连回"恰是最常被拦的,见 chains `pivot-no-reverse`/`pivot-oneway-webshell`);② 反弹长连接+非常用端口流量特征高,webshell 混在业务 HTTPS 里;③ http_shell 会话请求驱动,平台侧零长命进程——**session 层由此从 ROADMAP C1 冲突中摘出**,反弹监听不再是必须豁免的长寿资源(C1 仅剩隧道这一本质长命资源,受管台账兜底);④ webshell 命令经录制代理发出时**双重留痕**(工具调用进 activity + HTTP 进 MITM),反弹裸 TCP 完全绕开录制体系。标准动作链:初始 RCE → 优先写 webshell 建立持久立足点(主通道)→ 需要交互性(PTY 提权/大文件/隧道调试)时临时拉起反弹/交互通道,**用完即收(受管 TTL,不常驻)** → 隧道经主通道投递。红线:写 webshell 是高危写操作,必须过 RoE/guard ask;webshell 落盘有被查杀引擎发现的检测面,chains 应补内存马/落地混淆判据。判据知识由 chains L3 pivot-\* 骨架承载。
-- **implant 策略(2026-09-13 与作者确认)**:不接入外部 webshell 平台(vshell/哥斯拉/冰蝎)——双体系并存且协议已被签名库覆盖,接入=付自研的钱吃不到自研的肉;不现在自研完整 C2——那是按月计的对抗工程,当前平台缺口在内网纵深而非 implant 对抗,决策推迟到期 3 隧道跑通后用真实数据再定(session 接口驱动无关,未来加二进制 implant 不动上层)。**近期动作:给 http_shell 驱动加自研加密马型(排期在期 2 之后,2-3 天)**——马体内置解密、每会话独立 AES-GCM 密钥、请求/响应全密文+随机填充,杀流量签名;"功能单一"由加密马+隧道(期 3)+交互通道(期 5)的组合解决,不依赖巨型 C2。
+- **インターフェース**：`Session { Test / Exec / ExecStream / ReadFile / WriteFile / Upload / Close }`。ドライバ：http_shell（php/jsp/aspx/asp）、reverse（リスナー + コールバック登録）、ssh（`golang.org/x/crypto/ssh` を使用——go.mod には既に x/crypto 依存があり、`go.mod:14`）。
+- **永続化**：新規テーブル `sessions`（kind/host_asset_id/接続パラメータの暗号化/health/last_beat/created_by_intent）。起動時にリスナーを復元する（PivotHub の `restore_reverse_listeners` パターン、`api/shells.py:929-950`）。
+- **agent から触れる面**：新規ツール `register_session`（worker が webshell を取得した後に登録：URL+パスワード+言語）、`session_exec`、`session_read/write`、`session_list`——**いずれも通常のツール呼び出しであり、自動的に guard の承認を通り、自動的に activity へ証跡が残る**。これが PivotHub のチャネルに対する本質的な優位性である（fusion 評価の「問題一」への回答）。
+- **攻撃機アドレスの概念**：リバースのコールバックには「ターゲットから到達できる ARTEX のアドレス」が必要である（PivotHub の attackIp、README §9）。ARTEX を Docker で動かす場合、これは現実のデプロイ制約になる。設定項目 `ARTEX_CALLBACK_ADDR` + compose でのリスナーポート公開が必要で、起動時に到達性を検証し明示的に警告する。
+- **安全上の下限**（PivotHub の教訓）：コールバックリスナーにはワンタイムパスワードの検証が必須である（PivotHub の `_accept_loop` は誰彼構わず受け入れる、`reverse.py:140-149`）。セッション接続パラメータは暗号化して永続化する（PivotHub はすべて平文、`models/credential.py:18`）。
+- **フットホールド戦略（foothold ladder、2026-09-13 に著者と確認）**：**webshell を優先し、リバースシェルは一時チャネルへ降格する**。理由：① webshell はインバウンド HTTP チャネルを再利用し、外向き通信への依存がゼロ（リバースの前提である「ターゲットから接続し返せること」は、まさに最も遮断されやすい。chains の `pivot-no-reverse`/`pivot-oneway-webshell` を参照）。② リバースは長接続 + 非標準ポートでトラフィックの特徴が強く、webshell は業務 HTTPS に紛れる。③ http_shell のセッションはリクエスト駆動であり、プラットフォーム側に長命プロセスが存在しない——**これにより session 層は ROADMAP C1 の衝突から外れる**。リバースリスナーはもはや例外扱いを要する長寿リソースではない（C1 に残る本質的な長命リソースはトンネルのみで、管理台帳が下支えする）。④ webshell のコマンドは記録プロキシ経由で発出されるため**二重の証跡**が残る（ツール呼び出しは activity へ、HTTP は MITM へ）。リバースの生 TCP は記録体系を完全に迂回する。標準動作チェーン：初期 RCE → 優先的に webshell を書き込み永続フットホールドを確立（主チャネル）→ 対話性が必要なとき（PTY 権限昇格/大容量ファイル/トンネルデバッグ）にリバース／対話チャネルを一時的に立ち上げ、**使い終わったら即座に回収（管理 TTL、常駐させない）** → トンネルは主チャネル経由で投入する。レッドライン：webshell の書き込みは高リスクな書き込み操作であり、必ず RoE/guard ask を通す。webshell のディスク上への書き込みには、検出エンジンに発見される検出面があるため、chains にはインメモリ webshell／ディスク配置時の難読化の判定基準を補うべきである。判定基準の知識は chains の L3 pivot-\* 骨格が担う。
+- **implant 戦略（2026-09-13 に著者と確認）**：外部 webshell プラットフォーム（vshell／Godzilla／Behinder）には接続しない——二つの体系が併存し、プロトコルは既にシグネチャライブラリに覆われているため、接続することは自前開発に金を払いながら自前開発の実利を得られないことになる。完全な C2 を今自前で作ることもない——それは月単位の対抗エンジニアリングであり、現時点でプラットフォームに欠けているのは、implant 対抗ではなくイントラネット深部である。判断は期 3 のトンネルが通った後、実データを以て再決定するまで先送りする（session のインターフェースとドライバには無関係で、将来バイナリ implant を追加しても上位層は動かない）。**直近のアクション：http_shell ドライバに自前の暗号化 webshell 型を追加する（期 2 の後にスケジュール、2-3 日）**——webshell 本体に復号を内蔵し、セッションごとに独立した AES-GCM 鍵、リクエスト／レスポンスは全て暗号文 + ランダムパディングで、トラフィックのシグネチャを無効化する。「機能が単一」である点は、暗号化 webshell + トンネル（期 3）+ 対話チャネル（期 5）の組み合わせで解決し、巨大な C2 には依存しない。
 
-### 4.3 子系统二:tunnel(多层代理编排)
+### 4.3 サブシステム 2：tunnel（多層プロキシ編成）
 
-- **四件套**:`probe`(经会话在目标侧执行四探针,结构化报告)→ `plan`(中继推导,输入是资产图里的网卡/网段数据)→ `deploy`(经会话投递 chisel 二进制=filestage 模式,远端拉起,**隧道内决定性验证**,失败逐层回滚)→ `health`(真实探活,死了标 error 并触发重拉——重拉用持久化的部署参数,不像 PivotHub 名存实亡)。
-- **agent 触达面**:`tunnel_probe / tunnel_plan / tunnel_deploy / tunnel_list / tunnel_teardown` 工具。plan 输出结构化 hops(JSON),planner 可据此派"打下一网段"的意图。
-- **隧道消费**:tunnel 建成 = 一个 socks5 端点。worker 的 `proxyEnv` 注入从"全局唯一 globalProxy"扩展为**按任务(或按意图)绑定上游**(`agent/worker.go:194-214` 改为从任务 runtime 取):worker 的 Bash 流量 = 本地 MITM 录制代理 → socks5 隧道 → 内网目标,**留痕链不断**(本地 MITM 仍然录),这是架构上最漂亮的一点——录制与隧道在拓扑上天然串联。
-- **进程看护**:隧道进程登记台账,settlement/任务停止时清理(修掉 P6 发现的"worker 起的后台进程无人管"问题);断链真实探活 + 自动重拉 + planner 通知(链路断是重要态势事件)。
+- **四つの構成要素**：`probe`（セッション経由でターゲット側で四つの探針を実行し、構造化レポートを返す）→ `plan`（リレー導出。入力はアセットグラフの NIC／セグメントデータ）→ `deploy`（セッション経由で chisel バイナリを投入＝filestage パターン、リモートで立ち上げ、**トンネル内での決定的検証**、失敗時は層ごとにロールバック）→ `health`（実際の活性プローブ。死んだら error を付け、再立ち上げをトリガーする——再立ち上げは永続化したデプロイパラメータを使うので、PivotHub のように名ばかりにはならない）。
+- **agent から触れる面**：ツール `tunnel_probe / tunnel_plan / tunnel_deploy / tunnel_list / tunnel_teardown`。plan は構造化された hops（JSON）を出力し、planner はそれに基づいて「次のセグメントを攻撃する」意図を派遣できる。
+- **トンネル消費**：トンネルが完成 = 一つの socks5 エンドポイント。worker の `proxyEnv` 注入は「グローバルに唯一の globalProxy」から**タスク（または意図）ごとの上流バインド**へ拡張する（`agent/worker.go:194-214` をタスク runtime から取得するよう変更）：worker の Bash トラフィック = ローカル MITM 記録プロキシ → socks5 トンネル → イントラネットのターゲット、と**証跡チェーンが途切れない**（ローカル MITM が引き続き記録する）。これはアーキテクチャ上最も美しい点である——記録とトンネルがトポロジ上、天然に直列する。
+- **プロセス監視**：トンネルプロセスを台帳に登録し、settlement／タスク停止時にクリーンアップする（P6 で発見された「worker が起動したバックグラウンドプロセスが誰にも管理されない」問題を修正）。切断時は実際の活性プローブ + 自動再立ち上げ + planner への通知（リンク切断は重要な状況イベントである）。
 
-### 4.3a 受管资源原则与 stage_share(2026-09-13 新增;回应"AI 起临时 HTTP 服务投递武器后忘关导致泄露"通病)
+### 4.3a 管理対象リソースの原則と stage_share（2026-09-13 追加。「AI がツール投入用の一時 HTTP サービスを立ち上げたまま閉じ忘れ、漏えいに至る」という通弊への対応）
 
-**架构原则:凡带外部暴露面的资源——HTTP 暂存、隧道进程、反弹监听、临时防火墙规则——必须由平台登记台账、强制 TTL、归属任务、平台回收。没有例外资源。** 根因不是 AI 记性,而是资源在平台账本之外:临时 HTTP 服务是一条 Bash 命令的副作用,平台零感知,且 settlement 不清后台进程,意图结束/上下文压缩后即成对全网开放的孤儿(目录常混有战利品凭据)。prompting is not enforcement,必须用机制:
+**アーキテクチャ原則：外部への露出面を持つリソース——HTTP 一時ステージング、トンネルプロセス、リバースリスナー、一時ファイアウォールルール——は必ずプラットフォームが台帳に登録し、TTL を強制し、タスクに帰属させ、プラットフォームが回収する。例外のリソースは存在しない。** 根本原因は AI の記憶力ではなく、リソースがプラットフォームの台帳の外にあることである。一時 HTTP サービスは 1 本の Bash コマンドの副作用であり、プラットフォームは一切感知せず、settlement もバックグラウンドプロセスを片付けないため、意図の終了／コンテキスト圧縮の後には全ネットワークに開放された孤児になる（ディレクトリには戦利品の認証情報が混じっていることが多い）。prompting is not enforcement であり、仕組みで担保する必要がある：
 
-1. **`stage_share` 受管投递服务**(内置工具,与隧道二进制投递共用同一暂存实现,即 4.3 的 filestage 模式):24 字节随机 token 路径、无目录列举、硬 TTL 默认 15 分钟到期自动销毁、支持一次性下载即焚、默认 loopback(需对目标可见时绑指定接口或走隧道)、全程 activity 记账(谁投递/何时过期/被何源 IP 拉走)。
-2. **guard 内置不可删除规则**拦截 `python -m http.server` / `php -S` / `busybox httpd` / `npx serve` 等野路子,拦截理由写明"请改用 stage_share"——正道比野路子好用,绕过动机自然降低。
-3. **兜底收割**:worker Bash 跑独立进程组,意图结束/任务停止整组收割;定期扫本机监听端口,台账外监听者告警并可配自动 kill。
-4. **投递分级**:`stage_share` 只往外送工具;战利品/凭据回流只走会话读取/evidence 存储;可选 payload 加密投递。
+1. **`stage_share` 管理対象の投入サービス**（組み込みツール。トンネルバイナリの投入と同一のステージング実装を共有する。すなわち 4.3 の filestage パターン）：24 バイトのランダム token パス、ディレクトリ一覧の不可、ハード TTL はデフォルト 15 分で期限切れ時に自動破棄、ワンタイムのダウンロード即焼却に対応、デフォルトは loopback（ターゲットから可視にする必要がある場合は指定インターフェースにバインドするかトンネルを経由）、activity への全記録（誰が投入したか／いつ期限切れか／どのソース IP に取得されたか）。
+2. **guard の削除不可の組み込みルール**が `python -m http.server` / `php -S` / `busybox httpd` / `npx serve` などの野良手段をインターセプトし、ブロック理由に「stage_share を使ってください」と明記する——正規の手段の方が野良手段より使いやすいので、迂回の動機は自然に下がる。
+3. **下支えの回収**：worker の Bash は独立したプロセスグループで実行し、意図の終了／タスク停止時にグループごと回収する。本機のリスニングポートを定期的に走査し、台帳外のリスナーを警告し、自動 kill を設定可能にする。
+4. **投入の階級分け**：`stage_share` はツールの送出のみを行う。戦利品／認証情報の回流はセッション経由の読み取り／evidence ストレージのみを通す。payload の暗号化投入は任意。
 
-对应修复方案条目:`FIXPLAN-AND-EVALUATION.md` F13。实施纳入期 1(session 子系统同期,共享受管资源台账框架)。
+対応する修正案の項目：`FIXPLAN-AND-EVALUATION.md` F13。実施は期 1 に組み込む（session サブシステムと同期し、管理対象リソース台帳の枠組みを共有する）。
 
-### 4.4 子系统三:数据模型内网扩展(最大的手术)
+### 4.4 サブシステム 3：データモデルのイントラネット拡張（最大の手術）
 
-P6 的证据:当前 `uq_av2_ip` 使一个 IP 全局一行(`db/schema.sql:84`),双网卡主机拆成两条互不相干的资产;边关系只有 5 种(`db/schema.sql:251`)。需要:
+P6 のエビデンス：現在の `uq_av2_ip` により 1 つの IP はグローバルに 1 行であり（`db/schema.sql:84`）、デュアル NIC のホストは無関係な 2 つのアセットに分解される。辺の関係は 5 種類しかない（`db/schema.sql:251`）。必要なもの：
 
-- **host 实体**:新表或资产新类型 `host`,多个 ip/nic 资产归并其下(nic 表:ip+segment+iface);双网卡归并靠"同一会话上报的 ifconfig"或 MAC/主机名指纹。
-- **网段实体**:`segments`(cidr,经哪条链路可达)——目前只有派生列 `c_segment`(`db/schema.sql:55`)。
-- **链路边**:资产层新表 `links`(kind=socks/portfwd/relay, src_host/dst_segment, adapter, state, deploy_params)——不要塞进 exploration_edges,链路是跨任务的全局事实,属于资产图。
-- **凭据一等实体**:新表 `credentials`(type=password/hash/ticket/key, secret 加密, source_host, scope 推断);复用打分用程序规则(PivotHub 前端打分 naive,`cred.js:44-50`,ARTEX 应做服务端+LLM 双轨);**喷洒/爆破动作必须过 guard ask 规则**(RoE 硬约束)。
-- **覆盖度统计扩展**:分母从"task_scope 命中资产"扩展为"已发现网段中的存活资产",covered 定义增加"经会话/隧道实测"。
+- **host エンティティ**：新規テーブル、またはアセットの新種別 `host` を作り、複数の ip/nic アセットをその下に統合する（nic テーブル：ip+segment+iface）。デュアル NIC の統合は「同一セッションが報告した ifconfig」または MAC／ホスト名のフィンガープリントで行う。
+- **セグメントエンティティ**：`segments`（cidr、どのリンク経由で到達可能か）——現状は派生列 `c_segment` しかない（`db/schema.sql:55`）。
+- **リンクの辺**：アセット層の新規テーブル `links`（kind=socks/portfwd/relay, src_host/dst_segment, adapter, state, deploy_params）——exploration_edges に詰め込まない。リンクはタスクを跨ぐグローバルな事実であり、アセットグラフに属する。
+- **認証情報の第一級エンティティ**：新規テーブル `credentials`（type=password/hash/ticket/key, secret は暗号化, source_host, scope の推定）。再利用のスコアリングはプログラム上のルールで行う（PivotHub のフロントエンド採点は素朴で、`cred.js:44-50`。ARTEX はサーバー側+LLM の二系統で行うべき）。**スプレー／ブルートフォースの動作は必ず guard ask ルールを通す**（RoE のハード制約）。
+- **カバレッジ統計の拡張**：分母を「task_scope にヒットしたアセット」から「発見済みセグメント内の存続アセット」へ拡張し、covered の定義に「セッション／トンネル経由の実測」を加える。
 
-### 4.5 阶段编排(两阶段怎么切)
+### 4.5 ステージ編成（二段階をどう切り分けるか）
 
-1. 阶段一照常。worker 拿到 webshell → `register_session` → 写 fact("立足点@hostX")+ finding。
-2. fact 唤醒 planner;planner 经 chains pivot 骨架(L3 路由,`CHAINS-INTEGRATION-DESIGN.md`)得知"先侦察再扩线":派 `session_exec`(ifconfig/arp/路由)侦察意图 → 新网段资产入库。
-3. **人工授权检查点(硬性)**:发现新网段 ≠ 有权打新网段。内网 RoE 与外网几乎必然不同,任务进入"内网阶段"应由 guard ask + 人工确认后登记新 scope(`db/task_scope.go`)——这与修复方案 F5(代码层 RoE 强制)是同一个闸门,**F5 因此从"建议"变为内网功能的前置依赖**。
-4. 确认后创建**关联任务**(继承机制已存在):scope=内网段,worker 工具面增加 session/tunnel 工具,proxyEnv 绑隧道,提示词换内网词汇(chains pivot/ad/priv 经 L3 路由按意图注入),planner 用 pivot/priv/ad 骨架规划纵深。
-5. 凭据收割 → 凭据库 → 复用打分 → 横向意图(ssh/wmi/psexec 经 session 或隧道)——循环直至 prove_goal。
+1. 段階 1 は従来どおり。worker が webshell を取得 → `register_session` → fact（「フットホールド@hostX」）+ finding を書き込む。
+2. fact が planner を起床させる。planner は chains の pivot 骨格（L3 ルーティング、`CHAINS-INTEGRATION-DESIGN.md`）から「まず偵察してから線を広げる」ことを知り、`session_exec`（ifconfig／arp／ルーティング）の偵察意図を派遣する → 新セグメントのアセットが登録される。
+3. **人手承認のチェックポイント（必須）**：新セグメントを発見した ≠ 新セグメントを攻撃する権限がある。イントラネットの RoE は外部ネットワークとほぼ必然に異なるため、タスクが「イントラネット段階」に入るには guard ask + 人手による確認の後で新たな scope を登録する（`db/task_scope.go`）——これは修正案 F5（コード層での RoE 強制）と同じゲートであり、**それゆえ F5 は「提案」からイントラネット機能の前提依存へ変わる**。
+4. 確認後、**関連タスク**を作成する（継承機構は既に存在する）：scope=イントラネットセグメント、worker のツール面に session/tunnel ツールを追加、proxyEnv をトンネルにバインド、プロンプトをイントラネットの語彙に差し替え（chains の pivot/ad/priv が L3 ルーティング経由で意図に応じて注入される）、planner は pivot/priv/ad 骨格で深部を計画する。
+5. 認証情報の収集 → 認証情報庫 → 再利用スコアリング → 横展開意図（ssh／wmi／psexec を session またはトンネル経由で）——prove_goal まで循環する。
 
-### 4.6 提示词与 chains 的角色
+### 4.6 プロンプトと chains の役割
 
-- worker 内网形态提示词:目前全是 Web 语汇(`agent/worker.go:220-233`),需要内网变体(横向、隧道、凭据、OPSEC)。
-- chains L3 路由(`CHAINS-INTEGRATION-DESIGN.md`)按意图 tag 注入 pivot-tunnel-choice / priv-linux / ad-kerberos 骨架——**内网功能是 chains 设计的首要受益场景**,两个项目互为前提。
-- L1 代码判据在内网同样适用(同质响应→WAF/蜜罐识别;蜜罐在内网更常见,chains 里 meta-trust-obs 有对应判据)。
+- worker のイントラネット向けプロンプト：現状はすべて Web の語彙である（`agent/worker.go:220-233`）。イントラネット変種（横展開、トンネル、認証情報、OPSEC）が必要である。
+- chains の L3 ルーティング（`CHAINS-INTEGRATION-DESIGN.md`）が意図 tag に応じて pivot-tunnel-choice / priv-linux / ad-kerberos 骨格を注入する——**イントラネット機能は chains 設計の第一の受益シナリオであり**、二つのプロジェクトは互いを前提とする。
+- L1 のコード判定基準はイントラネットでも同様に適用できる（同質なレスポンス→WAF／ハニーポットの識別。ハニーポットはイントラネットでより一般的であり、chains の meta-trust-obs に対応する判定基準がある）。
 
-## 5. 实施分期(建议)
+## 5. 実施フェーズ（提案）
 
-| 期 | 内容 | 依赖 | 量级 |
+| 期 | 内容 | 依存 | 規模 |
 |---|---|---|---|
-| 0 | 修复方案 P1(guard fail-closed、RoE 代码强制 F5)——内网功能的安全前置 | 无 | 2-3 天 |
-| 1 | session 子系统:http_shell(php 先行)+ ssh 驱动、register_session/session_exec 工具、sessions 表、guard 覆盖验证 | 期 0 | 1-2 周 |
-| 2 | 凭据一等实体 + 复用打分 + session 内网侦察意图(ifconfig/arp/路由解析,PivotHub `recon.py` 的解析器可移植) | 期 1 | 1 周 |
-| 3 | tunnel 子系统:probe/plan/deploy(chisel 先行)/health/台账清理;proxyEnv 按任务绑定 | 期 1-2 | 1-2 周 |
-| 4 | 阶段编排:授权检查点 + 关联任务模板 + 内网 worker 提示词 + chains L3 pivot/ad/priv 路由 | 期 3 + chains ETL | 1 周 |
-| 5 | reverse 驱动 + 反弹监听(含一次性口令)+ `ARTEX_CALLBACK_ADDR` 配置 | 期 1 | 3-5 天 |
-| 6 | 原生部署链:release 附带 chisel(钉版+sha256 校验)、`artex doctor` 预检、重依赖可选降级 | 期 3 | 2-3 天 |
+| 0 | 修正案 P1（guard の fail-closed、RoE のコード強制 F5）——イントラネット機能の安全面の前提 | なし | 2-3 日 |
+| 1 | session サブシステム：http_shell（php 先行）+ ssh ドライバ、register_session/session_exec ツール、sessions テーブル、guard のカバレッジ検証 | 期 0 | 1-2 週 |
+| 2 | 認証情報の第一級エンティティ + 再利用スコアリング + session のイントラネット偵察意図（ifconfig／arp／ルーティングの解析。PivotHub の `recon.py` のパーサは移植可能） | 期 1 | 1 週 |
+| 3 | tunnel サブシステム：probe/plan/deploy（chisel 先行）/health／台帳のクリーンアップ。proxyEnv のタスク単位バインド | 期 1-2 | 1-2 週 |
+| 4 | ステージ編成：承認チェックポイント + 関連タスクのテンプレート + イントラネット worker プロンプト + chains L3 の pivot/ad/priv ルーティング | 期 3 + chains ETL | 1 週 |
+| 5 | reverse ドライバ + リバースリスナー（ワンタイムパスワードを含む）+ `ARTEX_CALLBACK_ADDR` 設定 | 期 1 | 3-5 日 |
+| 6 | ネイティブデプロイチェーン：release に chisel を同梱（バージョン固定 + sha256 検証）、`artex doctor` によるプリチェック、重い依存の任意ダウングレード | 期 3 | 2-3 日 |
 
-总计约 5-7 周。期 1 完成后 ARTEX 即具备"立足点管理+目标侧执行";期 3 完成后具备"多层代理纵深";期 4 完成后才是完整编想。
+合計で約 5-7 週。期 1 の完了で ARTEX は「フットホールド管理 + ターゲット側実行」を備え、期 3 の完了で「多層プロキシによる深部」を備え、期 4 の完了でようやく構想が完成する。
 
-## 7. 实施进度记录
+## 7. 実施進捗の記録
 
-- 期 0(安全前置):**完成**(F3/F4/F5 guard fail-closed、planner/mainagent hooks、RoE 三态强制 off/warn/strict,已上线)。
-- 期 1(session 子系统):**完成并验收**——http_shell 驱动(eval/assert/JSP/ASPX 多马型+函数降级)、sessions 表(secret AES-GCM)、register_session/session_exec/read/write 工具、RoE 登记校验;任务 #9 端到端通过(打 CVE→写马→登记→目标侧执行 root 命令)。
-- 期 2(凭据+侦察):**完成**——credentials 表、服务端复用打分、被动侦察解析器(ip/ifconfig/route/arp/netstat/Windows 变体)、session_recon 工具、v4 横向喷洒内置 ask 规则。
-- 加密马型(2026-09-13 implant 策略落子):**完成并验收**——AES-256-GCM/CBC+HMAC 双路径、随机填充、每会话独立密钥、generate_webshell/register_session(phpenc/jspenc);任务 #11 端到端通过。
-- 期 3(tunnel 子系统):**完成并验收**(任务 #12-16)——四件套 probe/plan/deploy/health、按任务 MITM 上游绑定(taskproxy)、portfwd 与 socks 双形态 alive+teardown 干净。实战修掉 6 个 bug:① hostTools 漏挂 tunnel 工具;② authfile 须为 JSON users 格式;③ chisel client 选项必须先于 server/remote;④ 分块 512KB→64KB(Linux MAX_ARG_STRLEN=128KB);⑤ probe 三态(refused 算通)+端口池采样;⑥ socks 验证目标在 NAT/端口映射下失效→自环候选(callbackHost:listenPort)。另有 v5 裸隧道二进制内置 ask 规则(含 grep 文本误伤修正)。
-- 期 5(reverse 反弹 shell handler):**完成**——受管 penelope 进程(`server/reverse.go`:`--mcp` 仅绑 127.0.0.1 + 随机 Bearer token、`-C` 无 TTY 不 attach、自动 PTY 升级保留、会话日志落盘 dataDir/reverse/),单例懒起 `EnsureHandler`、进程退出即台账清理(端口注销 + 会话诚实标 dead)、平台退出回收进程;MCP 桥(mcphttp 客户端)把 penelope 会话对账进 sessions 台账(kind=reverse,secret 存 penelope 会话标识+token,url=reverse://源地址)并注册 Session 适配器进 Registry(Exec=exec_in_session、Read=download_from_session 读回本地落盘、Write=upload_to_session 经本地暂存,remote_path 必须目录——实测语义);reverse_listen 工具(默认绑 worker)返回监听口+bash/python/nc payload(host=ARTEX_CALLBACK_ADDR);监听默认绑 127.0.0.1,目标直连需显式 iface。死亡重生:会话消失→台账标 dead,重生交给下次 reverse_listen。实测结论(penelope MCPServer):POST / 单端点、Bearer hmac 认证、响应为普通 JSON(非 SSE)、无 Mcp-Session-Id、6 工具(list/get_info/exec/kill/upload/download)、结果均为 text block 内嵌 JSON、文件传输需持久 shell(自动 PTY 满足)、死会话=JSON-RPC -32602 且从 list 消失。
-- 期 3.5(suo5 隧道适配器,2026-09-13 新增并实测):**完成**——`tunnel/suo5.go`:按 session 马型选 payload(php/jsp/aspx,加密马用明文 payload)→ session.WriteFile 随机名投递到马目录 → 平台直连探 URL → `suo5 -t <url> -l 127.0.0.1:<port> --auth <u>:<p>`(auth 必启用)→ 决定性验证(带 auth 经 socks CONNECT 宿主自身);失败逐层回滚,deploy_params 全量持久化供自动重拉,health/Teardown 全接入。选型:auto=probe 驱动(TCP 通→chisel,其余→suo5);suo5 仅 socks,portfwd 强制 chisel;taskproxy 上游 URL 内嵌 user:pass;guard 规则把 suo5 纳入(平台 Go exec 天然豁免,worker 裸用照拦)。实测(Apache+mod_php):握手 3s、socks 数据面通、auth 生效;注意 php -S 单线程撑不起 half 模式(目标侧环境属性,已在注释标明)。
-- 验收环境现状(VPS):DVWA(8081)、Tomcat CVE-2017-12615(8082)、内网站点(172.17.0.1:18090)、chisel 1.11.3 已置 data/tools;ARTEX_CALLBACK_ADDR=172.18.0.1(容器回连用,生产按实际拓扑配)。
+- 期 0（安全面の前提）：**完了**（F3/F4/F5 の guard fail-closed、planner/mainagent の hooks、RoE 三態の強制 off/warn/strict、リリース済み）。
+- 期 1（session サブシステム）：**完了・検収済み**——http_shell ドライバ（eval/assert/JSP/ASPX の複数 webshell 型 + 関数フォールバック）、sessions テーブル（secret は AES-GCM）、register_session/session_exec/read/write ツール、RoE 登録の検証。タスク #9 がエンドツーエンドで通過（CVE を突く→webshell を書き込む→登録→ターゲット側で root コマンドを実行）。
+- 期 2（認証情報 + 偵察）：**完了**——credentials テーブル、サーバー側の再利用スコアリング、パッシブ偵察パーサ（ip/ifconfig/route/arp/netstat/Windows 変種）、session_recon ツール、v4 横展開スプレー用の組み込み ask ルール。
+- 暗号化 webshell 型（2026-09-13 の implant 戦略の着手）：**完了・検収済み**——AES-256-GCM/CBC+HMAC の二経路、ランダムパディング、セッションごとの独立鍵、generate_webshell/register_session（phpenc/jspenc）。タスク #11 がエンドツーエンドで通過。
+- 期 3（tunnel サブシステム）：**完了・検収済み**（タスク #12-16）——四つの構成要素 probe/plan/deploy/health、タスク単位の MITM 上流バインド（taskproxy）、portfwd と socks の両形態で alive + teardown がクリーン。実戦で 6 個の bug を修正：① hostTools に tunnel ツールの登録漏れ、② authfile は JSON users 形式でなければならない、③ chisel client のオプションは server/remote より前に置く必要がある、④ 分割サイズ 512KB→64KB（Linux MAX_ARG_STRLEN=128KB）、⑤ probe の三態（refused を通と数える）+ ポートプールのサンプリング、⑥ socks の検証ターゲットが NAT／ポートマッピング下で無効になる→自ループ候補（callbackHost:listenPort）。ほかに v5 の裸トンネルバイナリ用の組み込み ask ルール（grep のテキスト誤検出の修正を含む）。
+- 期 5（reverse リバースシェルハンドラ）：**完了**——管理対象の penelope プロセス（`server/reverse.go`：`--mcp` は 127.0.0.1 のみにバインド + ランダムな Bearer token、`-C` で TTY なしでは attach しない、自動 PTY 昇格は保持、セッションログは dataDir/reverse/ に書き出し）、シングルトンで遅延起動する `EnsureHandler`、プロセス終了で直ちに台帳をクリーンアップ（ポート登録解除 + セッションを正直に dead とマーク）、プラットフォーム終了時にプロセスを回収。MCP ブリッジ（mcphttp クライアント）が penelope のセッションを sessions 台帳へ突き合わせ（kind=reverse、secret には penelope のセッション識別子 + token、url=reverse://送信元アドレス）、Session アダプタを Registry へ登録する（Exec=exec_in_session、Read=download_from_session でローカルに読み戻して書き出し、Write=upload_to_session でローカルステージング経由、remote_path はディレクトリでなければならない——実測の意味論）。reverse_listen ツール（デフォルトで worker にバインド）はリスナーポート + bash/python/nc payload を返す（host=ARTEX_CALLBACK_ADDR）。リスナーはデフォルトで 127.0.0.1 にバインドし、ターゲットからの直結には明示的な iface が必要。死亡と再生：セッションが消える→台帳を dead にし、再生は次の reverse_listen に委ねる。実測の結論（penelope MCPServer）：POST / の単一エンドポイント、Bearer hmac 認証、レスポンスは通常の JSON（SSE ではない）、Mcp-Session-Id なし、6 つのツール（list/get_info/exec/kill/upload/download）、結果はいずれも text block に埋め込まれた JSON、ファイル転送には永続 shell が必要（自動 PTY で満たす）、死んだセッションは JSON-RPC -32602 で list から消える。
+- 期 3.5（suo5 トンネルアダプタ、2026-09-13 に追加し実測）：**完了**——`tunnel/suo5.go`：session の webshell 型に応じて payload を選び（php/jsp/aspx、暗号化 webshell は平文 payload）→ session.WriteFile でランダム名で webshell のディレクトリへ投入 → プラットフォームから URL へ直接プローブ → `suo5 -t <url> -l 127.0.0.1:<port> --auth <u>:<p>`（auth は必ず有効化）→ 決定的検証（auth 付きで socks CONNECT によりホスト自身へ接続）。失敗時は層ごとにロールバックし、deploy_params は全量を永続化して自動再立ち上げに供し、health/Teardown もすべて接続済み。選定：auto=probe 駆動（TCP が通れば→chisel、それ以外→suo5）。suo5 は socks のみ、portfwd は chisel 強制。taskproxy の上流 URL には user:pass を埋め込む。guard ルールに suo5 を組み込む（プラットフォームの Go exec は自然に免除、worker の直接使用は従来どおりブロック）。実測（Apache+mod_php）：ハンドシェイク 3s、socks のデータ面が通る、auth が有効。注意：php -S は単一スレッドで half モードを支えられない（ターゲット側環境の属性であり、コメントに明記済み）。
+- 検収環境の現状（VPS）：DVWA（8081）、Tomcat CVE-2017-12615（8082）、イントラネットサイト（172.17.0.1:18090）、chisel 1.11.3 は data/tools に配置済み。ARTEX_CALLBACK_ADDR=172.18.0.1（コンテナからのコールバック用。本番では実際のトポロジに合わせて設定する）。
 
-## 6. 风险与诚实声明
+## 6. リスクと正直な声明
 
-1. **工作量大头在工程质量,不在算法**。PivotHub 证明了算法不难(中继推导百行级),难的是会话/隧道在生产对抗环境的健壮性(哨兵、编码、断线、回滚)——PivotHub 的这些细节是用事故换来的,重写时直接继承其注释里的教训,不要重新交学费。
-2. **部署形态:原生二进制为内网场景推荐形态(2026-09-13 更新,取代原"Docker 硬约束"判断)**。反弹回连、隧道服务端要求"目标能连到 ARTEX"——原生部署下监听直接绑宿主机真实网卡,callback 地址=本机地址,约束基本消失;Docker 下则需 compose 新增端口映射 + callback 地址配置,云/NAT 场景可能不可用。ARTEX 本就支持单二进制原生部署(go:embed 前端 + start.sh 守护 + 自更新),摆脱 Docker 需补三件事:① 内网关键二进制(chisel 先行)打进 release zip,钉版本+记录 sha256+启动校验(借鉴 PivotHub `tools/` 做法但补齐其缺失的供应链校验);② 新增 `artex doctor` 预检(PG 可达/工具在位/callback 配置/CA 就绪,缺什么打印安装命令);③ 重依赖(playwright/浏览器 MCP)可选降级,探测不到即从工具清单隐藏。隔离代价要诚实:原生运行=LLM 生成的命令直跑宿主机,必须专用渗透 VM + 非 root + 期 0 的 guard 闸门兜底;唯一硬外部依赖仍是 PostgreSQL(`config/config.go:137-149`,PG 特性深度使用,不建议换库)。
-3. **内网阶段 blast radius 质变**。外网 Web 渗透失手是打坏一个站点,内网横向失手(喷洒锁死全域账号、SMB 打爆终端)是业务事故。期 0(RoE 代码强制 + guard fail-closed)不是可选项;喷洒/爆破类命令必须有不可删除的内置 ask 规则。
-4. **双模式并存是现实**:能建隧道走隧道(kali 工具全可用),目标不出网时只能靠会话执行(工具受限)。planner 的选型判据直接来自 chains `pivot-tunnel-choice.md` + PivotHub probe 规则——这正是两者合流的价值点。
-5. **不要试图一步到位做阶段 4 的模型大改后又回头改**。建议期 1-2 先跑通单立足点场景(靶场,可直接借 PivotHub 的 `scripts/lab` 三层靶场做验收环境——它端口全绑 loopback、双网卡 L2/L3 纵深,是现成的验收靶场),再按真实反馈定模型扩展的粒度。
+1. **工数の大半はエンジニアリング品質にあり、アルゴリズムにはない**。PivotHub はアルゴリズムが難しくないことを証明している（リレー導出は百行程度）。難しいのは、セッション／トンネルの本番対抗環境での堅牢性（センチネル、エンコーディング、切断、ロールバック）である——PivotHub のこれらの細部は事故と引き換えに得られたものであるから、書き直す際はそのコメントにある教訓をそのまま継承し、同じ授業料を二度払わないこと。
+2. **デプロイ形態：イントラネットのシナリオではネイティブバイナリが推奨形態である（2026-09-13 更新、従来の「Docker がハード制約」という判断を置き換える）**。リバースのコールバックとトンネルサーバー側は「ターゲットから ARTEX へ到達できること」を要求する——ネイティブデプロイではリスナーがホスト機の実 NIC に直接バインドされ、callback アドレスは本機のアドレスになるため、制約はほぼ消える。Docker では compose にポートマッピングの追加 + callback アドレスの設定が必要で、クラウド／NAT のシナリオでは使えない可能性がある。ARTEX はもともと単一バイナリのネイティブデプロイをサポートしており（go:embed したフロントエンド + start.sh によるデーモン化 + 自己更新）、Docker を脱するには三つを補う必要がある：① イントラネット向けの重要バイナリ（chisel 先行）を release zip に同梱し、バージョンを固定 + sha256 を記録 + 起動時に検証する（PivotHub の `tools/` のやり方を参考にしつつ、同プロジェクトに欠けていたサプライチェーン検証を補う）。② `artex doctor` によるプリチェックを新設する（PG の到達性／ツールの存在／callback 設定／CA の準備。不足があればインストールコマンドを表示）。③ 重い依存（playwright／ブラウザ MCP）は任意にダウングレードし、検出できなければツール一覧から隠す。分離のコストは正直に述べる：ネイティブ実行 = LLM が生成したコマンドがホスト機上で直接走るということであり、専用のペネトレーション VM + 非 root + 期 0 の guard ゲートによる下支えが必須である。唯一のハードな外部依存は依然として PostgreSQL（`config/config.go:137-149`。PG の機能を深く使っており、DB の差し替えは勧めない）。
+3. **イントラネット段階ではブラストレイディアス（影響半径）が質的に変わる**。外部ネットワークの Web 浸透の失敗は 1 サイトを壊すだけだが、イントラネットの横展開の失敗（スプレーで全域のアカウントをロックアウト、SMB で端末を落とす）は業務事故になる。期 0（RoE のコード強制 + guard fail-closed）は選択肢ではない。スプレー／ブルートフォース系のコマンドには、削除不可の組み込み ask ルールが必須である。
+4. **二つのモードの併存は現実である**：トンネルを張れるならトンネル経由（kali のツールがすべて使える）、ターゲットが外向き通信を出せない場合はセッション経由の実行に頼るしかない（ツールが制限される）。planner の選定基準は chains の `pivot-tunnel-choice.md` + PivotHub の probe ルールに直接由来する——これこそ両者を合流させる価値点である。
+5. **段階 4 のモデル大改を一気に済ませてから後戻りするのは避けるべきである**。期 1-2 でまず単一フットホールドのシナリオを通すことを勧める（演習場。PivotHub の `scripts/lab` の三層演習場を検収環境としてそのまま借りられる——ポートはすべて loopback にバインドされ、デュアル NIC の L2/L3 深部を備えた、出来合いの検収演習場である）。そのうえで実際のフィードバックに応じてモデル拡張の粒度を決める。

@@ -23,11 +23,11 @@ import (
 const (
 	jwtKeyFilename = "jwt.key"
 	authPassKey    = "auth.password_hash"
-	// authKeyVersionKey 是 settings 里的密钥版本号:改密/重置密码时 +1,JWT 与
-	// refresh token 都带签发时的版本,比对不符即视为吊销(F6 改密吊销)。
+	// authKeyVersionKey は settings 内の鍵バージョン番号:パスワード変更/リセット時に +1 し、JWT と
+	// refresh token はいずれも発行時のバージョンを持つ。照合して不一致なら失効扱い(F6 パスワード変更による失効)。
 	authKeyVersionKey = "auth.key_version"
-	// access token 2 小时;refresh token 14 天、随机 32 字节(非 JWT),SHA-256
-	// 哈希存 settings(HttpOnly cookie 下发,JS 不可读)。
+	// access token は 2 時間;refresh token は 14 日、ランダム 32 バイト(非 JWT)で、SHA-256
+	// ハッシュを settings に保存する(HttpOnly cookie で配信、JS からは読めない)。
 	jwtTTL            = 2 * time.Hour
 	refreshTTL        = 14 * 24 * time.Hour
 	refreshCookieName = "artex_refresh"
@@ -51,7 +51,7 @@ func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 			if data, rerr := os.ReadFile(legacy); rerr == nil {
 				if werr := os.WriteFile(path, data, 0o600); werr == nil {
 					_ = os.Remove(legacy)
-					log.Printf("[auth] JWT key 已从 %s 迁移到 %s（移出可浏览工作区）", legacy, path)
+					log.Printf("[auth] JWT key を %s から %s へ移行しました（閲覧可能なワークスペースから移動）", legacy, path)
 				}
 			}
 		}
@@ -70,12 +70,12 @@ func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 	if err := os.WriteFile(path, buf, 0600); err != nil {
 		return nil, fmt.Errorf("write jwt key: %w", err)
 	}
-	log.Printf("[auth] 新 JWT key 已写入 %s", path)
+	log.Printf("[auth] 新しい JWT key を %s に書き込みました", path)
 	return buf, nil
 }
 
-// authClaims 是 access token 的 JWT claims:ver 为签发时的 auth.key_version,
-// 校验时与当前版本比对,不一致即 401(改密吊销全部已签发凭证)。
+// authClaims は access token の JWT claims:ver は発行時の auth.key_version で、
+// 検証時に現在のバージョンと照合し、不一致なら 401(パスワード変更で発行済みの全認証情報を失効)。
 type authClaims struct {
 	Ver int64 `json:"ver"`
 	jwt.RegisteredClaims
@@ -110,8 +110,8 @@ func parseAccessToken(tokenStr string, key []byte) (*authClaims, error) {
 }
 
 // validAccessToken reports whether tok is a well-formed, non-expired access
-// token whose version matches the current auth key version. 版本读取失败
-// fail-closed(视为吊销);无持久层(测试/降级)时只做签名+过期校验。
+// token whose version matches the current auth key version. バージョンの読み取りに失敗したら
+// fail-closed(失効とみなす);永続層がない場合(テスト/縮退)は署名+有効期限の検証のみ行う。
 func (s *Server) validAccessToken(tok string) bool {
 	claims, err := parseAccessToken(tok, s.jwtKey)
 	if err != nil {
@@ -139,8 +139,8 @@ func extractToken(r *http.Request) string {
 
 // requireAuth wraps h with access-token validation.
 // /api/auth/* and /api/health are exempt.
-// 无 Bearer 头时接受一次性 ?ticket=(SSE 专用,60s 有效、用后即焚);
-// 旧的 ?token= 形式已移除(token 不应进 URL/访问日志)。
+// 无 Bearer ヘッダーのときは使い捨ての ?ticket= を受け付ける(SSE 専用、60s 有効、使用後は即破棄);
+// 旧来の ?token= 形式は削除済み(token は URL/アクセスログに残すべきではない)。
 func (s *Server) requireAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
@@ -150,7 +150,7 @@ func (s *Server) requireAuth(h http.Handler) http.Handler {
 		}
 		if tok := extractToken(r); tok != "" {
 			if !s.validAccessToken(tok) {
-				writeErr(w, 401, "token 无效或已过期")
+				writeErr(w, 401, "token が無効か期限切れです")
 				return
 			}
 			h.ServeHTTP(w, r)
@@ -160,13 +160,13 @@ func (s *Server) requireAuth(h http.Handler) http.Handler {
 			h.ServeHTTP(w, r)
 			return
 		}
-		writeErr(w, 401, "未授权")
+		writeErr(w, 401, "未認証")
 	})
 }
 
-// ---------- refresh token(随机 32 字节,哈希存 settings) ----------
+// ---------- refresh token(ランダム 32 バイト、ハッシュを settings に保存) ----------
 
-// authKV 是 auth 持久层的最小接口:*db.DB 天然满足,测试注入内存实现。
+// authKV は auth 永続層の最小インターフェース：*db.DB がそのまま満たし、テストではメモリ実装を注入する。
 type authKV interface {
 	GetSetting(key string) (value string, ok bool, err error)
 	SetSetting(key, value string) error
@@ -185,14 +185,14 @@ func (s *Server) authSettings() authKV {
 	return nil
 }
 
-// refreshRecord 是 settings 里 refresh token 哈希对应的内容。
+// refreshRecord は settings 内の refresh token ハッシュに対応する内容。
 type refreshRecord struct {
-	Exp int64 `json:"exp"` // unix 过期时间
-	Ver int64 `json:"ver"` // 签发时的 auth.key_version
+	Exp int64 `json:"exp"` // unix の有効期限
+	Ver int64 `json:"ver"` // 発行時の auth.key_version
 }
 
 // authKeyVersion reads the current key version (default 0 when unset);
-// ok=false 表示存储层错误(调用方应 fail-closed)。
+// ok=false は保存層のエラーを表す(呼び出し側は fail-closed にすべき)。
 func authKeyVersion(kv authKV) (int64, bool) {
 	v, ok, err := kv.GetSetting(authKeyVersionKey)
 	if err != nil {
@@ -208,7 +208,7 @@ func authKeyVersion(kv authKV) (int64, bool) {
 	return n, true
 }
 
-// bumpAuthKeyVersion 把版本号 +1,返回新版本(改密后调用,吊销全部旧凭证)。
+// bumpAuthKeyVersion はバージョン番号を +1 し、新しいバージョンを返す(パスワード変更後に呼び、旧い認証情報をすべて失効させる)。
 func bumpAuthKeyVersion(kv authKV) (int64, error) {
 	ver, ok := authKeyVersion(kv)
 	if !ok {
@@ -228,7 +228,7 @@ func hashRefreshToken(tok string) string {
 
 func refreshSettingKey(hash string) string { return "auth.refresh." + hash }
 
-// issueRefreshToken 生成随机 32 字节 refresh token,哈希落 settings,返回原文。
+// issueRefreshToken はランダム 32 バイトの refresh token を生成し、ハッシュを settings に保存して原文を返す。
 func issueRefreshToken(kv authKV, ver int64) (string, error) {
 	tok, err := randomGateToken(32)
 	if err != nil {
@@ -241,7 +241,7 @@ func issueRefreshToken(kv authKV, ver int64) (string, error) {
 	return tok, nil
 }
 
-// validateRefreshToken 校验 refresh token:存在、未过期、版本匹配。
+// validateRefreshToken は refresh token を検証する:存在、未失効、バージョン一致。
 func validateRefreshToken(kv authKV, tok string, curVer int64) (refreshRecord, bool) {
 	v, ok, err := kv.GetSetting(refreshSettingKey(hashRefreshToken(tok)))
 	if err != nil || !ok {
@@ -257,8 +257,8 @@ func validateRefreshToken(kv authKV, tok string, curVer int64) (refreshRecord, b
 	return rec, true
 }
 
-// setRefreshCookie 下发 HttpOnly refresh cookie:Path 收窄到 /api/auth(只有
-// refresh/logout 会带它),SameSite=Lax,https 时加 Secure。
+// setRefreshCookie は HttpOnly の refresh cookie を配信する：Path を /api/auth に絞り(refresh/logout
+// だけが送る)、SameSite=Lax、https では Secure を付ける。
 func setRefreshCookie(w http.ResponseWriter, r *http.Request, tok string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshCookieName,
@@ -283,29 +283,29 @@ func clearRefreshCookie(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// issueSession 登录/初始化成功后统一调用:签 access token(带当前版本)+
-// 下发 refresh cookie,响应体只含 access token。
+// issueSession はログイン/初期化成功後に共通で呼ぶ：access token を署名し(現在のバージョン付き)+
+// refresh cookie を配信する。レスポンス本文は access token のみ。
 func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, kv authKV) {
 	ver, ok := authKeyVersion(kv)
 	if !ok {
-		writeErr(w, 500, "读取密钥版本失败")
+		writeErr(w, 500, "鍵バージョンの読み取りに失敗しました")
 		return
 	}
 	access, err := signJWT(s.jwtKey, ver)
 	if err != nil {
-		writeErr(w, 500, "token 生成失败")
+		writeErr(w, 500, "token の生成に失敗しました")
 		return
 	}
 	rt, err := issueRefreshToken(kv, ver)
 	if err != nil {
-		writeErr(w, 500, "refresh token 生成失败: "+err.Error())
+		writeErr(w, 500, "refresh token の生成に失敗しました: "+err.Error())
 		return
 	}
 	setRefreshCookie(w, r, rt)
 	writeJSON(w, 200, map[string]any{"token": access})
 }
 
-// ---------- SSE 一次性票据(内存存,60s 有效,用后即焚) ----------
+// ---------- SSE 使い捨てチケット(メモリ保存、60s 有効、使用後は即破棄) ----------
 
 type sseTicketStore struct {
 	mu sync.Mutex
@@ -323,7 +323,7 @@ func (s *sseTicketStore) issue() (string, error) {
 	if s.m == nil {
 		s.m = map[string]time.Time{}
 	}
-	// 防内存膨胀:票据过多时顺手清扫已过期的。
+	// メモリ膨張の防止:チケットが多いときは期限切れをまとめて掃除する。
 	if len(s.m) > 10000 {
 		for k, exp := range s.m {
 			if now.After(exp) {
@@ -335,7 +335,7 @@ func (s *sseTicketStore) issue() (string, error) {
 	return tok, nil
 }
 
-// consume 核销票据:存在且未过期才放行,无论成功与否票据都只此一次。
+// consume はチケットを消し込む:存在し未失効のときだけ通し、成否にかかわらずチケットは一度きり。
 func (s *sseTicketStore) consume(tok string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -347,12 +347,12 @@ func (s *sseTicketStore) consume(tok string) bool {
 	return time.Now().Before(exp)
 }
 
-// POST /api/sse-ticket — 需 access token(requireAuth 不过滤该路径);
-// 返回 60s 一次性 ticket,前端 EventSource 用 ?ticket= 拼接。
+// POST /api/sse-ticket — access token が必要(requireAuth はこのパスを除外しない);
+// 60s 有効の使い捨て ticket を返し、フロントの EventSource が ?ticket= で連結する。
 func (s *Server) sseTicket(w http.ResponseWriter, r *http.Request) {
 	t, err := s.tickets.issue()
 	if err != nil {
-		writeErr(w, 500, "ticket 生成失败")
+		writeErr(w, 500, "ticket の生成に失敗しました")
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ticket": t})
@@ -376,23 +376,23 @@ func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
 	}
 	existing, _, _ := pg.GetSetting(authPassKey)
 	if existing != "" {
-		writeErr(w, 403, "密码已设置")
+		writeErr(w, 403, "パスワードは設定済みです")
 		return
 	}
 	var req struct {
 		Password string `json:"password"`
 	}
 	if err := decode(r, &req); err != nil || req.Password == "" {
-		writeErr(w, 400, "密码不能为空")
+		writeErr(w, 400, "パスワードを入力してください")
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		writeErr(w, 500, "密码加密失败")
+		writeErr(w, 500, "パスワードの暗号化に失敗しました")
 		return
 	}
 	if err := pg.SetSetting(authPassKey, string(hash)); err != nil {
-		writeErr(w, 500, "保存失败: "+err.Error())
+		writeErr(w, 500, "保存に失敗しました: "+err.Error())
 		return
 	}
 	s.issueSession(w, r, pg)
@@ -407,7 +407,7 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.validAccessToken(extractToken(r)) {
-		writeErr(w, 401, "未授权")
+		writeErr(w, 401, "未認証")
 		return
 	}
 	var req struct {
@@ -415,81 +415,81 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 		NewPassword string `json:"new_password"`
 	}
 	if err := decode(r, &req); err != nil {
-		writeErr(w, 400, "请求格式错误")
+		writeErr(w, 400, "リクエスト形式が不正です")
 		return
 	}
 	if req.NewPassword == "" {
-		writeErr(w, 400, "新密码不能为空")
+		writeErr(w, 400, "新しいパスワードを入力してください")
 		return
 	}
 	hash, ok, _ := pg.GetSetting(authPassKey)
 	if !ok || hash == "" {
-		writeErr(w, 403, "密码未初始化，请先设置密码")
+		writeErr(w, 403, "パスワードが未初期化です。先にパスワードを設定してください")
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.OldPassword)); err != nil {
-		writeErr(w, 401, "当前密码错误")
+		writeErr(w, 401, "現在のパスワードが正しくありません")
 		return
 	}
 	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		writeErr(w, 500, "密码加密失败")
+		writeErr(w, 500, "パスワードの暗号化に失敗しました")
 		return
 	}
 	if err := pg.SetSetting(authPassKey, string(newHash)); err != nil {
-		writeErr(w, 500, "保存失败: "+err.Error())
+		writeErr(w, 500, "保存に失敗しました: "+err.Error())
 		return
 	}
-	// 密钥版本 +1:此前签发的所有 access/refresh token 立即吊销(F6),
-	// 前端收到成功后应强制重新登录。
+	// 鍵バージョンを +1:これ以前に発行したすべての access/refresh token を即時失効させる(F6)。
+	// フロントは成功を受け取ったら強制的に再ログインさせる。
 	if _, err := bumpAuthKeyVersion(pg); err != nil {
-		writeErr(w, 500, "吊销旧凭证失败: "+err.Error())
+		writeErr(w, 500, "旧い認証情報の失効に失敗しました: "+err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-// POST /api/auth/refresh — 凭 HttpOnly refresh cookie 换新 access token,
-// 并滑动续期 refresh(旧票作废,新票重置 14 天)。版本不符/过期/未知一律 401。
+// POST /api/auth/refresh — HttpOnly の refresh cookie で新しい access token に交換し、
+// refresh もスライド更新する(旧チケットを失効させ、新チケットで 14 日をリセット)。バージョン不一致/失効/不明は一律 401。
 func (s *Server) authRefresh(w http.ResponseWriter, r *http.Request) {
 	kv := s.authSettings()
 	if kv == nil {
-		writeErr(w, 503, "管理后台数据源(PostgreSQL)未连接")
+		writeErr(w, 503, "管理画面のデータソース(PostgreSQL)が未接続です")
 		return
 	}
 	c, err := r.Cookie(refreshCookieName)
 	if err != nil || c.Value == "" {
-		writeErr(w, 401, "refresh token 缺失")
+		writeErr(w, 401, "refresh token がありません")
 		return
 	}
 	ver, ok := authKeyVersion(kv)
 	if !ok {
-		writeErr(w, 500, "读取密钥版本失败")
+		writeErr(w, 500, "鍵バージョンの読み取りに失敗しました")
 		return
 	}
 	if _, ok := validateRefreshToken(kv, c.Value, ver); !ok {
 		clearRefreshCookie(w, r)
-		writeErr(w, 401, "refresh token 无效或已过期")
+		writeErr(w, 401, "refresh token が無効か期限切れです")
 		return
 	}
-	// 滑动续期:作废旧票再签新票(旋转),旧票泄漏重放即失效。
+	// スライド更新:旧チケットを失効させてから新しいものを発行する(ローテーション)。旧チケットが漏れても再送では通らない。
 	_ = kv.DeleteSetting(refreshSettingKey(hashRefreshToken(c.Value)))
 	rt, err := issueRefreshToken(kv, ver)
 	if err != nil {
-		writeErr(w, 500, "refresh token 生成失败: "+err.Error())
+		writeErr(w, 500, "refresh token の生成に失敗しました: "+err.Error())
 		return
 	}
 	access, err := signJWT(s.jwtKey, ver)
 	if err != nil {
-		writeErr(w, 500, "token 生成失败")
+		writeErr(w, 500, "token の生成に失敗しました")
 		return
 	}
 	setRefreshCookie(w, r, rt)
 	writeJSON(w, 200, map[string]any{"token": access})
 }
 
-// POST /api/auth/logout — 吊销当前 refresh token 并清 cookie。
-// access token 是短寿命无状态凭证,前端自行丢弃即可。
+// POST /api/auth/logout — 現在の refresh token を失効させ、cookie を消す。
+// access token は短寿命のステートレスな認証情報なので、フロントが捨てればよい。
 func (s *Server) authLogout(w http.ResponseWriter, r *http.Request) {
 	if kv := s.authSettings(); kv != nil {
 		if c, err := r.Cookie(refreshCookieName); err == nil && c.Value != "" {
@@ -511,20 +511,20 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := decode(r, &req); err != nil {
-		writeErr(w, 400, "请求格式错误")
+		writeErr(w, 400, "リクエスト形式が不正です")
 		return
 	}
 	if req.Username != "ARTEX" {
-		writeErr(w, 401, "用户名或密码错误")
+		writeErr(w, 401, "ユーザー名またはパスワードが正しくありません")
 		return
 	}
 	hash, ok, _ := pg.GetSetting(authPassKey)
 	if !ok || hash == "" {
-		writeErr(w, 403, "密码未初始化，请先设置密码")
+		writeErr(w, 403, "パスワードが未初期化です。先にパスワードを設定してください")
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {
-		writeErr(w, 401, "用户名或密码错误")
+		writeErr(w, 401, "ユーザー名またはパスワードが正しくありません")
 		return
 	}
 	s.issueSession(w, r, pg)

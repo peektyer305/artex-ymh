@@ -1,113 +1,113 @@
-# ARTEX 需求总纲与实施路线图(ROADMAP)
+# ARTEX 要件総綱と実施ロードマップ（ROADMAP）
 
-> 日期:2026-09-13。本文汇总 2026-09-12~13 全部讨论成果,是五份专题文档的索引与实施总纲。
-> 专题文档:`AUDIT-REPORT.md`(审核)、`FIXPLAN-AND-EVALUATION.md`(修复方案 F1-F14 + 需求一/二评估)、`CHAINS-INTEGRATION-DESIGN.md`(反问思维链四层架构)、`PIVOTHUB-AUDIT-AND-FUSION-EVALUATION.md`(PivotHub 审核与融合评估)、`INTRANET-PIVOT-DESIGN.md`(内网渗透能力设计)。
+> 日付：2026-09-13。本稿は 2026-09-12〜13 の全議論の成果を集約したもので、5 本の特集ドキュメントの索引と実施総綱です。
+> 特集ドキュメント：`AUDIT-REPORT.md`（審査）、`FIXPLAN-AND-EVALUATION.md`（修正案 F1-F14 + 要件一/二の評価）、`CHAINS-INTEGRATION-DESIGN.md`（自問型思考チェーンの四層アーキテクチャ）、`PIVOTHUB-AUDIT-AND-FUSION-EVALUATION.md`（PivotHub の審査と融合評価）、`INTRANET-PIVOT-DESIGN.md`（内部ネットワーク浸透能力の設計）。
 
-## 1. 需求清单与可实现性总评
+## 1. 要件一覧と実現可能性の総評
 
-| # | 需求 | 出处 | 可实现性 | 工程量 | 前置依赖 |
+| # | 要件 | 出典 | 実現可能性 | 工数 | 前提依存 |
 |---|---|---|---|---|---|
-| 1 | 高危缺陷修复(F1-F14) | FIXPLAN Part 1 | ✅ 全部可修 | ~2 周(P0-P4)+ F13/F14 各 1-2 天 | 无 |
-| 2 | 同入口 findings 合并/去重 | FIXPLAN 需求一 | ✅ 可做,挂载点干净(`db.RecordFindingTx`) | 档 A 1-2 天;档 B(语义判重,可选)+2-3 天 | 需求 3(先验证后合并) |
-| 3 | 反证验证 agent(占位→验证→落图) | FIXPLAN 需求二 | ✅ 可做,地基好(status 枚举/dismissed/trigger/retester 模板全现成) | 方案甲 1-2 天;与 retester 管线合一 +1-2 天 | 无硬依赖;chains L3 可强化其反证 checklist |
-| 4 | 反问思维链(chains)接入 | CHAINS-DESIGN | ✅ 可做,四层架构已定稿(L1 代码判据/L2 铁律常驻/L3 骨架路由/L4 原文兜底) | ETL 0.5 天;L4 skills 化当天;L2 蒸馏数天(人工);L3+L1 1-2 周 | 无硬依赖 |
-| 5 | PivotHub 融合 | PIVOTHUB-EVAL | ⚠️ 重新定义为"原理借鉴,不做系统对接" | —(已并入需求 6) | — |
-| 6 | 原生内网渗透(两阶段编想) | INTRANET-DESIGN | ✅ 可做,但**是最大工程**:session/tunnel/数据模型三块新建 | 期 0-6 共 5-7 周 | F3/F4/F5(期 0 安全前置)、需求 4 的 chains L3 |
-| 7 | 摆脱 Docker(原生部署) | INTRANET 期 6 + 风险 2 | ✅ 可做,本就是原生支持,补齐部署链即可 | 2-3 天 | 与需求 6 期 3 同步价值最大 |
-| 8 | 临时 HTTP 服务忘关泄露(受管资源) | FIXPLAN F13 + INTRANET 4.3a | ✅ 可做,有 PivotHub filestage 现成范式 | 2-3 天 | 无;纳入内网期 1 的受管资源框架更经济 |
-| 9 | 反测绘伪装门控 | FIXPLAN F14 | ✅ 可做,纯中间件 | 1-2 天 | 无 |
+| 1 | 高リスク欠陥の修正（F1-F14） | FIXPLAN Part 1 | ✅ すべて修正可能 | ~2 週間（P0-P4）+ F13/F14 各 1-2 日 | なし |
+| 2 | 同一入口の findings を統合・重複排除 | FIXPLAN 要件一 | ✅ 可能、マウントポイントがきれい（`db.RecordFindingTx`） | グレード A 1-2 日、グレード B（意味的重複判定、任意）+2-3 日 | 要件 3（先に検証してから統合） |
+| 3 | 反証検証 agent（プレースホルダー→検証→グラフ反映） | FIXPLAN 要件二 | ✅ 可能、土台が良好（status 列挙/dismissed/trigger/retester テンプレートはすべて既存） | 案甲 1-2 日、retester パイプラインとの統合 +1-2 日 | ハード依存なし、chains L3 で反証チェックリストを強化できる |
+| 4 | 自問型思考チェーン（chains）の組み込み | CHAINS-DESIGN | ✅ 可能、四層アーキテクチャは確定済み（L1 コード判定基準/L2 鉄則常駐/L3 骨格ルーティング/L4 原文フォールバック） | ETL 0.5 日、L4 の skills 化は当日、L2 蒸留は数日（人手）、L3+L1 1-2 週間 | ハード依存なし |
+| 5 | PivotHub の融合 | PIVOTHUB-EVAL | ⚠️ 「原理を参考にするだけでシステム連携はしない」と再定義 | —（要件 6 に統合済み） | — |
+| 6 | ネイティブな内部ネットワーク浸透（2 段階の編成） | INTRANET-DESIGN | ✅ 可能だが**最大の工事**：session/tunnel/データモデルの 3 ブロックを新規構築 | 期 0-6 で計 5-7 週間 | F3/F4/F5（期 0 の安全前提）、要件 4 の chains L3 |
+| 7 | Docker からの脱却（ネイティブデプロイ） | INTRANET 期 6 + リスク 2 | ✅ 可能、もともとネイティブ対応で、デプロイチェーンを補完するだけ | 2-3 日 | 要件 6 の期 3 と同期させると最も効果的 |
+| 8 | 一時 HTTP サービスの閉じ忘れによる漏えい（管理対象リソース） | FIXPLAN F13 + INTRANET 4.3a | ✅ 可能、PivotHub filestage に既存のパターンあり | 2-3 日 | なし、内部ネットワーク期 1 の管理対象リソースフレームワークに組み込むほうが経済的 |
+| 9 | 対偵察の偽装ゲート | FIXPLAN F14 | ✅ 可能、純粋なミドルウェア | 1-2 日 | なし |
 
-**结论:9 项全部可实现,没有一项被判不可行。** 差异只在成本、依赖顺序与风险。三句话概括判断:
+**結論：9 項目はすべて実現可能で、実行不能と判断されたものは 1 つもありません。** 違うのはコスト、依存順序、リスクだけです。判断を 3 文で要約します：
 
-- **需求 2/3/4 全部落在现有架构的"设计引力"上**(触发器、retester 模板、skills、status 枚举),是低垂果实;
-- **需求 1(修复)是一切的地基**,尤其 F3/F4/F5(guard fail-closed、审批覆盖 planner/mainagent、RoE 代码强制)是需求 6 的法定前置;
-- **需求 6 是唯一的大工程**,它的价值上限取决于需求 4(chains 给判据)和需求 1(闸门给安全)的完成度。
+- **要件 2/3/4 はすべて既存アーキテクチャの「設計上の引力」に乗っています**（トリガー、retester テンプレート、skills、status 列挙）。低い位置にある果実です。
+- **要件 1（修正）はすべての土台です**。とくに F3/F4/F5（guard の fail-closed、planner/mainagent への承認カバレッジ、RoE のコード強制）は要件 6 の正式な前提条件です。
+- **要件 6 が唯一の大工事です**。その価値の上限は、要件 4（chains が判定基準を与える）と要件 1（ゲートが安全を与える）の完成度に依存します。
 
-## 2. 依赖关系(为什么是这个顺序)
+## 2. 依存関係（なぜこの順序か）
 
 ```
-F1-F14 修复(地基)                    chains ETL(0.5 天,最先做)
+F1-F14 修正（土台）                  chains ETL（0.5 日、最優先）
   │                                    │
-  ├─ F3/F4/F5 ──────────────┐          ├─ L4 skills 化(当天见效)
-  │                          ▼          ├─ L2 meta 蒸馏 → planner/worker system
-  ▼                          │          └─ L3 骨架 + chain_tags 路由 ──┐
-验证 agent(需求 3)           │                    │                  │
-  │(先验证)                  │                    ├─ 验证 agent 的反证 checklist
+  ├─ F3/F4/F5 ──────────────┐          ├─ L4 skills 化（当日から効果）
+  │                          ▼          ├─ L2 meta 蒸留 → planner/worker system
+  ▼                          │          └─ L3 骨格 + chain_tags 経路 ──┐
+検証 agent（要件 3）         │                    │                  │
+  │（先に検証）             │                    ├─ 検証 agent の反証チェックリスト
   ▼                          │                    │                  │
-findings 合并(需求 2)        ▼                    ▼                  ▼
-                     内网渗透 期 0-6(需求 6)◄── chains L3 pivot/ad/priv
+findings マージ（要件 2）    ▼                    ▼                  ▼
+                     内部ネットワーク浸透 期 0-6（要件 6）◄── chains L3 pivot/ad/priv
                           │
-                          ├─ 期 1 含 stage_share 受管资源框架(需求 8 并入)
-                          └─ 期 5/6 原生部署链(需求 7 并入)
-F14 伪装门控(需求 9):独立,随时可做,VPS 公网部署前必须做
+                          ├─ 期 1 に stage_share 管理リソース基盤を含む（要件 8 を統合）
+                          └─ 期 5/6 ネイティブデプロイチェーン（要件 7 を統合）
+F14 偽装ゲート（要件 9）：独立、いつでも可、VPS 公開デプロイ前に必須
 ```
 
-关键依赖逻辑:
+依存関係の要点：
 
-1. **需求 2 必须在需求 3 之后**:合并只作用于 `status='confirmed'` 的 finding,否则误报会污染聚合键(FIXPLAN 需求一)。
-2. **内网期 0 = F3/F4/F5**:内网横向的 blast radius 是业务事故级,RoE 代码强制与 fail-closed 不是可选项(INTRANET §6.3)。
-3. **chains L3 是内网 planner 的知识来源**:pivot/ad/priv 共 22 篇骨架没接入前,内网 agent 是"有枪无弹"(INTRANET §4.6)。
-4. **需求 8 提前做不难,但纳入内网期 1 更经济**:受管资源台账框架一次成型,stage_share/隧道进程/反弹监听共用。
-5. **F14 与其他一切正交**:它是入站伪装层,VPS 公网部署的话越早越好。
+1. **要件 2 は要件 3 より後でなければなりません**：統合は `status='confirmed'` の finding にのみ作用します。そうでないと誤検知が集約キーを汚染します（FIXPLAN 要件一）。
+2. **内部ネットワーク期 0 = F3/F4/F5**：内部ネットワーク横展開の blast radius は業務事故級であり、RoE のコード強制と fail-closed は選択肢ではありません（INTRANET §6.3）。
+3. **chains L3 は内部ネットワーク planner の知識源です**：pivot/ad/priv 計 22 本の骨格を組み込む前は、内部ネットワーク agent は「銃はあるが弾がない」状態です（INTRANET §4.6）。
+4. **要件 8 を前倒しするのは難しくありませんが、内部ネットワーク期 1 に組み込むほうが経済的です**：管理対象リソース台帳のフレームワークを一度で作り上げれば、stage_share/トンネルプロセス/リバースリスニングで共用できます。
+5. **F14 は他のすべてと直交します**：これはインバウンドの偽装層であり、VPS をインターネットに公開するなら早いほどよいです。
 
-## 3. 统一路线图(按优先级,可逐阶段交付)
+## 3. 統一ロードマップ（優先度順、段階ごとにデリバリー可能）
 
-### 阶段 0:地基加固(约 2 周,单人)
-F1/F2(监听收敛+代理鉴权,1 天)→ F3/F4/F5(guard fail-closed+审批全覆盖+RoE 强制,2-3 天,**内网前置**)→ F6/F7(会话凭证,2 天)→ F8/F9(签名+CI 门,3-4 天)→ F10/F11(注入标注+数据治理,2-3 天)→ F12(顺手项)。F14 若 VPS 公网部署插队到最前。
+### 段階 0：土台の強化（約 2 週間、1 人）
+F1/F2（リスナーの集約+プロキシ認証、1 日）→ F3/F4/F5（guard の fail-closed+承認の全網羅+RoE 強制、2-3 日、**内部ネットワークの前提**）→ F6/F7（セッション認証情報、2 日）→ F8/F9（署名+CI ゲート、3-4 日）→ F10/F11（インジェクション注記+データガバナンス、2-3 日）→ F12（ついでの項目）。F14 は VPS をインターネットに公開する場合は最優先に割り込みます。
 
-### 阶段 1:数据可信度 + chains 快速收益(约 2 周)
-1. chains ETL 解析脚本(0.5 天,全部后续工作的前提);
-2. chains L4:9 个 skill 目录 + 索引(当天见效);
-3. 验证 agent 方案甲(1-2 天)+ 与 retester 合并为 finding_checks 管线(1-2 天),verifier 提示词引用 chains 判定章节;
-4. findings 合并档 A(1-2 天)+ 手动拆分操作;
-5. chains L2:meta 六篇蒸馏(人工,数天,作者主导)→ planner/worker system。
+### 段階 1：データの信頼性 + chains の短期成果（約 2 週間）
+1. chains ETL の解析スクリプト（0.5 日、以降すべての作業の前提）。
+2. chains L4：9 個の skill ディレクトリ + 索引（当日効果あり）。
+3. 検証 agent の案甲（1-2 日）+ retester との統合による finding_checks パイプライン化（1-2 日）。verifier プロンプトが chains の判定セクションを参照します。
+4. findings 統合のグレード A（1-2 日）+ 手動分割操作。
+5. chains L2：meta 6 篇の蒸留（人手、数日、作者主導）→ planner/worker system。
 
-**阶段 1 交付后**:误报率下降、重复漏洞聚合、agent 有内网/各漏洞类的判据可查——使用体验的三个痛点(重复、误报、无知识)全部缓解。
+**段階 1 のデリバリー後**：誤検知率の低下、重複する脆弱性の集約、agent が内部ネットワーク/各脆弱性クラスの判定基準を参照できる——利用体験上の 3 つのペインポイント（重複、誤検知、知識の欠如）がすべて緩和されます。
 
-### 阶段 2:chains 深度接入(约 1-2 周)
-L3:技术链骨架蒸馏 + `chain_tags` 意图路由;L1:同质响应/统一拦截/tarpit 等代码判据挂引擎;Settlement 收尾 Q 清单自检。
+### 段階 2：chains の深い組み込み（約 1-2 週間）
+L3：技術チェーン骨格の蒸留 + `chain_tags` による意図ルーティング。L1：同質レスポンス/統一インターセプト/tarpit などのコード判定基準をエンジンに接続。Settlement の終了処理時に Q リストでセルフチェックします。
 
-### 阶段 3:内网渗透能力(约 5-7 周,INTRANET-DESIGN 期 0-6)
-期 0 已在阶段 0 完成 → 期 1 session 子系统(含 stage_share/受管资源框架,需求 8 并入)→ 期 2 凭据一等实体 → 期 3 tunnel 子系统 + proxyEnv 按任务绑定 → 期 4 阶段编排(授权检查点+关联任务+chains L3 内网路由)→ 期 5 reverse 驱动 → 期 6 原生部署链(需求 7 并入,chisel 钉版+`artex doctor`+重依赖降级)。
-验收环境:PivotHub `scripts/lab` 三层靶场(现成)。
+### 段階 3：内部ネットワーク浸透能力（約 5-7 週間、INTRANET-DESIGN 期 0-6）
+期 0 は段階 0 で完了済み → 期 1 session サブシステム（stage_share/管理対象リソースフレームワークを含む、要件 8 を統合）→ 期 2 認証情報のファーストクラスエンティティ化 → 期 3 tunnel サブシステム + タスク単位の proxyEnv バインディング → 期 4 ステージ編成（認可チェックポイント+関連タスク+chains L3 の内部ネットワークルーティング）→ 期 5 reverse ドライバ → 期 6 ネイティブデプロイチェーン（要件 7 を統合、chisel のバージョン固定+`artex doctor`+ヘビー依存のダウングレード）。
+検収環境：PivotHub `scripts/lab` の三層レンジ（既存）。
 
-### 全程穿插(随时可做的小项)
-F14 伪装门控(1-2 天);F13 若不并入期 1 可独立提前(2-3 天);vshell MCP 过渡(零代码,期 1 前顶 webshell 管理);PivotHub 知识合流进 chains L3(ETL 时顺手)。
+### 全期間にわたる随時差し込み（いつでもできる小項目）
+F14 偽装ゲート（1-2 日）。F13 は期 1 に統合しないなら単独で前倒し可能（2-3 日）。vshell MCP の過渡対応（コード変更ゼロ、期 1 前に webshell 管理を肩代わり）。PivotHub の知識を chains L3 に合流（ETL 時に一緒に）。
 
-## 4. 总工期与人力估计
+## 4. 総工期と工数の見積もり
 
-单人全职:阶段 0-2 约 5-6 周,阶段 3 约 5-7 周,**合计约 3 个月全部落地**;其中"今天就能开工且当天见效"的是:F1、F3、F14、chains ETL+L4。
+1 人フルタイムの場合：段階 0-2 が約 5-6 週間、段階 3 が約 5-7 週間、**合計約 3 か月ですべて着地**します。このうち「今日から着手でき、当日に効果が出る」ものは F1、F3、F14、chains ETL+L4 です。
 
-## 5. 贯穿全程的三条纪律(从讨论中沉淀的原则)
+## 5. 全期間を貫く 3 つの規律（議論から醸成された原則）
 
-1. **Prompting is not enforcement**:安全边界(RoE/审批/资源回收)一律代码强制,提示词只做正向引导。来源:H2 教训、F5、F13、chains L1。
-2. **受管资源原则**:凡带外部暴露面的资源(暂存/隧道/反弹监听/防火墙规则)必须平台登记台账、强制 TTL、归属任务、平台回收。来源:F13/INTRANET 4.3a。
-3. **诚实性工程**:学 PivotHub——状态不伪造(alive 必须真探活)、验证必须决定性(隧道内实测/verify+expect)、文档如实记已知限制。来源:PIVOTHUB-EVAL §3.3。
+1. **Prompting is not enforcement**：安全境界（RoE/承認/リソース回収）は一律コードで強制し、プロンプトは前向きな誘導のみを行います。出典：H2 の教訓、F5、F13、chains L1。
+2. **管理対象リソースの原則**：外部露出面を持つリソース（一時保管/トンネル/リバースリスニング/ファイアウォールルール）は、必ずプラットフォームに台帳登録し、TTL を強制し、タスクに帰属させ、プラットフォームが回収します。出典：F13/INTRANET 4.3a。
+3. **誠実性エンジニアリング**：PivotHub に学ぶ——状態を偽造しない（alive は本当に生存確認する）、検証は決定的でなければならない（トンネル内での実測/verify+expect）、ドキュメントには既知の制限をありのまま記します。出典：PIVOTHUB-EVAL §3.3。
 
 
-## 6. 需求间冲突评估与代码可行性核验(2026-09-13 补)
+## 6. 要件間の衝突評価とコード実現可能性の検証（2026-09-13 追記）
 
-### 6.1 真冲突(互相打架,已给出解法)
+### 6.1 真の衝突（互いに矛盾するもの、解決策は提示済み）
 
-| # | 冲突 | 解法 |
+| # | 衝突 | 解決策 |
 |---|---|---|
-| C1 | F13 进程组收割 × 隧道/反弹监听需长命:一刀切收割会杀掉 agent 正经建的隧道 | 立规矩:长寿资源禁止裸 Bash 起,必须走受管工具(`tunnel_deploy`/`reverse_listen`)注册台账豁免收割;guard 规则引导。**2026-09-13 缓解**:立足点策略定为 webshell-first(`INTRANET-PIVOT-DESIGN.md` 4.2),反弹监听降级为临时 TTL 通道,session 层从本冲突摘出,C1 仅剩隧道这一本质长命资源 |
-| C2 | 合并 × 验证:delta 合并进已 confirmed 的 finding,新证据搭"已验证"便车 | 每次合并触发对该 delta 的增量重验(复用 finding_checks 管线) |
-| C3 | 按任务绑隧道 × MITM 单实例单上游(`traffic/traffic.go:158-186`):MITM 分不清连接属于哪个任务 | 每任务独立 MITM 监听端口(各有上游);**go-mitmproxy 多实例可行性未验证**,退路:按代理认证用户分流上游 |
-| C4 | pending 占位节点 × planner 语义:planner 会把未验证 finding 当"已突破" | 硬性规则:pending 节点不计入 prove_goal、但参与意图去重;写进 planner 工具与提示词 |
+| C1 | F13 のプロセスグループ回収 × トンネル/リバースリスニングの長命性：一律の回収は agent が正規に張ったトンネルまで殺してしまう | 規則を定める：長命リソースは素の Bash で起動することを禁じ、管理対象ツール（`tunnel_deploy`/`reverse_listen`）で台帳登録して回収を免除する。guard ルールで誘導する。**2026-09-13 の緩和**：フットホールド戦略を webshell-first（`INTRANET-PIVOT-DESIGN.md` 4.2）と定め、リバースリスニングは一時的な TTL チャネルに格下げし、session 層を本衝突から外した。C1 には本質的に長命なリソースであるトンネルだけが残る |
+| C2 | 統合 × 検証：delta を confirmed 済みの finding に統合すると、新しいエビデンスが「検証済み」に便乗してしまう | 統合のたびにその delta の増分再検証をトリガーする（finding_checks パイプラインを再利用） |
+| C3 | タスク単位のトンネルバインディング × MITM の単一インスタンス単一上流（`traffic/traffic.go:158-186`）：MITM は接続がどのタスクに属するか区別できない | タスクごとに独立した MITM リスンポートを持たせる（それぞれに上流を持つ）。**go-mitmproxy の複数インスタンスの実現可能性は未検証**。退路：プロキシ認証ユーザーごとに上流を振り分ける |
+| C4 | pending プレースホルダーノード × planner の意味論：planner は未検証の finding を「突破済み」とみなしてしまう | 厳格なルール：pending ノードは prove_goal に算入しないが、意図の重複排除には参加させる。planner のツールとプロンプトに明記する |
 
-### 6.2 设计一致性张力(不致命,需意识到)
+### 6.2 設計の一貫性における緊張（致命的ではないが、認識が必要）
 
-- 新增 session/tunnel/stage 工具群 × "worker 工具面刻意收敛"哲学 → `AugmentTools` 按阶段绑定,仅内网 worker 挂载。
-- stage_share 对目标可见需绑外部接口 × F1 loopback 收敛 → TTL/token/防火墙小孔缓解,文档化。
-- F5 RoE 对自由 Bash 只能尽力而为(混淆命令无法可靠解析目标)→ RoE 真正的强制点是结构化工具(`session_exec`/`tunnel_*` 的 host 参数),Bash 靠 guard ask 兜底;内网工具面设计需配合。
+- 新規の session/tunnel/stage ツール群 × 「worker のツール面は意図的に絞る」という哲学 → `AugmentTools` を段階ごとにバインドし、内部ネットワーク worker にのみマウントする。
+- stage_share を目標から可視にするには外部インターフェースへのバインドが必要 × F1 の loopback 収束 → TTL/token/ファイアウォールの小さな穴で緩和し、ドキュメント化する。
+- F5 の RoE は自由な Bash に対してはベストエフォートでしかありません（難読化されたコマンドからは目標を確実に解析できない）→ RoE の本当の強制点は構造化ツール（`session_exec`/`tunnel_*` の host パラメータ）であり、Bash は guard ask で受け止める。内部ネットワークのツール面の設計もこれに合わせる必要がある。
 
-### 6.3 代码级未验证项(2026-09-13 已全部 spike 验证完毕)
+### 6.3 コードレベルの未検証項目（2026-09-13 にすべて spike 検証済み）
 
-1. ~~norma SDK 对 planner/mainagent 的 hooks 支持~~ **已验证(VPS spike,agent-18)**:SDK `agentcore.Options.Hooks` 字段原生存在,harness `execOne` 统一执行 PreToolUse(`harness/tools.go:60-66`),三类 agent 共享同一执行器——**ARTEX 侧改 2 个 Options 字面量 + setter 约 15 行即可,SDK 零改动**(接线点 `server/intercept.go:19-21` 现成)。Settlement 自检:自检工具平时挂载+不进 DisabledTools+收尾词指令即可,纯 ARTEX 侧;硬保证(未自检不许 finish)才需 SDK 加 `Settlement.RequiredTools`(`harness/query.go:454`)。
-2. ~~go-mitmproxy 多实例共存~~ **已验证(实测程序 `.vps/spike-mitm/`)**:同进程 3 实例并存,各自独立 CA/上游/addon 全部正确,无全局状态冲突(`upstreamProxy` 是实例字段,`proxy/proxy.go:100`)。注意:每任务独立 CaRootPath 防首建竞争;`Proxy.Close()` 有 attacker goroutine 泄漏(实例生命周期与任务绑定即可);日志按实例打标;https/socks5 路径源码同构未实测。
-3. 工程量估计均为单人熟练开发口径,未含联调返工。
+1. ~~norma SDK の planner/mainagent に対する hooks サポート~~ **検証済み（VPS spike、agent-18）**：SDK の `agentcore.Options.Hooks` フィールドはネイティブに存在し、harness の `execOne` が PreToolUse を統一的に実行します（`harness/tools.go:60-66`）。3 種類の agent は同一の実行器を共有します——**ARTEX 側で Options リテラル 2 個 + setter の約 15 行を変えるだけでよく、SDK はゼロ変更**です（接続点 `server/intercept.go:19-21` は既存）。Settlement のセルフチェック：セルフチェックツールを常時マウントし、DisabledTools に入れず、締めの言葉で指示すればよく、純粋に ARTEX 側で完結します。ハード保証（セルフチェックなしでは finish できない）にのみ SDK への `Settlement.RequiredTools` の追加が必要です（`harness/query.go:454`）。
+2. ~~go-mitmproxy の複数インスタンス共存~~ **検証済み（実測プログラム `.vps/spike-mitm/`）**：同一プロセス内で 3 インスタンスが併存し、それぞれ独立した CA/上流/addon がすべて正しく動作し、グローバル状態の衝突はありません（`upstreamProxy` はインスタンスのフィールドです。`proxy/proxy.go:100`）。注意：タスクごとに独立した CaRootPath で初回生成の競合を防ぐこと、`Proxy.Close()` に attacker goroutine のリークがあること（インスタンスのライフサイクルをタスクにバインドすればよい）、ログはインスタンスごとにラベル付けすること、https/socks5 経路はソース上は同構造だが実測はしていないこと。
+3. 工数の見積もりはいずれも 1 人の熟練開発者を基準としたもので、結合テストの手戻りは含みません。
 
-### 6.4 已验证无冲突(不再讨论)
+### 6.4 衝突なしを検証済み（以降は議論しない）
 
-F14×F6(SSE 同源 cookie);F14×MCP/自更新/自定义工具(出站不过门控);需求 7×F9(release CI 顺带校验 chisel 哈希);chains L2×prompt 缓存(静态前缀稳定);L1×verifier(共享信号源);合并挂载点/验证地基/status 枚举/triggers/AugmentTools/proxyEnv/SetUpstreamProxy(x/crypto ssh)均有 file:line 实证。
+F14×F6（SSE の同一オリジン cookie）。F14×MCP/自己更新/カスタムツール（アウトバウンドはゲートを通らない）。要件 7×F9（release CI で chisel のハッシュを併せて検証）。chains L2×prompt キャッシュ（静的プレフィックスが安定）。L1×verifier（信号源を共有）。統合のマウントポイント/検証の土台/status 列挙/triggers/AugmentTools/proxyEnv/SetUpstreamProxy（x/crypto ssh）はいずれも file:line の実証があります。

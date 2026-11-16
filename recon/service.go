@@ -1,8 +1,9 @@
-// service.go 常见端口 → 服务名(用于 recon 监听端口登记 service 资产时命名;
-// 语义同 PivotHub recon.py 的 PORT_SERVICES,只保留内网高频端口)。纯函数。
+// service.go はよく使われるポート → サービス名（recon のリスニングポートを service アセットとして
+// 登録する際の命名に使う。意味は PivotHub の recon.py の PORT_SERVICES と同じで、イントラネットで
+// 頻出するポートのみ保持）。純粋関数。
 package recon
 
-// portServices 常见端口 → 标准服务名。
+// portServices はよく使われるポート → 標準サービス名。
 var portServices = map[int]string{
 	21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
 	80: "HTTP", 88: "Kerberos", 110: "POP3", 111: "rpcbind", 135: "MSRPC",
@@ -16,5 +17,5 @@ var portServices = map[int]string{
 	27017: "MongoDB",
 }
 
-// ServiceOf 返回端口对应的常见服务名;未收录返回 ""。
+// ServiceOf はポートに対応する標準サービス名を返す。未収録の場合は "" を返す。
 func ServiceOf(port int) string { return portServices[port] }

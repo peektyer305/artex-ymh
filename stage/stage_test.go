@@ -44,7 +44,7 @@ func TestPutFileAndDownload(t *testing.T) {
 	if want < 14*time.Minute || want > 15*time.Minute {
 		t.Fatalf("default TTL off: expires in %v", want)
 	}
-	// 落盘权限:目录 0700、文件 0600(Windows 无 Unix 权限位语义,跳过)。
+	// 書き込み権限: ディレクトリ 0700、ファイル 0600（Windows には Unix のパーミッションビットの意味がないためスキップ）。
 	if runtime.GOOS != "windows" {
 		st, err := os.Stat(m.dir)
 		if err != nil || st.Mode().Perm() != 0o700 {
@@ -56,7 +56,7 @@ func TestPutFileAndDownload(t *testing.T) {
 		}
 	}
 
-	// 下载:内容一致、attachment、计数记账。
+	// ダウンロード: 内容一致、attachment、カウントの記録。
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", e.URL, nil)
 	req.RemoteAddr = "10.1.2.3:5555"
@@ -96,7 +96,7 @@ func TestDownloadConsistent404(t *testing.T) {
 		bodies[name] = rec.Body.String()
 	}
 	if bodies["bad token"] != bodies["bad name"] || bodies["bad name"] != bodies["both wrong"] {
-		t.Fatalf("404 响应不一致，给枚举留了信号: %v", bodies)
+		t.Fatalf("404 応答が一致していません。列挙に手掛かりを与えています: %v", bodies)
 	}
 }
 
@@ -117,7 +117,7 @@ func TestOneShotBurnAfterFullDownload(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(m.dir, e.Token)); !os.IsNotExist(err) {
 		t.Fatalf("staged file should be removed, stat err = %v", err)
 	}
-	// 即焚后同一 URL 404。
+	// 消去後、同じ URL は 404。
 	rec2 := httptest.NewRecorder()
 	m.Download(rec2, httptest.NewRequest("GET", e.URL, nil), e.Token, e.Name)
 	if rec2.Code != 404 {
@@ -141,7 +141,7 @@ func TestTTLClampAndExpirySweep(t *testing.T) {
 	if d := time.Until(lo.ExpiresAt); d > DefaultTTL || d < DefaultTTL-time.Minute {
 		t.Fatalf("TTL<=0 should default to DefaultTTL, got %v", d)
 	}
-	// 直接塞一条已过期记录，sweep 应当销毁并记账。
+	// 期限切れのレコードを直接 1 件入れ、sweep が破棄して記録するはず。
 	exp, err := m.PutContent("exp.txt", []byte("x"), PutOpts{TTL: minTTL})
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +152,7 @@ func TestTTLClampAndExpirySweep(t *testing.T) {
 	var events []Event
 	m.OnEvent = func(ev Event) { events = append(events, ev) }
 	m.sweep(time.Now())
-	if len(m.List()) != 2 { // hi + lo 存活,exp 被收
+	if len(m.List()) != 2 { // hi + lo が生存、exp は回収済み
 		t.Fatalf("after sweep: %d entries left", len(m.List()))
 	}
 	if len(events) != 1 || events[0].Kind != EventExpire || events[0].Entry.Token != exp.Token {
@@ -179,7 +179,7 @@ func TestDownloadRateLimitPerToken(t *testing.T) {
 			t.Fatalf("attempt %d: status = %d", i+1, rec.Code)
 		}
 	}
-	if rec := req(); rec.Code != 404 { // 限速响应与「不存在」一致
+	if rec := req(); rec.Code != 404 { // レート制限の応答は「存在しない」と一致する
 		t.Fatalf("rate-limited attempt should get the uniform 404, got %d", rec.Code)
 	}
 }
@@ -195,7 +195,7 @@ func TestRestartSweepClearsOrphans(t *testing.T) {
 		t.Fatal(err)
 	}
 	m1.Close()
-	// 台账是进程内的:重开管理器必须清掉上一进程残留的文件。
+	// 台帳はプロセス内のもの: マネージャを開き直すと前プロセスの残留ファイルが消えているはず。
 	m2, err := New(context.Background(), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -239,11 +239,11 @@ func TestBaseURLComposition(t *testing.T) {
 	if e.URL != want {
 		t.Fatalf("URL = %q, want %q", e.URL, want)
 	}
-	// 落盘的文件仍是原始文件名(未转义)。
+	// ディスク上のファイルは元のファイル名のまま（未エスケープ）。
 	if _, err := os.Stat(filepath.Join(m.dir, e.Token, "f name.sh")); err != nil {
 		t.Fatalf("on-disk file should keep raw name: %v", err)
 	}
-	// 磁盘读取路径用原始 name 而非 URL 转义名。
+	// ディスクからの読み取りパスは URL エスケープ名ではなく元の name を使う。
 	rec := httptest.NewRecorder()
 	m.Download(rec, httptest.NewRequest("GET", e.URL, nil), e.Token, "f name.sh")
 	if rec.Code != 200 {
@@ -258,7 +258,7 @@ func TestInvalidNameRejected(t *testing.T) {
 			t.Fatalf("name %q should be rejected", name)
 		}
 	}
-	// "../escape" 取 basename 后是 "escape"——允许(无路径逃逸),确认落在 dir 内。
+	// "../escape" は basename を取ると "escape" になる——許可され（パス脱出なし）、dir 内に収まることを確認する。
 	e, err := m.PutContent("../escape", []byte("x"), PutOpts{})
 	if err != nil {
 		t.Fatal(err)

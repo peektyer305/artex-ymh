@@ -33,16 +33,16 @@ export function NavUser({
   const [pwOpen, setPwOpen] = React.useState(false);
 
   function handleLogout() {
-    // 先吊销服务端 refresh token(F6),再清本地登录态;refresh 已失效也照常登出。
+    // 先にサーバー側の refresh トークンを失効させ（F6）、その後ローカルのログイン状態を消す。refresh が失効済みでも通常どおりログアウトする。
     void api
       .logout()
       .catch(() => {
-        // refresh 已失效也照常登出,本地清理在 finally 里完成。
+        // refresh が失効済みでも通常どおりログアウトし、ローカルの後始末は finally で行う。
       })
       .finally(() => {
         auth.clearToken();
-        // 硬跳转：让浏览器用已清除的 cookie 发起全新请求，
-        // middleware 才能正确读到空标记并放行 /login
+        // ハードリダイレクト：ブラウザに cookie を消した状態で新しいリクエストを出させ、
+        // middleware が空のマーカーを正しく読んで /login を通過できるようにする
         window.location.href = "/login";
       });
   }
@@ -88,12 +88,12 @@ export function NavUser({
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setPwOpen(true)}>
               <KeyRound />
-              修改密码
+              パスワード変更
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
               <LogOut />
-              退出登录
+              ログアウト
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

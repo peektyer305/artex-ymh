@@ -6,7 +6,7 @@ import (
 	"github.com/Autumn-27/artex/db"
 )
 
-// anchorTestAssets 覆盖 endpoint/service/ip/root_domain 四类的固定资产集。
+// anchorTestAssets は endpoint/service/ip/root_domain の 4 種類をカバーする固定のアセット集合。
 func anchorTestAssets() []*db.Asset {
 	return []*db.Asset{
 		{ID: 1, Type: "endpoint", URL: "http://example.com/api"},
@@ -28,83 +28,85 @@ func TestAnchorFindingAsset(t *testing.T) {
 		want int64
 	}{
 		{
-			name: "endpoint 最长前缀优先",
-			text: "GET http://example.com/api/users/1?q=<script> 反射型 XSS",
-			want: 2, // /api/users 比 /api 前缀更长
+			name: "endpoint は最長プレフィックスを優先",
+			text: "GET http://example.com/api/users/1?q=<script> による反射型 XSS",
+			want: 2, // /api/users は /api より接頭辞が長い
 		},
 		{
-			name: "endpoint 次长前缀",
-			text: "http://example.com/api/x 存在注入",
+			name: "endpoint は次に長いプレフィックス",
+			text: "http://example.com/api/x にインジェクションあり",
 			want: 1,
 		},
 		{
-			name: "路径段边界不前缀匹配",
-			text: "http://example.com/apisix 未授权访问", // /api 不命中 /apisix
-			want: 4,                              // 落到 service
+			name: "パスセグメント境界ではプレフィックス一致しない",
+			// text の /api は /apisix に一致しない
+			text: "http://example.com/apisix が未認証でアクセス可能",
+			want: 4, // service にフォールバック
 		},
 		{
-			name: "service 回退",
+			name: "service へフォールバック",
 			text: "http://example.com/other/path RCE",
 			want: 4,
 		},
 		{
-			name: "https/http 区分:https 命中 https endpoint",
-			text: "https://example.com/api 敏感信息泄露",
+			name: "https/http の区別：https は https endpoint に一致",
+			text: "https://example.com/api で機密情報が漏えい",
 			want: 3,
 		},
 		{
-			name: "https/http 区分:http service 不匹配 https URL",
-			text: "https://example.com/login 弱口令", // https endpoint /api 不前缀匹配 /login
-			want: 8,                                 // http service 端口/scheme 不符 → root_domain
+			name: "https/http の区別：http service は https URL に一致しない",
+			// https endpoint の /api は /login に前方一致しない
+			text: "https://example.com/login の弱いパスワード",
+			want: 8, // http service はポート/scheme が合わない → root_domain
 		},
 		{
-			name: "显式端口不匹配默认端口 service",
-			text: "http://example.com:8080/x 任意文件上传",
-			want: 8, // service 是 80 端口 → root_domain
+			name: "明示ポートは既定ポートの service と一致しない",
+			text: "http://example.com:8080/x で任意ファイルアップロード",
+			want: 8, // service は 80 番ポート → root_domain
 		},
 		{
-			name: "ip 兜底",
-			text: "http://10.0.0.2:9000/admin 存在弱口令",
+			name: "ip へフォールバック",
+			text: "http://10.0.0.2:9000/admin に弱いパスワードあり",
 			want: 6,
 		},
 		{
-			name: "service 优先于同 host 的 ip",
-			text: "http://10.0.0.1:8080/actuator 未授权",
+			name: "service は同じ host の ip より優先",
+			text: "http://10.0.0.1:8080/actuator が未認証",
 			want: 5,
 		},
 		{
-			name: "root_domain 兜底:子域名后缀匹配",
-			text: "https://sub.example.com/ sqli",
+			name: "root_domain へフォールバック:サブドメインの接尾辞一致",
+			text: "https://sub.example.com/ で sqli",
 			want: 8,
 		},
 		{
-			name: "多个 URL 取第一个",
-			text: "先请求 http://example.com/api/x 再对比 http://10.0.0.2/y",
+			name: "複数 URL は最初のものを取る",
+			text: "先に http://example.com/api/x を要求し、次に http://10.0.0.2/y と比較",
 			want: 1,
 		},
 		{
-			name: "无 URL 按 host:port 匹配 service",
-			text: "10.0.0.1:8080 存在未授权访问",
+			name: "URL なしでは host:port で service に一致",
+			text: "10.0.0.1:8080 に未認証でアクセス可能",
 			want: 5,
 		},
 		{
-			name: "无 URL 裸 host 兜底到 ip",
-			text: "10.0.0.2 开放了 22 端口且弱口令可登录",
+			name: "URL なしの裸の host は ip へフォールバック",
+			text: "10.0.0.2 は 22 番ポートが開放され、弱いパスワードでログイン可能",
 			want: 6,
 		},
 		{
-			name: "无 URL 无命中保持空",
-			text: "内网服务存在弱口令,暂无可用标识",
+			name: "URL なしで一致なしなら空のまま",
+			text: "内部ネットワークのサービスに弱いパスワードがあるが、利用できる識別子がない",
 			want: 0,
 		},
 		{
-			name: "空文本",
+			name: "空のテキスト",
 			text: "",
 			want: 0,
 		},
 		{
-			name: "URL 带尾标点需剔除",
-			text: "见 http://example.com/api/x. 响应中反射了输入",
+			name: "URL 末尾の句読点は除去する",
+			text: "http://example.com/api/x. を参照、応答に入力が反射された",
 			want: 1,
 		},
 	}
@@ -115,7 +117,7 @@ func TestAnchorFindingAsset(t *testing.T) {
 				t.Errorf("anchorFindingAsset(%q) = %d (%s), want %d", c.text, got, reason, c.want)
 			}
 			if (got > 0) != (reason != "") {
-				t.Errorf("id=%d 与理由 %q 不一致", got, reason)
+				t.Errorf("id=%d と理由 %q が一致しません", got, reason)
 			}
 		})
 	}
@@ -123,18 +125,18 @@ func TestAnchorFindingAsset(t *testing.T) {
 
 func TestAnchorFindingAssetEmptyCandidates(t *testing.T) {
 	if got, _ := anchorFindingAsset("http://example.com/x", nil); got != 0 {
-		t.Errorf("空资产集应返回 0, got %d", got)
+		t.Errorf("空のアセット集合では 0 を返すべきです, got %d", got)
 	}
 }
 
 func TestAnchorFindingAssetDeterministicTie(t *testing.T) {
-	// 两条同路径 endpoint:取 id 最小者,保证合并键稳定。
+	// 同じパスの endpoint が 2 件：id の最小を取り、マージキーを安定させる。
 	assets := []*db.Asset{
 		{ID: 9, Type: "endpoint", URL: "http://example.com/api"},
 		{ID: 4, Type: "endpoint", URL: "http://example.com/api"},
 	}
 	if got, _ := anchorFindingAsset("http://example.com/api/x", assets); got != 4 {
-		t.Errorf("同分应取最小 id 4, got %d", got)
+		t.Errorf("同点なら最小の id 4 を取るべきです, got %d", got)
 	}
 }
 
@@ -142,9 +144,9 @@ func TestFallbackFindingName(t *testing.T) {
 	cases := []struct {
 		vulnClass, text, want string
 	}{
-		{"xss", "见 http://example.com/api/users/1 反射", "xss http://example.com/api/users/1"},
-		{"sqli", "没有 URL 也没有 host", "sqli"},
-		{"", "", "未命名漏洞"},
+		{"xss", "http://example.com/api/users/1 で反射を確認", "xss http://example.com/api/users/1"},
+		{"sqli", "URL も host もない", "sqli"},
+		{"", "", "名称未設定の脆弱性"},
 		{"  xss  ", "http://a.com/1", "xss http://a.com/1"},
 	}
 	for _, c := range cases {

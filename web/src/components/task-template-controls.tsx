@@ -113,7 +113,7 @@ function TaskTemplateManager({
       goal: draft.goal.trim(),
     };
     if (!input.name || !input.description || !input.goal) {
-      toast.error("请填写模板名称、描述和目标");
+      toast.error("テンプレート名・説明・ゴールを入力してください");
       return;
     }
     setSaving(true);
@@ -123,15 +123,15 @@ function TaskTemplateManager({
         onCreated(created);
         setSelectedID(created.id);
         setDraft(templateDraft(created));
-        toast.success("模板已创建");
+        toast.success("テンプレートを作成しました");
       } else {
         const updated = await api.updateTaskTemplate(selectedID, input);
         onUpdated(updated);
         setDraft(templateDraft(updated));
-        toast.success("模板已更新");
+        toast.success("テンプレートを更新しました");
       }
     } catch (error) {
-      toast.error(`保存失败：${(error as Error).message}`);
+      toast.error(`保存に失敗しました：${(error as Error).message}`);
     } finally {
       setSaving(false);
     }
@@ -152,35 +152,35 @@ function TaskTemplateManager({
         startNew();
       }
       setDeleteOpen(false);
-      toast.success("模板已删除");
+      toast.success("テンプレートを削除しました");
     } catch (error) {
-      toast.error(`删除失败：${(error as Error).message}`);
+      toast.error(`削除に失敗しました：${(error as Error).message}`);
     } finally {
       setDeleting(false);
     }
   }
 
-  let saveLabel = saving ? "保存中" : "保存修改";
-  if (!saving && selectedID == null) saveLabel = "创建模板";
+  let saveLabel = saving ? "保存中" : "変更を保存";
+  if (!saving && selectedID == null) saveLabel = "テンプレートを作成";
 
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent className="grid h-full w-full! max-w-none! grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:w-[48rem]! sm:max-w-[48rem]!">
           <SheetHeader className="border-b px-6 py-5">
-            <SheetTitle>任务模板管理</SheetTitle>
-            <SheetDescription>模板只保存描述与目标；修改不会影响已经创建的任务。</SheetDescription>
+            <SheetTitle>タスクテンプレート管理</SheetTitle>
+            <SheetDescription>テンプレートに保存されるのは説明とゴールのみです。変更は作成済みのタスクに影響しません。</SheetDescription>
           </SheetHeader>
           <div className="grid min-h-0 overflow-y-auto lg:grid-cols-[15rem_minmax(0,1fr)] lg:overflow-hidden">
             <div className="flex min-h-0 flex-col border-b p-3 lg:border-r lg:border-b-0">
               <Button type="button" variant="outline" className="w-full" onClick={startNew}>
                 <PlusIcon data-icon="inline-start" />
-                新建模板
+                テンプレートを新規作成
               </Button>
               <ScrollArea className="mt-2 max-h-44 lg:max-h-none lg:flex-1">
                 <div className="flex flex-col gap-1 pr-2">
                   {templates.length === 0 && (
-                    <p className="px-2 py-6 text-center text-muted-foreground text-sm">暂无模板</p>
+                    <p className="px-2 py-6 text-center text-muted-foreground text-sm">テンプレートはありません</p>
                   )}
                   {templates.map((template) => (
                     <button
@@ -202,32 +202,32 @@ function TaskTemplateManager({
             <ScrollArea className="min-h-0">
               <FieldGroup className="p-6">
                 <Field>
-                  <FieldLabel htmlFor="task-template-name">模板名称</FieldLabel>
+                  <FieldLabel htmlFor="task-template-name">テンプレート名</FieldLabel>
                   <Input
                     id="task-template-name"
                     value={draft.name}
                     maxLength={120}
-                    placeholder="例如：外部 Web 渗透"
+                    placeholder="例：外部 Web ペネトレーションテスト"
                     onChange={(event) => updateDraft("name", event.target.value)}
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="task-template-description">描述</FieldLabel>
+                  <FieldLabel htmlFor="task-template-description">説明</FieldLabel>
                   <Textarea
                     id="task-template-description"
                     className="min-h-28"
                     value={draft.description}
-                    placeholder="测试对象与背景"
+                    placeholder="テスト対象と背景"
                     onChange={(event) => updateDraft("description", event.target.value)}
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="task-template-goal">目标</FieldLabel>
+                  <FieldLabel htmlFor="task-template-goal">ゴール</FieldLabel>
                   <Textarea
                     id="task-template-goal"
                     className="min-h-28"
                     value={draft.goal}
-                    placeholder="任务需要达成的目标"
+                    placeholder="タスクで達成すべきゴール"
                     onChange={(event) => updateDraft("goal", event.target.value)}
                   />
                 </Field>
@@ -238,11 +238,11 @@ function TaskTemplateManager({
             {selectedID != null && (
               <Button type="button" variant="destructive" className="sm:mr-auto" onClick={() => setDeleteOpen(true)}>
                 <Trash2Icon data-icon="inline-start" />
-                删除模板
+                テンプレートを削除
               </Button>
             )}
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              关闭
+              閉じる
             </Button>
             <Button type="button" disabled={saving} onClick={() => void save()}>
               {saving ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
@@ -254,11 +254,11 @@ function TaskTemplateManager({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除模板「{draft.name || "未命名模板"}」？</AlertDialogTitle>
-            <AlertDialogDescription>已由该模板创建的任务不会受到影响。</AlertDialogDescription>
+            <AlertDialogTitle>テンプレート「{draft.name || "名称未設定のテンプレート"}」を削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>このテンプレートから作成済みのタスクは影響を受けません。</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>キャンセル</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={deleting}
@@ -268,7 +268,7 @@ function TaskTemplateManager({
               }}
             >
               {deleting && <Spinner data-icon="inline-start" />}
-              {deleting ? "删除中" : "删除"}
+              {deleting ? "削除中" : "削除"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -307,7 +307,7 @@ export function TaskTemplateControls({
       setTemplates(await api.taskTemplates());
     } catch (error) {
       setTemplates([]);
-      toast.error(`加载模板失败：${(error as Error).message}`);
+      toast.error(`テンプレートの読み込みに失敗しました：${(error as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -362,18 +362,18 @@ export function TaskTemplateControls({
     if (selectedTemplateID === id) onSelectedTemplateIDChange(null);
   };
 
-  let pickerPlaceholder = loading ? "正在加载模板" : "暂无任务模板";
-  if (!loading && templates.length > 0) pickerPlaceholder = "搜索并选择任务模板";
+  let pickerPlaceholder = loading ? "テンプレートを読み込み中" : "タスクテンプレートはありません";
+  if (!loading && templates.length > 0) pickerPlaceholder = "タスクテンプレートを検索して選択";
 
   return (
     <>
       <Field>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <FieldLabel htmlFor="task-template-picker">任务模板</FieldLabel>
+          <FieldLabel htmlFor="task-template-picker">タスクテンプレート</FieldLabel>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => openManager(null)}>
               <Settings2Icon data-icon="inline-start" />
-              管理模板
+              テンプレートを管理
             </Button>
             <Button
               type="button"
@@ -383,7 +383,7 @@ export function TaskTemplateControls({
               onClick={() => openManager({ description, goal })}
             >
               <SaveIcon data-icon="inline-start" />
-              另存为模板
+              テンプレートとして保存
             </Button>
           </div>
         </div>
@@ -404,7 +404,7 @@ export function TaskTemplateControls({
             showClear
           />
           <ComboboxContent portalContainer={portalContainer}>
-            <ComboboxEmpty>没有匹配的模板</ComboboxEmpty>
+            <ComboboxEmpty>一致するテンプレートはありません</ComboboxEmpty>
             <ComboboxList>
               {(template) => (
                 <ComboboxItem key={template.id} value={template}>
@@ -420,7 +420,7 @@ export function TaskTemplateControls({
             </ComboboxList>
           </ComboboxContent>
         </Combobox>
-        <FieldDescription>选择后会复制模板的描述和目标，不与模板保持关联。</FieldDescription>
+        <FieldDescription>選択するとテンプレートの説明とゴールがコピーされ、テンプレートとは連動しません。</FieldDescription>
       </Field>
 
       <AlertDialog
@@ -433,13 +433,13 @@ export function TaskTemplateControls({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>使用模板「{pendingTemplate?.name}」？</AlertDialogTitle>
-            <AlertDialogDescription>当前已填写的描述和目标将被模板内容覆盖。</AlertDialogDescription>
+            <AlertDialogTitle>テンプレート「{pendingTemplate?.name}」を使用しますか？</AlertDialogTitle>
+            <AlertDialogDescription>入力済みの説明とゴールはテンプレートの内容で上書きされます。</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
             <AlertDialogAction onClick={() => pendingTemplate && applyTemplate(pendingTemplate)}>
-              覆盖并使用
+              上書きして使用
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

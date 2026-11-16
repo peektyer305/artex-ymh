@@ -33,7 +33,7 @@ function StateBadge({ state }: { state: string }) {
         ? "text-red-600 dark:text-red-400"
         : "text-muted-foreground";
   const dot = state === "alive" ? "bg-emerald-500" : state === "error" ? "bg-red-500" : "bg-neutral-400";
-  const label = state === "alive" ? "存活" : state === "error" ? "失败" : state === "stopped" ? "已停" : state || "—";
+  const label = state === "alive" ? "稼働中" : state === "error" ? "失敗" : state === "stopped" ? "停止済み" : state || "—";
   return (
     <Badge variant={state === "alive" ? "secondary" : "outline"} className={cn("gap-1.5 text-xs", cls)}>
       <span className={cn("size-1.5 rounded-full", dot)} />
@@ -42,7 +42,7 @@ function StateBadge({ state }: { state: string }) {
   );
 }
 
-// 隧道台账：状态颜色区分，存活隧道可二次确认后回收（teardown）。
+// トンネル台帳：状態を色分けし、稼働中のトンネルは再確認のうえ回収（teardown）できます。
 export function TunnelsTab({
   tunnels,
   loading,
@@ -62,11 +62,11 @@ export function TunnelsTab({
     api
       .teardownTunnel(target.id)
       .then(() => {
-        toast.success(`隧道 #${target.id} 已回收`);
+        toast.success(`トンネル #${target.id} を回収しました`);
         setPendingTeardown(null);
         onRefresh();
       })
-      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "回收失败"))
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "回収に失敗しました"))
       .finally(() => setTearingDown(false));
   };
 
@@ -75,7 +75,7 @@ export function TunnelsTab({
       <div className="flex items-center justify-end gap-2 px-1 pb-2">
         <Button variant="outline" size="sm" className="h-7 gap-1" onClick={onRefresh} disabled={loading}>
           <RefreshCwIcon className={cn("size-3.5", loading && "animate-spin")} />
-          刷新
+          更新
         </Button>
       </div>
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden py-0">
@@ -84,14 +84,14 @@ export function TunnelsTab({
             <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
                 <TableHead className="w-[70px]">ID</TableHead>
-                <TableHead className="w-[90px]">任务</TableHead>
-                <TableHead className="w-[110px]">类型</TableHead>
-                <TableHead className="w-[90px]">状态</TableHead>
+                <TableHead className="w-[90px]">タスク</TableHead>
+                <TableHead className="w-[110px]">種類</TableHead>
+                <TableHead className="w-[90px]">ステータス</TableHead>
                 <TableHead className="w-[180px]">入口</TableHead>
-                <TableHead>目标</TableHead>
-                <TableHead className="w-[110px]">经会话</TableHead>
-                <TableHead className="w-[140px]">最近探活</TableHead>
-                <TableHead className="w-[160px]">错误</TableHead>
+                <TableHead>ターゲット</TableHead>
+                <TableHead className="w-[110px]">経由セッション</TableHead>
+                <TableHead className="w-[140px]">最終疎通確認</TableHead>
+                <TableHead className="w-[160px]">エラー</TableHead>
                 <TableHead className="w-[90px]">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -105,12 +105,12 @@ export function TunnelsTab({
               ) : tunnels.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} className="py-12 text-center text-sm text-muted-foreground">
-                    暂无隧道
+                    トンネルはありません
                   </TableCell>
                 </TableRow>
               ) : (
                 tunnels.map((t) => {
-                  // 后端字段是 listen_host/listen_port/target_host/target_port。
+                  // バックエンドのフィールドは listen_host/listen_port/target_host/target_port です。
                   const entry = t.listen_host ? `${t.listen_host}:${t.listen_port}` : "—";
                   const target = t.target_host ? `${t.target_host}:${t.target_port}` : "—";
                   return (
@@ -160,11 +160,11 @@ export function TunnelsTab({
                         size="sm"
                         className="h-7 gap-1"
                         disabled={t.state !== "alive"}
-                        title={t.state === "alive" ? "回收该隧道" : "仅存活隧道可回收"}
+                        title={t.state === "alive" ? "このトンネルを回収" : "稼働中のトンネルだけ回収できます"}
                         onClick={() => setPendingTeardown(t)}
                       >
                         <UnplugIcon className="size-3.5" />
-                        回收
+                        回収
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -179,17 +179,17 @@ export function TunnelsTab({
       <AlertDialog open={pendingTeardown !== null} onOpenChange={(o) => !o && setPendingTeardown(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>回收隧道 #{pendingTeardown?.id}？</AlertDialogTitle>
+            <AlertDialogTitle>トンネル #{pendingTeardown?.id} を回収しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              将拆除 {pendingTeardown?.kind} 隧道（入口{" "}
+              {pendingTeardown?.kind} トンネル（入口{" "}
               {pendingTeardown?.listen_host
                 ? `${pendingTeardown.listen_host}:${pendingTeardown.listen_port}`
                 : "—"}
-              ），正在经它代理的连接会立即中断。
+              ）を撤去します。これを経由してプロキシ中の接続は即座に切断されます。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={tearingDown}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={tearingDown}>キャンセル</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={tearingDown}
@@ -198,7 +198,7 @@ export function TunnelsTab({
                 confirmTeardown();
               }}
             >
-              {tearingDown ? "回收中…" : "确认回收"}
+              {tearingDown ? "回収中…" : "回収の確認"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

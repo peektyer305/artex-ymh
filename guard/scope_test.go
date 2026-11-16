@@ -16,16 +16,16 @@ func TestScopeMatcherDomain(t *testing.T) {
 		host string
 		want ScopeVerdict
 	}{
-		{"example.com", ScopeIn},            // 精确匹配,大小写不敏感
-		{"EXAMPLE.COM", ScopeIn},            //
-		{"www.example.com", ScopeIn},        // 子域
-		{"a.b.example.com", ScopeIn},        // 多级子域
-		{"example.com.", ScopeIn},           // 末尾点
-		{"www.EXAMPLE.com.", ScopeIn},       // 大小写+末尾点混合
-		{"notexample.com", ScopeOut},        // 后缀不等于子域
-		{"example.com.evil.com", ScopeOut},  // 域名做前缀不算
-		{"other.org", ScopeOut},             //
-		{"example.com:8443", ScopeIn},       // host:port 去端口
+		{"example.com", ScopeIn},           // 完全一致、大文字小文字を区別しない
+		{"EXAMPLE.COM", ScopeIn},           //
+		{"www.example.com", ScopeIn},       // サブドメイン
+		{"a.b.example.com", ScopeIn},       // 多段サブドメイン
+		{"example.com.", ScopeIn},          // 末尾の点
+		{"www.EXAMPLE.com.", ScopeIn},      // 大文字小文字 + 末尾の点の混在
+		{"notexample.com", ScopeOut},       // サフィックスがサブドメインと等しくない
+		{"example.com.evil.com", ScopeOut}, // ドメインをプレフィックスにしても該当しない
+		{"other.org", ScopeOut},            //
+		{"example.com:8443", ScopeIn},      // host:port はポートを除去
 	}
 	for _, c := range cases {
 		if got := m.Check(c.host); got != c.want {
@@ -41,7 +41,7 @@ func TestScopeMatcherIP(t *testing.T) {
 		want ScopeVerdict
 	}{
 		{"10.0.0.5", ScopeIn},
-		{"10.0.0.5:8080", ScopeIn}, // 去端口后精确匹配
+		{"10.0.0.5:8080", ScopeIn}, // ポート除去後に完全一致
 		{"10.0.0.6", ScopeOut},
 		{"2001:db8::1", ScopeIn},
 		{"[2001:db8::1]:443", ScopeIn},
@@ -62,7 +62,7 @@ func TestScopeMatcherCIDR(t *testing.T) {
 		{"192.168.1.1", ScopeIn},
 		{"192.168.1.254", ScopeIn},
 		{"192.168.2.1", ScopeOut},
-		{"2001:db8::dead:beef", ScopeIn}, // IPv6 包含
+		{"2001:db8::dead:beef", ScopeIn}, // IPv6 の包含
 		{"2001:db9::1", ScopeOut},
 	} {
 		if got := m.Check(c.host); got != c.want {
@@ -72,36 +72,36 @@ func TestScopeMatcherCIDR(t *testing.T) {
 }
 
 func TestScopeMatcherICPAndKeyword(t *testing.T) {
-	// icp 按 domain 语义;keyword 是死规则,不参与匹配。
-	m := NewScopeMatcher(scopeRules("icp", "example.cn", "keyword", "某集团"))
+	// icp は domain のセマンティクス。keyword は死規則で、マッチングに参加しない。
+	m := NewScopeMatcher(scopeRules("icp", "example.cn", "keyword", "某企業"))
 	if got := m.Check("www.example.cn"); got != ScopeIn {
-		t.Errorf("icp 域名语义应命中, got %v", got)
+		t.Errorf("icp のドメインセマンティクスは命中すべきです, got %v", got)
 	}
 	if got := m.Check("evil.com"); got != ScopeOut {
-		t.Errorf("keyword 规则不应命中任何 host, got %v", got)
+		t.Errorf("keyword ルールはどの host にも命中すべきではありません, got %v", got)
 	}
 }
 
 func TestScopeMatcherBadRules(t *testing.T) {
-	// 坏规则跳过;全部跳过 = 空规则 → Unknown(不算"已登记范围内")。
+	// 不正なルールはスキップ。全部スキップ = 空ルール → Unknown（「登録範囲内」とはみなさない）。
 	m := NewScopeMatcher(scopeRules("cidr", "not-a-cidr", "ip", "999.999.1.1", "domain", "", "keyword", "x"))
 	if got := m.Check("anything.com"); got != ScopeUnknown {
-		t.Errorf("全部坏规则应为 Unknown, got %v", got)
+		t.Errorf("すべて不正なルールなら Unknown になるべきです, got %v", got)
 	}
-	// 好坏混合:好规则照常生效。
+	// 正常/不正の混在:正常なルールはそのまま有効。
 	m2 := NewScopeMatcher(scopeRules("cidr", "bogus", "domain", "ok.com"))
 	if got := m2.Check("ok.com"); got != ScopeIn {
-		t.Errorf("好规则应生效, got %v", got)
+		t.Errorf("正常なルールは有効になるべきです, got %v", got)
 	}
 }
 
 func TestScopeMatcherEmptyRulesUnknown(t *testing.T) {
 	m := NewScopeMatcher(nil)
 	if got := m.Check("8.8.8.8"); got != ScopeUnknown {
-		t.Errorf("空规则 = 未登记范围, 应为 Unknown, got %v", got)
+		t.Errorf("空のルール = 未登録の範囲, Unknown になるべきです, got %v", got)
 	}
 	if m.InScope("8.8.8.8") {
-		t.Error("Unknown 不应视为 InScope")
+		t.Error("Unknown を InScope とみなすべきではありません")
 	}
 }
 
@@ -109,15 +109,15 @@ func TestScopeMatcherLocalOption(t *testing.T) {
 	m := NewScopeMatcher(scopeRules("domain", "target.com"))
 	for _, h := range []string{"127.0.0.1", "localhost", "::1", "169.254.1.1"} {
 		if got := m.Check(h); got != ScopeIn {
-			t.Errorf("默认 AllowLocal:%s 应放行(worker 本机操作), got %v", h, got)
+			t.Errorf("デフォルト AllowLocal:%s は通過させるべきです(worker の本機操作), got %v", h, got)
 		}
 	}
-	// RFC1918 内网地址不在本机放行之列——必须登记进范围。
+	// RFC1918 の内部ネットワークアドレスは本機通過の対象外——範囲に登録する必要がある。
 	if got := m.Check("10.0.0.9"); got != ScopeOut {
-		t.Errorf("未登记的内网地址应 Out, got %v", got)
+		t.Errorf("未登録の内部ネットワークアドレスは Out になるべきです, got %v", got)
 	}
 	m.AllowLocal = false
 	if got := m.Check("127.0.0.1"); got != ScopeOut {
-		t.Errorf("AllowLocal=false 时 127.0.0.1 应走范围匹配, got %v", got)
+		t.Errorf("AllowLocal=false のとき 127.0.0.1 は範囲マッチングを通すべきです, got %v", got)
 	}
 }

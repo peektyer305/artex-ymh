@@ -11,18 +11,18 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 )
 
-// 红日3 复盘 R3:fact 可信度分级。纯逻辑部分(规范化/阴性检测)不依赖 PG;
-// 落库/降级/升级走 testDB(PG 不可用时自动 skip)。
+// 紅日3 の振り返り R3:fact の信頼度等級。純粋なロジック部分（正規化/陰性判定）は PG に依存せず、
+// DB への書き込み・降格・昇格は testDB 経由（PG が使えない場合は自動で skip）。
 
 func TestNormalizeFactConfidence(t *testing.T) {
 	cases := map[string]string{
-		"":          FactConfidenceObserved, // 默认档
+		"":          FactConfidenceObserved, // 既定の等級
 		"observed":  FactConfidenceObserved,
-		" Observed": FactConfidenceObserved, // 大小写/空白容忍
+		" Observed": FactConfidenceObserved, // 大文字小文字/空白を許容
 		"inferred":  FactConfidenceInferred,
 		"INFERRED":  FactConfidenceInferred,
 		"confirmed": FactConfidenceConfirmed,
-		"garbage":   FactConfidenceObserved, // 未识别 → 默认档,不产第四档
+		"garbage":   FactConfidenceObserved, // 未認識 → 既定の等級、第 4 の等級は作らない
 	}
 	for in, want := range cases {
 		if got := normalizeFactConfidence(in); got != want {
@@ -49,14 +49,14 @@ func TestIsNegativeConclusion(t *testing.T) {
 			t.Errorf("isNegativeConclusion(%q)=false want true", s)
 		}
 	}
-	// 正常/正向结论不得误伤
+	// 正常/前向きな結論を誤って陰性と判定しない
 	positive := []string{
 		"",
-		"445 端口开放,可正常连接",
-		"目标支持 TLS1.3",
-		"响应正常 200 OK",
-		"成功获取交互式 shell",
-		"识别到 nginx 1.25 / Vue3 技术栈",
+		"445 ポートは開放され、正常に接続できる",
+		"ターゲットは TLS1.3 に対応している",
+		"応答は正常 200 OK",
+		"インタラクティブシェルを取得できた",
+		"nginx 1.25 / Vue3 の技術スタックを識別した",
 	}
 	for _, s := range positive {
 		if isNegativeConclusion(s) {
@@ -65,7 +65,7 @@ func TestIsNegativeConclusion(t *testing.T) {
 	}
 }
 
-// factTestRig 建一个真实任务 + ToolSet,供 PG-gated 的 fact 测试用。
+// factTestRig は実際のタスク + ToolSet を作る。PG が要る fact テスト用。
 func factTestRig(t *testing.T) *ToolSet {
 	t.Helper()
 	d := testDB(t)
@@ -105,7 +105,7 @@ func factPayload(t *testing.T, ts *ToolSet, id int64) map[string]any {
 func TestRecordFactNegativeDowngrade(t *testing.T) {
 	ts := factTestRig(t)
 
-	// 1) 阴性结论 + 自报 observed → 自动降 inferred,返回里告知
+	// 1) 陰性の結論 + observed の自己申告 → 自動で inferred に降格し、戻り値で通知する
 	text := callFactTool(t, ts.recordFact(), `{"summary":"目标 445 端口被封死,无法直连","confidence":"observed"}`)
 	var id int64
 	if _, err := fmt.Sscanf(text, "fact recorded: %d", &id); err != nil || id <= 0 {
@@ -118,8 +118,8 @@ func TestRecordFactNegativeDowngrade(t *testing.T) {
 		t.Fatalf("negative fact confidence=%v want inferred", got)
 	}
 
-	// 2) 正向结论 + observed → 保持 observed,无降级提示
-	text = callFactTool(t, ts.recordFact(), `{"summary":"识别到 nginx 1.25,响应 200","confidence":"observed"}`)
+	// 2) 前向きな結論 + observed → observed のまま、降格の通知なし
+	text = callFactTool(t, ts.recordFact(), `{"summary":"nginx 1.25 を識別、応答 200","confidence":"observed"}`)
 	if strings.Contains(text, "⚠️") {
 		t.Fatalf("positive fact must not be downgraded: %q", text)
 	}
@@ -129,24 +129,24 @@ func TestRecordFactNegativeDowngrade(t *testing.T) {
 		t.Fatalf("positive fact confidence=%v want observed", got)
 	}
 
-	// 3) 缺省 confidence → 落库 observed(永远有值)
-	text = callFactTool(t, ts.recordFact(), `{"summary":"目标支持 TLS1.3"}`)
+	// 3) confidence 省略 → observed で保存（常に値が入る）
+	text = callFactTool(t, ts.recordFact(), `{"summary":"ターゲットは TLS1.3 に対応"}`)
 	var id3 int64
 	_, _ = fmt.Sscanf(text, "fact recorded: %d", &id3)
 	if got := factPayload(t, ts, id3)["confidence"]; got != FactConfidenceObserved {
 		t.Fatalf("default confidence=%v want observed", got)
 	}
 
-	// 4) 显式 inferred 阴性结论 → 保持 inferred(不重复提示也没关系,但不得升档)
-	text = callFactTool(t, ts.recordFact(), `{"summary":"端口无响应","confidence":"inferred"}`)
+	// 4) inferred を明示した陰性の結論 → inferred のまま（通知の重複は許容、昇格は不可）
+	text = callFactTool(t, ts.recordFact(), `{"summary":"ポートが応答しない","confidence":"inferred"}`)
 	var id4 int64
 	_, _ = fmt.Sscanf(text, "fact recorded: %d", &id4)
 	if got := factPayload(t, ts, id4)["confidence"]; got != FactConfidenceInferred {
 		t.Fatalf("explicit inferred confidence=%v want inferred", got)
 	}
 
-	// 5) 批量:阴性条目的 note 进 notes 映射
-	batch := callFactTool(t, ts.recordFact(), `{"facts":[{"summary":"主机 unreachable","confidence":"observed"},{"summary":"指纹识别完成","confidence":"observed"}]}`)
+	// 5) 一括:陰性項目の note が notes マップに入る
+	batch := callFactTool(t, ts.recordFact(), `{"facts":[{"summary":"ホスト unreachable","confidence":"observed"},{"summary":"フィンガープリント識別が完了","confidence":"observed"}]}`)
 	var out map[string]any
 	if err := json.Unmarshal([]byte(batch), &out); err != nil {
 		t.Fatalf("batch result: %v raw=%q", err, batch)
@@ -168,7 +168,7 @@ func TestRecordFactNegativeDowngrade(t *testing.T) {
 func TestConfirmFact(t *testing.T) {
 	ts := factTestRig(t)
 
-	// inferred 事实 → confirm_fact 升级 confirmed + 审计字段
+	// inferred の事実 → confirm_fact で confirmed へ昇格し、監査フィールドも付く
 	text := callFactTool(t, ts.recordFact(), `{"summary":"445 被封","confidence":"observed"}`)
 	var id int64
 	_, _ = fmt.Sscanf(text, "fact recorded: %d", &id)
@@ -187,25 +187,25 @@ func TestConfirmFact(t *testing.T) {
 		t.Fatalf("audit fields missing: %+v", p)
 	}
 
-	// 重复确认 → 幂等提示,不报错
+	// 重複確認 → 冪等な通知を返し、エラーにしない
 	msg = callFactTool(t, ts.confirmFact(), fmt.Sprintf(`{"fact_id":%d}`, id))
-	if !strings.Contains(msg, "已是 confirmed") {
+	if !strings.Contains(msg, "すでに confirmed") {
 		t.Fatalf("re-confirm return: %q", msg)
 	}
 
-	// 非 fact 节点(intent)→ 拒绝
+	// fact 以外のノード（intent）→ 拒否
 	intentID, err := ts.ts.AddIntent(map[string]any{"text": "probe"}, 5, nil, "planner")
 	if err != nil {
 		t.Fatal(err)
 	}
 	msg = callFactTool(t, ts.confirmFact(), fmt.Sprintf(`{"fact_id":%d}`, intentID))
-	if !strings.Contains(msg, "必须是本任务的事实节点") {
+	if !strings.Contains(msg, "本タスクの事実ノード") {
 		t.Fatalf("confirm on intent must be rejected: %q", msg)
 	}
 
-	// 缺 fact_id → 拒绝
+	// fact_id が無い → 拒否
 	msg = callFactTool(t, ts.confirmFact(), `{}`)
-	if !strings.Contains(msg, "fact_id 必填") {
+	if !strings.Contains(msg, "fact_id は必須です") {
 		t.Fatalf("missing fact_id must be rejected: %q", msg)
 	}
 }
@@ -229,7 +229,7 @@ func TestGraphOverviewMarksInferredFact(t *testing.T) {
 		t.Fatalf("fact %d missing from recent_facts: %#v", id, facts)
 	}
 	conf, _ := found["confidence"].(string)
-	if !strings.Contains(conf, "inferred") || !strings.Contains(conf, "待复核") {
-		t.Fatalf("inferred fact must carry 待复核 marker, confidence=%q", conf)
+	if !strings.Contains(conf, "inferred") || !strings.Contains(conf, "要再確認") {
+		t.Fatalf("inferred fact must carry 要再確認 marker, confidence=%q", conf)
 	}
 }

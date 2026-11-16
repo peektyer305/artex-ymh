@@ -6,7 +6,7 @@ import (
 	"github.com/Autumn-27/artex/agent"
 )
 
-// 批 5 B2:dsnPassword 从两种 DSN 形态提取密码(URL / keyword),无密码返回空。
+// バッチ 5 B2:dsnPassword が 2 種類の DSN 形態(URL / keyword)からパスワードを抽出し、パスワードがなければ空を返す。
 func TestDSNPassword(t *testing.T) {
 	cases := []struct {
 		dsn, want string
@@ -25,10 +25,10 @@ func TestDSNPassword(t *testing.T) {
 	}
 }
 
-// 批 5 B4:uaForTask 在无 DB 时用默认池,且同任务稳定(有 DB 的路径依赖 PG,
-// 由集成环境覆盖,单测不打 DSN)。
+// バッチ 5 B4:uaForTask は DB がない場合に既定のプールを使い、同じタスクでは安定する(DB がある経路は PG に依存し、
+// 統合環境でカバーするため、単体テストでは DSN を叩かない)。
 func TestUAForTaskDefaultPool(t *testing.T) {
-	s := &Server{} // m == nil → 默认池
+	s := &Server{} // m == nil → 既定のプール
 	ua := s.uaForTask(42)
 	if ua == "" {
 		t.Fatal("uaForTask should return a default-pool UA without a DB")

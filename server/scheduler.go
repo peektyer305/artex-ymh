@@ -50,7 +50,7 @@ func (sc *Scheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			sc.s.reconcileConcurrency() // 并发上限:有空位就把排队任务补位启动
+			sc.s.reconcileConcurrency() // 同時実行上限:空きがあれば待機中のタスクを繰り上げて起動する
 			sc.step()
 		}
 	}
@@ -143,7 +143,7 @@ func (sc *Scheduler) fireIntervals(triggers []*db.AgentTrigger) {
 		}
 		_ = sc.pg.TouchTriggerFire(tr.ID)
 		ctx := "\n\n【本次为定时触发】" + now.Format(" 2006-01-02 15:04:05 MST")
-		sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("定时触发 · %s", now.Format("15:04")), tr.IntervalMessage+ctx, 0, false, "", "")
+		sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("定期トリガー · %s", now.Format("15:04")), tr.IntervalMessage+ctx, 0, false, "", "")
 	}
 }
 
@@ -176,13 +176,13 @@ func (sc *Scheduler) fireFindings(triggers []*db.AgentTrigger) {
 			e.VulnClass, e.Severity, e.Summary)
 		for _, tr := range want {
 			if tr.AgentKey == db.FindingVerifierAgentKey {
-				// verifier 走 finding_checks 管线:先建 check 行(pending)再跑会话,
-				// 不经通用触发队列(队列会话无法关联 check 记录)。finding_verify_mode
-				// 开关与 finding_id 反查都在 dispatchFindingVerify 内。
+				// verifier は finding_checks パイプラインを通る:まず check 行(pending)を作ってからセッションを実行し、
+				// 汎用トリガーキューは通らない(キューのセッションは check レコードと紐付けられない)。finding_verify_mode
+				// スイッチと finding_id の逆引きは dispatchFindingVerify 内にある。
 				sc.s.dispatchFindingVerify(e)
 				continue
 			}
-			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("finding 触发 · task#%d", e.TaskID), tr.FindingMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
+			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("finding トリガー · task#%d", e.TaskID), tr.FindingMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
 		}
 	}
 	_ = sc.pg.SetSchedState(schedKeyLastFinding, strconv.FormatInt(maxID, 10))
@@ -215,7 +215,7 @@ func (sc *Scheduler) fireGoals(triggers []*db.AgentTrigger) {
 		}
 		msgCtx := fmt.Sprintf("\n\n【本次由任务完成目标触发】\n达成目标: %s", e.Summary)
 		for _, tr := range want {
-			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("目标触发 · task#%d", e.TaskID), tr.GoalMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
+			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("ゴールトリガー · task#%d", e.TaskID), tr.GoalMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
 		}
 	}
 	if changed {
@@ -248,7 +248,7 @@ func (sc *Scheduler) fireTaskTimeouts(triggers []*db.AgentTrigger) {
 		}
 		msgCtx := "\n\n【本次由任务超时触发】"
 		for _, tr := range want {
-			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("超时触发 · task#%d", e.TaskID), tr.TaskTimeoutMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
+			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("タイムアウトトリガー · task#%d", e.TaskID), tr.TaskTimeoutMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
 		}
 	}
 	_ = sc.pg.SetSchedState(schedKeyLastTimeout, strconv.FormatInt(maxID, 10))
@@ -279,7 +279,7 @@ func (sc *Scheduler) fireTaskCreates(triggers []*db.AgentTrigger) {
 		}
 		msgCtx := "\n\n【本次由任务创建触发】"
 		for _, tr := range want {
-			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("任务创建触发 · task#%d", e.TaskID), tr.TaskCreateMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
+			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("タスク作成トリガー · task#%d", e.TaskID), tr.TaskCreateMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
 		}
 	}
 	_ = sc.pg.SetSchedState(schedKeyLastTaskCreate, strconv.FormatInt(maxID, 10))
@@ -324,7 +324,7 @@ func (sc *Scheduler) fireToolCalls(triggers []*db.AgentTrigger) {
 			if !containsFold(tr.ToolNames, e.Tool) {
 				continue
 			}
-			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("工具触发 · %s · task#%d", e.Tool, e.TaskID), tr.ToolCallMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
+			sc.s.StartTriggeredRun(tr.AgentKey, fmt.Sprintf("ツールトリガー · %s · task#%d", e.Tool, e.TaskID), tr.ToolCallMessage+msgCtx, e.TaskID, true, e.TaskDesc, e.TaskGoal)
 		}
 	}
 	_ = sc.pg.SetSchedState(schedKeyLastToolCall, strconv.FormatInt(maxID, 10))

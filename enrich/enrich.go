@@ -5,9 +5,10 @@
 // edges, and filling attrs.dns / attrs.http. DNS is ungated; HTTP probing is gated
 // by RoE (§5.2).
 //
-// 注意:本包当前未接线——agent/tools.go 的 SetEnrich 在全仓没有任何调用点,
-// 在调用方接入之前本包不生效(见 AUDIT-REPORT.md M-项 /「异步补全(enrich)」)。
-// 上文描述的 RoE 门控是设计意图,尚不存在于任何执行路径。
+// 注意：本パッケージは現状未接続——agent/tools.go の SetEnrich にはリポジトリ全体で
+// 呼び出し点がなく、呼び出し側が接続するまで本パッケージは機能しない
+// （AUDIT-REPORT.md M-項 /「非同期補完（enrich）」を参照）。
+// 上記の RoE ゲートは設計上の意図であり、まだどの実行経路にも存在しない。
 package enrich
 
 import (
@@ -75,7 +76,7 @@ func New(as *db.AssetStore, proxy func() string, workers int) *Engine {
 		Timeout:       4 * time.Second,
 	})
 	if err != nil {
-		log.Printf("[enrich] dnsx 初始化失败，DNS 解析停用：%v", err)
+		log.Printf("[enrich] dnsx の初期化に失敗しました。DNS 解決は無効になります：%v", err)
 		resolv = nil
 	}
 	e := &Engine{
@@ -132,7 +133,7 @@ func (e *Engine) enqueue(j job) {
 	select {
 	case e.jobs <- j:
 	default: // queue full → drop (best-effort enrichment)
-		log.Printf("[enrich] 队列已满，丢弃任务 kind=%d id=%d", j.kind, j.id)
+		log.Printf("[enrich] キューが満杯のため、タスクを破棄します kind=%d id=%d", j.kind, j.id)
 	}
 }
 

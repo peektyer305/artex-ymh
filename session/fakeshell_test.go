@@ -1,10 +1,10 @@
 package session
 
-// fakeshell_test.go 是验收测试的目标侧模拟：内存文件系统 + 迷你 sh/cmd 解释器,
-// 足以执行驱动发出的全部命令形态（echo/base64/dd/sh/rm/cat/tr/id/whoami/
-// certutil 等）。不依赖 PG、不依赖宿主机 shell,全部进程内完成。
-// 注意：这是「协议族」级模拟——模拟 PHP 代码执行字段、JSP sh 回显、ASPX cmd
-// 回显三种协议形态，不含任何特定靶场值。
+// fakeshell_test.go は受け入れテストの目標側シミュレーション：メモリ内ファイルシステム + ミニ sh/cmd インタプリタで、
+// ドライバが発行するあらゆるコマンド形態（echo/base64/dd/sh/rm/cat/tr/id/whoami/
+// certutil など）を実行できる。PG にもホスト側 shell にも依存せず、すべてプロセス内で完結する。
+// 注意：これは「プロトコルファミリ」レベルのシミュレーション——PHP コード実行フィールド、JSP sh エコー、ASPX cmd
+// エコーの 3 種類のプロトコル形態を模擬し、特定の検証環境の値は一切含まない。
 
 import (
 	"encoding/base64"
@@ -15,7 +15,7 @@ import (
 	"sync"
 )
 
-// fakeFS 是目标侧文件系统的内存模拟 + sh 解释器。
+// fakeFS は目標側ファイルシステムのメモリ内シミュレーション + sh インタプリタ。
 type fakeFS struct {
 	mu    sync.Mutex
 	files map[string][]byte
@@ -57,7 +57,7 @@ func (fs *fakeFS) hasPrefixMatch(prefix string) bool {
 	return false
 }
 
-// tokenize 按 sh 词法切词：单引号字面、双引号字面（不做变量展开）、反斜杠转义。
+// tokenize は sh の字句規則で切り分ける：単一引用符リテラル、二重引用符リテラル（変数展開はしない）、バックスラッシュエスケープ。
 func tokenize(s string) []string {
 	var out []string
 	var cur strings.Builder
@@ -101,7 +101,7 @@ func tokenize(s string) []string {
 	return out
 }
 
-// splitQuoted 按顶层分隔符切分（引号内不切）。
+// splitQuoted はトップレベルの区切り文字で分割する（引用符内では分割しない）。
 func splitQuoted(s string, seps ...string) []string {
 	var out []string
 	inS, inD := false, false
@@ -139,7 +139,7 @@ func splitQuoted(s string, seps ...string) []string {
 
 var arithRe = regexp.MustCompile(`\$\(\((\d+)\+(\d+)\)\)`)
 
-// expandSh 模拟 POSIX sh 的算术展开（探针用）。
+// expandSh は POSIX sh の算術展開を模擬する（プローブ用）。
 func expandSh(s string) string {
 	return arithRe.ReplaceAllStringFunc(s, func(m string) string {
 		g := arithRe.FindStringSubmatch(m)
@@ -149,12 +149,12 @@ func expandSh(s string) string {
 	})
 }
 
-// run 执行一条复合 sh 命令（;、&&、|、>、>>、2>&1、2>/dev/null)。
-// 返回合并输出与最后一段的成功标志。
+// run は複合 sh コマンドを 1 つ実行する（;、&&、|、>、>>、2>&1、2>/dev/null）。
+// 統合出力と最後のセグメントの成功フラグを返す。
 func (fs *fakeFS) run(cmd string) (string, bool) {
 	var out strings.Builder
 	ok := true
-	// 先按 && 再按 ; 切（&& 与 ; 同级,左结合,足够覆盖驱动形态）。
+	// まず && で、次に ; で分割する（&& と ; は同レベルで左結合、ドライバの形態を覆うには十分）。
 	segs := splitQuoted(cmd, "&&", ";")
 	skip := false
 	for i, seg := range segs {
@@ -162,7 +162,7 @@ func (fs *fakeFS) run(cmd string) (string, bool) {
 		if seg == "" {
 			continue
 		}
-		// 判断段前连接符：找本段在原串的位置太复杂,直接按切分顺序重扫。
+		// セグメント前の連結子を判定する：本セグメントの元の位置を探すのは複雑すぎるため、分割順に再走査する。
 		_ = i
 		if skip {
 			skip = false
@@ -172,15 +172,15 @@ func (fs *fakeFS) run(cmd string) (string, bool) {
 		out.WriteString(o)
 		ok = k
 		if !ok && strings.Contains(cmd, "&&") {
-			// && 短路的近似：失败后跳过一个段（驱动形态里 && 只出现在
-			// `base64 -d > f && sh f`,失败即停符合语义）。
+			// && の短絡の近似：失敗したらセグメントを 1 つ飛ばす（ドライバの形態では && は
+			// `base64 -d > f && sh f` にのみ現れ、失敗時に停止するのは意味に合う）。
 			skip = true
 		}
 	}
 	return out.String(), ok
 }
 
-// runSegment 执行一个管道段（可能含 | 与重定向）。
+// runSegment は 1 つのパイプラインセグメントを実行する（| とリダイレクトを含みうる）。
 func (fs *fakeFS) runSegment(seg string) (string, bool) {
 	stages := splitQuoted(seg, "|")
 	input := ""
@@ -204,7 +204,7 @@ func (fs *fakeFS) runSegment(seg string) (string, bool) {
 	return out, ok
 }
 
-// parseRedirect 剥掉 2>&1 / 2>/dev/null,提取 > >> 目标。
+// parseRedirect は 2>&1 / 2>/dev/null を取り除き、> >> のターゲットを抽出する。
 func parseRedirect(args []string) (clean []string, target string, appendMode bool) {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -228,7 +228,7 @@ func parseRedirect(args []string) (clean []string, target string, appendMode boo
 	return clean, target, appendMode
 }
 
-// tolerantB64Decode 容忍空白（real base64 -d 忽略换行）。
+// tolerantB64Decode は空白を許容する（実際の base64 -d は改行を無視する）。
 func tolerantB64Decode(s string) ([]byte, error) {
 	s = strings.Map(func(r rune) rune {
 		if r == '\n' || r == '\r' || r == ' ' || r == '\t' {
@@ -242,7 +242,7 @@ func tolerantB64Decode(s string) ([]byte, error) {
 func (fs *fakeFS) runBuiltin(args []string, stdin string) (string, bool) {
 	switch args[0] {
 	case "echo":
-		// sh echo:默认输出换行;\n 不解释（驱动不依赖）。
+		// sh echo：デフォルトで改行を出力し、\n は解釈しない（ドライバは依存しない）。
 		return strings.Join(args[1:], " ") + "\n", true
 	case "printf":
 		if len(args) < 2 {
@@ -350,16 +350,16 @@ func (fs *fakeFS) runBuiltin(args []string, stdin string) (string, bool) {
 	return "sh: " + args[0] + ": not found\n", false
 }
 
-// ---------------- Windows cmd 模拟（ASPX 用） ----------------
+// ---------------- Windows cmd シミュレーション（ASPX 用） ----------------
 
-// fakeCmd 模拟 cmd.exe /c 的最小语义:& 连接、未定义 %VAR% 展开为空、
+// fakeCmd は cmd.exe /c の最小限の意味論を模擬する：& 連結、未定義の %VAR% は空に展開、
 // echo/type/certutil/del。
 type fakeCmd struct{ fs *fakeFS }
 
 var cmdVarRe = regexp.MustCompile(`%[A-Za-z_][A-Za-z0-9_]*%`)
 
 func (c *fakeCmd) run(cmdline string) string {
-	cmdline = cmdVarRe.ReplaceAllString(cmdline, "") // 批处理:未定义变量展开为空
+	cmdline = cmdVarRe.ReplaceAllString(cmdline, "") // バッチ処理：未定義の変数は空に展開
 	var out strings.Builder
 	for _, seg := range strings.Split(cmdline, "&") {
 		seg = strings.TrimSpace(seg)

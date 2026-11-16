@@ -1,12 +1,12 @@
-// Package tools 管理外部工具二进制的钉版清单与完整性自检（期 6 部署链加固）。
+// Package tools は外部ツールバイナリの固定版マニフェストと完全性セルフチェックを管理する（フェーズ6 デプロイチェーン強化）。
 //
-// 平台依赖一批外部工具：隧道工具（suo5/chisel，见 tunnel/）与军火库常用工具
-// （gogo/naabu/httpx/katana/fscan/impacket/…，通常放 data/tools/ 下，经 tools 表
-// shell 行告知模型可在 Bash 中直接调用）。清单（packaging/tools-manifest.json)
-// 记录每个工具的名称/用途/版本/平台/sha256/相对路径；sha256 为空串表示「未钉」
-// （尚不知道正确哈希，宁可留空也不编造）。启动与 `artex doctor` 共用这里的
-// Load/Check：存在的二进制且清单里钉了哈希的才校验，不匹配只警告不阻断（用户
-// 可能自编译）；清单文件本身缺失（开发态）由调用方静默跳过。
+// プラットフォームは外部ツール群に依存する：トンネルツール（suo5/chisel、tunnel/ 参照）と武器庫の常用ツール
+// （gogo/naabu/httpx/katana/fscan/impacket/…、通常 data/tools/ 下に置き、tools テーブルの
+// shell 行でモデルに Bash から直接呼び出せると伝える）。マニフェスト（packaging/tools-manifest.json）は
+// 各ツールの名前/用途/バージョン/プラットフォーム/sha256/相対パスを記録する。sha256 が空文字列なら「未固定」
+// （正しいハッシュが不明で、空のままにする方が捏造よりまし）。起動時と `artex doctor` はここの
+// Load/Check を共用する：存在するバイナリでハッシュが固定済みのものだけを検証し、不一致は警告のみでブロックしない
+// （ユーザーが自前ビルドする場合がある）；マニフェストファイル自体の欠落（開発時）は呼び出し側が黙ってスキップする。
 package tools
 
 import (
@@ -21,28 +21,28 @@ import (
 	"github.com/Autumn-27/artex/config"
 )
 
-// Entry 是清单里一个外部工具的记录。
+// Entry はマニフェスト内の外部ツール1件のレコード。
 type Entry struct {
-	Name     string `json:"name"`     // 工具名（唯一）
-	Purpose  string `json:"purpose"`  // 用途（一行话）
-	Version  string `json:"version"`  // 钉的版本；空 = 未钉
-	Platform string `json:"platform"` // 适用平台（如 linux/amd64;any = 不限）
-	SHA256   string `json:"sha256"`   // 钉的 sha256；空串 = 未钉（不校验）
-	Path     string `json:"path"`     // 相对 data 目录的路径（文件或目录）
-	Env      string `json:"env"`      // 可选：覆盖路径的环境变量（如 ARTEX_SUO5_PATH)
-	Category string `json:"category"` // tunnel（隧道） | arsenal（军火库）
+	Name     string `json:"name"`     // ツール名（一意）
+	Purpose  string `json:"purpose"`  // 用途（1行）
+	Version  string `json:"version"`  // 固定したバージョン；空 = 未固定
+	Platform string `json:"platform"` // 対応プラットフォーム（例: linux/amd64;any = 制限なし）
+	SHA256   string `json:"sha256"`   // 固定した sha256；空文字列 = 未固定（検証しない）
+	Path     string `json:"path"`     // data ディレクトリからの相対パス（ファイルまたはディレクトリ）
+	Env      string `json:"env"`      // 任意：パスを上書きする環境変数（例: ARTEX_SUO5_PATH）
+	Category string `json:"category"` // tunnel（トンネル） | arsenal（武器庫）
 }
 
-// Manifest 是 tools-manifest.json 的整体结构。
+// Manifest は tools-manifest.json の全体構造。
 type Manifest struct {
 	Tools []Entry `json:"tools"`
 }
 
-// ManifestPath 解析清单文件路径：
+// ManifestPath はマニフェストファイルのパスを解決する：
 //
 //	env ARTEX_TOOLS_MANIFEST  >  BaseDir()/packaging/tools-manifest.json
 //
-// 返回的路径可能不存在（开发态/裁剪部署）——调用方用 os.IsNotExist 判断后静默跳过。
+// 返るパスは存在しない場合がある（開発時/簡易デプロイ）——呼び出し側は os.IsNotExist で判定して黙ってスキップする。
 func ManifestPath() string {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_TOOLS_MANIFEST")); v != "" {
 		return v
@@ -50,7 +50,7 @@ func ManifestPath() string {
 	return filepath.Join(config.BaseDir(), "packaging", "tools-manifest.json")
 }
 
-// Load 读取并解析清单文件。文件缺失时返回的 error 满足 os.IsNotExist。
+// Load はマニフェストファイルを読み込んで解析する。ファイル欠落時の error は os.IsNotExist を満たす。
 func Load(path string) (*Manifest, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -63,27 +63,27 @@ func Load(path string) (*Manifest, error) {
 	return &m, nil
 }
 
-// Status 是单个工具的自检结论。
+// Status は単一ツールのセルフチェック結果。
 type Status int
 
 const (
-	StatusOK       Status = iota // 存在；若钉了哈希则一致
-	StatusUnpinned               // 存在，但清单未钉哈希（只报存在，不校验）
-	StatusMissing                // 缺失（精简环境常态，不视为故障）
-	StatusMismatch               // 存在但哈希与清单不符（只警告，可能自编译）
+	StatusOK       Status = iota // 存在する；ハッシュが固定されていれば一致
+	StatusUnpinned               // 存在するが、マニフェストにハッシュ未固定（存在のみ報告し、検証しない）
+	StatusMissing                // 欠落（簡易環境では通常で、故障とは見なさない）
+	StatusMismatch               // 存在するがハッシュがマニフェストと不一致（警告のみ、自前ビルドの可能性）
 )
 
-// CheckResult 是单个工具的自检结果。
+// CheckResult は単一ツールのセルフチェック結果。
 type CheckResult struct {
 	Entry  Entry
 	Status Status
-	Path   string // 实际解析出的绝对/相对路径（env 覆盖优先）
-	Actual string // 实际 sha256（算了才有）
+	Path   string // 実際に解決した絶対/相対パス（env による上書きを優先）
+	Actual string // 実際の sha256（計算した場合のみ）
 }
 
-// Check 对清单里每个工具做存在性 + （钉了哈希的）sha256 校验。dataDir 是 data
-// 目录；条目带 env 且环境变量已设置时优先用环境变量指定的路径（与 tunnel 子系统
-// 的解析顺序一致）。目录条目只做存在性检查（无法对目录算单哈希）。
+// Check はマニフェスト内の各ツールについて存在性と（ハッシュ固定済みなら）sha256 検証を行う。dataDir は data
+// ディレクトリ；エントリに env があり環境変数が設定済みなら、環境変数で指定したパスを優先する（tunnel サブシステム
+// の解決順と一致）。ディレクトリのエントリは存在性チェックのみ（ディレクトリに単一ハッシュは計算できない）。
 func Check(m *Manifest, dataDir string) []CheckResult {
 	if m == nil {
 		return nil
@@ -95,7 +95,7 @@ func Check(m *Manifest, dataDir string) []CheckResult {
 	return out
 }
 
-// CheckEntry 校验单个清单条目（见 Check)。
+// CheckEntry は単一のマニフェストエントリを検証する（Check 参照）。
 func CheckEntry(e Entry, dataDir string) CheckResult {
 	r := CheckResult{Entry: e, Status: StatusMissing}
 	p := ""
@@ -117,7 +117,7 @@ func CheckEntry(e Entry, dataDir string) CheckResult {
 	}
 	sum, err := fileSHA256(p)
 	if err != nil {
-		return r // 存在但不可读按缺失算，运行时会有更明确的报错
+		return r // 存在するが読めない場合は欠落扱い；実行時により明確なエラーが出る
 	}
 	r.Actual = sum
 	if sum == want {
@@ -128,7 +128,7 @@ func CheckEntry(e Entry, dataDir string) CheckResult {
 	return r
 }
 
-// fileSHA256 算文件的 sha256（与 tunnel/deploy.go 里的供应链自检同一口径）。
+// fileSHA256 はファイルの sha256 を計算する（tunnel/deploy.go のサプライチェーンセルフチェックと同じ基準）。
 func fileSHA256(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {

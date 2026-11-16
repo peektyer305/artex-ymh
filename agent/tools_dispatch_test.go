@@ -9,10 +9,10 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 )
 
-// frontier 硬上限判定(纯函数):open 计数达到 MaxOpenIntents 即满。
+// frontier の上限判定（純関数）: open の件数が MaxOpenIntents に達したら満杯。
 func TestFrontierFull(t *testing.T) {
 	if MaxOpenIntents != 8 {
-		t.Fatalf("MaxOpenIntents=%d, want 8(红日 3 R2 修复契约:frontier 硬上限 8 open)", MaxOpenIntents)
+		t.Fatalf("MaxOpenIntents=%d, want 8（紅日 3 R2 修正契約: frontier の上限は 8 open）", MaxOpenIntents)
 	}
 	for _, tc := range []struct {
 		open int
@@ -27,7 +27,7 @@ func TestFrontierFull(t *testing.T) {
 	}
 }
 
-// capFrontierTools 必须把 add_intent 包上门卫、追加 cancel_intent,其余工具原样。
+// capFrontierTools は add_intent をゲートで包み、cancel_intent を追加し、他のツールはそのまま返す必要がある。
 func TestCapFrontierToolsWrapsAddIntentAndAppendsCancel(t *testing.T) {
 	ts := NewToolSet(nil, "planner")
 	base := ts.PlannerTools()
@@ -40,7 +40,7 @@ func TestCapFrontierToolsWrapsAddIntentAndAppendsCancel(t *testing.T) {
 		switch tool.Name() {
 		case "add_intent":
 			if _, ok := tool.(*frontierCapTool); !ok {
-				t.Fatal("add_intent 未被 frontierCapTool 包装")
+				t.Fatal("add_intent が frontierCapTool で包まれていない")
 			}
 			wrapped = true
 		case "cancel_intent":
@@ -52,7 +52,7 @@ func TestCapFrontierToolsWrapsAddIntentAndAppendsCancel(t *testing.T) {
 	}
 }
 
-// nil store(如 toolcatalog 的 seed 构造)下门卫必须原样放行,不能 panic。
+// nil store（toolcatalog の seed 構築など）ではゲートはそのまま通し、panic してはならない。
 func TestFrontierCapToolPassesThroughWithNilStore(t *testing.T) {
 	inner := &stubTool{name: "add_intent"}
 	tool := &frontierCapTool{CoreTool: inner, ts: nil}
@@ -60,14 +60,14 @@ func TestFrontierCapToolPassesThroughWithNilStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !inner.called {
-		t.Fatal("nil store 时门卫未放行到内层工具")
+		t.Fatal("nil store のときゲートが内側のツールへ通していない")
 	}
 	if tool.Name() != "add_intent" {
-		t.Fatalf("Name()=%q, want add_intent(身份必须委托)", tool.Name())
+		t.Fatalf("Name()=%q, want add_intent（name は委譲する必要がある）", tool.Name())
 	}
 }
 
-// MainAgentTools 现在带 kill_work/cancel_intent;cancel_intent 的 schema 只要求 intent_id。
+// MainAgentTools は kill_work/cancel_intent を備える。cancel_intent の schema が要求するのは intent_id のみ。
 func TestMainAgentToolsIncludeKillAndCancel(t *testing.T) {
 	ts := NewToolSet(nil, "human")
 	var kill, cancel actool.CoreTool
@@ -80,13 +80,13 @@ func TestMainAgentToolsIncludeKillAndCancel(t *testing.T) {
 		}
 	}
 	if kill == nil || cancel == nil {
-		t.Fatalf("kill_work=%v cancel_intent=%v, mainagent 必须同时绑定", kill != nil, cancel != nil)
+		t.Fatalf("kill_work=%v cancel_intent=%v, mainagent は両方をバインドする必要がある", kill != nil, cancel != nil)
 	}
 	if !strings.Contains(kill.Description(), "cancel_intent") || !strings.Contains(kill.Description(), "steer_work") {
-		t.Fatal("kill_work 描述必须写明与 steer_work/cancel_intent 的区别")
+		t.Fatal("kill_work の説明には steer_work/cancel_intent との違いを明記する必要がある")
 	}
 	if !strings.Contains(cancel.Description(), "kill_work") || !strings.Contains(cancel.Description(), "open") {
-		t.Fatal("cancel_intent 描述必须写明只作废 open、与 kill_work 的区别")
+		t.Fatal("cancel_intent の説明には open のみを無効化することと、kill_work との違いを明記する必要がある")
 	}
 }
 

@@ -9,48 +9,50 @@ import (
 	"github.com/Autumn-27/norma/llm"
 )
 
-// 归类纯函数:墙钟超时(调用方 ctx 存活 + DeadlineExceeded)归「可转移的瞬时
-// 失败」;主动取消 / 上层截止(调用方 ctx 已结束)仍永不转移。
+// 分類は純粋関数：ウォールクロックのタイムアウト（呼び出し側 ctx が生存 + DeadlineExceeded）
+// は「フェイルオーバー可能な一時失敗」に分類する。能動的なキャンセル / 上位の締め切り
+// （呼び出し側 ctx が終了済み）は依然として決してフェイルオーバーしない。
 func TestShouldFailoverCallTimeout(t *testing.T) {
-	// 下层派生 ctx 的墙钟到点:agent 包 ARTEX_LLM_CALL_TIMEOUT 归一化出的
-	// call_timeout(Unwrap DeadlineExceeded),或 SDK 内部 attempt 超时。
-	wrapped := fmt.Errorf("llm call_timeout: anthropic/m 整体墙钟超时: %w", context.DeadlineExceeded)
+	// 下層の派生 ctx のウォールクロックが期限到来：agent パッケージの
+	// ARTEX_LLM_CALL_TIMEOUT が正規化した call_timeout（Unwrap で DeadlineExceeded）、
+	// または SDK 内部の attempt タイムアウト。
+	wrapped := fmt.Errorf("llm call_timeout: anthropic/m 全体のウォールクロックタイムアウト: %w", context.DeadlineExceeded)
 	if !shouldFailover(context.Background(), context.DeadlineExceeded) {
-		t.Error("调用方存活 + DeadlineExceeded 应判定为可转移瞬时失败(call_timeout)")
+		t.Error("呼び出し側が生存 + DeadlineExceeded は転送可能な一時失敗と判定すべきです(call_timeout)")
 	}
 	if !shouldFailover(context.Background(), wrapped) {
-		t.Error("归一化后的 call_timeout 错误应可转移")
+		t.Error("正規化後の call_timeout エラーは転送可能であるべきです")
 	}
-	// 调用方 ctx 存活但错误是 Canceled:不转移。
+	// 呼び出し側 ctx は生存しているがエラーが Canceled：フェイルオーバーしない。
 	if shouldFailover(context.Background(), context.Canceled) {
-		t.Error("Canceled 永不转移")
+		t.Error("Canceled は決して転送しない")
 	}
-	// 用户主动取消:ctx 已结束,即使错误是 DeadlineExceeded 也不转移。
+	// ユーザーの能動的キャンセル：ctx は終了済みで、エラーが DeadlineExceeded でもフェイルオーバーしない。
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if shouldFailover(ctx, context.DeadlineExceeded) {
-		t.Error("主动取消后 DeadlineExceeded 不应转移")
+		t.Error("能動的なキャンセル後の DeadlineExceeded は転送すべきではありません")
 	}
 	if shouldFailover(ctx, context.Canceled) {
-		t.Error("主动取消不应转移")
+		t.Error("能動的なキャンセルは転送すべきではありません")
 	}
-	// 任务级截止(上层墙钟):ctx 自己到期,同样永不转移。
+	// タスクレベルの締め切り（上位のウォールクロック）：ctx 自体が期限切れで、これも決してフェイルオーバーしない。
 	dctx, dcancel := context.WithTimeout(context.Background(), 0)
 	defer dcancel()
 	if shouldFailover(dctx, context.DeadlineExceeded) {
-		t.Error("上层截止(ctx 到期)不应转移")
+		t.Error("上位の締め切り(ctx の期限切れ)は転送すべきではありません")
 	}
-	// call_timeout 不是 hard failure:无状态码,走软熔断计数。
+	// call_timeout は hard failure ではない：ステータスコードがなく、ソフト遮断のカウントに回る。
 	if isHardFailure(wrapped) {
-		t.Error("call_timeout 应归瞬时(软熔断),不是 hard failure")
+		t.Error("call_timeout は一時失敗(ソフト遮断)に分類すべきで、hard failure ではありません")
 	}
 	if statusOf(wrapped) != 0 {
-		t.Error("call_timeout 错误文本不应被解析出 HTTP 状态码")
+		t.Error("call_timeout のエラーテキストから HTTP ステータスコードを解釈すべきではありません")
 	}
 }
 
-// 墙钟挂死的 member 在安全窗口内(未交付任何事件)失败 → 转移到下一个,
-// 且按瞬时失败计软熔断(不立即开路)。
+// ウォールクロックでハングした member が安全ウィンドウ内（イベント未配信）に失敗 → 次へ
+// フェイルオーバーし、一時失敗としてソフト遮断のカウントに入る（即時には開放しない）。
 func TestFailoverOnCallTimeout(t *testing.T) {
 	a := &fakeProv{name: "a", errs: []error{context.DeadlineExceeded}}
 	b := okProv("b", "hello")
@@ -59,7 +61,7 @@ func TestFailoverOnCallTimeout(t *testing.T) {
 
 	got, err := drain(p.Stream(context.Background(), llm.CompletionRequest{}))
 	if err != nil {
-		t.Fatalf("call_timeout 应触发故障转移并成功, got %v", err)
+		t.Fatalf("call_timeout はフェイルオーバーを発動して成功すべきです, got %v", err)
 	}
 	if got != "hello" {
 		t.Fatalf("text=%q, want hello", got)
@@ -69,15 +71,16 @@ func TestFailoverOnCallTimeout(t *testing.T) {
 	}
 	st := reg.Get(1)
 	if st.Fails != 1 {
-		t.Fatalf("call_timeout 应计入瞬时失败计数, Fails=%d, want 1", st.Fails)
+		t.Fatalf("call_timeout は一時失敗としてカウントすべきです, Fails=%d, want 1", st.Fails)
 	}
 	if st.Open() {
-		t.Fatal("单次 call_timeout 是瞬时失败,不应立即熔断(软熔断需连续多次)")
+		t.Fatal("単発の call_timeout は一時失敗であり、即座に遮断すべきではありません(ソフト遮断は連続複数回が必要)")
 	}
 }
 
-// 安全窗口语义对 call_timeout 同样成立:已交付输出后墙钟到点,错误原样上抛,
-// 不重放到别的 profile(否则重复模型输出)。
+// 安全ウィンドウの意味論は call_timeout にも同じく成立する：出力を配信した後にウォール
+// クロックが期限到来すると、エラーはそのまま上に返し、他の profile へ再送しない（そう
+// しないとモデル出力が重複する）。
 func TestNoFailoverOnCallTimeoutAfterEmit(t *testing.T) {
 	a := &fakeProv{
 		name:   "a",
@@ -89,17 +92,17 @@ func TestNoFailoverOnCallTimeoutAfterEmit(t *testing.T) {
 
 	got, err := drain(p.Stream(context.Background(), llm.CompletionRequest{}))
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("err=%v, want DeadlineExceeded 原样上抛", err)
+		t.Fatalf("err=%v, want DeadlineExceeded をそのまま上位へ返す", err)
 	}
 	if got != "partial" {
-		t.Fatalf("text=%q, want 已交付的 partial", got)
+		t.Fatalf("text=%q, want 配信済みの partial", got)
 	}
 	if b.calls != 0 {
-		t.Fatalf("交付输出后不应因 call_timeout 转移(backup calls=%d)", b.calls)
+		t.Fatalf("出力の配信後は call_timeout で転送すべきではありません(backup calls=%d)", b.calls)
 	}
 }
 
-// Complete 路径:墙钟失败同样转移(非流式调用原子,无重复输出风险)。
+// Complete 経路：ウォールクロックの失敗でも同様にフェイルオーバーする（非ストリーミング呼び出しは原子的で、出力重複のリスクがない）。
 func TestCompleteFailoverOnCallTimeout(t *testing.T) {
 	a := &fakeProv{name: "a", errs: []error{context.DeadlineExceeded}}
 	b := okProv("b", "done")
@@ -107,7 +110,7 @@ func TestCompleteFailoverOnCallTimeout(t *testing.T) {
 
 	msg, _, _, err := p.Complete(context.Background(), llm.CompletionRequest{})
 	if err != nil {
-		t.Fatalf("Complete 应在 call_timeout 后转移成功, got %v", err)
+		t.Fatalf("Complete は call_timeout 後に転送して成功すべきです, got %v", err)
 	}
 	if msg.Text() != "done" {
 		t.Fatalf("text=%q, want done", msg.Text())

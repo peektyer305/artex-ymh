@@ -1,17 +1,24 @@
-// Package tunnel 是多层代理（内网期 3a）核心子系统：probe/plan/deploy/health
-// 四件套（INTRANET-PIVOT-DESIGN.md §4.3）加受管资源原则（§4.3a)。
+// Package tunnel は多層プロキシ（イントラネット期 3a）の中核サブシステム。
+// probe/plan/deploy/health の 4 点セット（INTRANET-PIVOT-DESIGN.md §4.3）と、
+// 管理対象リソースの原則（§4.3a）からなる。
 //
-// 语义参考 PivotHub pivothub（Go 重写，非照抄），并修掉它的三个缺陷：
-//  1. 部署参数完整持久化（deploy_params JSONB 含会话引用/auth/远端路径/验证目标），
-//     断链自动重拉是真功能，不是名存实亡；
-//  2. 销毁兜底查【远端】进程（经会话 kill -0 + /proc/<pid>/cmdline 核对），
-//     不犯 PivotHub 查本机的错；
-//  3. 死链不当活上游：只有隧道内决定性验证（经 socks5 真实拨测 / portfwd 真实访问
-//     target:port）通过才标 alive；反向监听口 accept ≠ 目标可达。
+// 意味づけは PivotHub pivothub（Go での書き直し。丸写しではない）を参考にし、
+// その 3 つの欠陥を修正している：
+//  1. デプロイパラメータを完全に永続化（deploy_params JSONB にセッション参照/
+//     auth/リモートパス/検証対象を含む）。断線時の自動再起動は本物の機能で、
+//     名前だけの飾りではない；
+//  2. 破棄時のフォールバックは【リモート】のプロセスを調べる（セッション経由の
+//     kill -0 + /proc/<pid>/cmdline の照合）。PivotHub のように自ホストを調べる
+//     誤りを犯さない；
+//  3. 死んだリンクを生きた上流として扱わない：トンネル内の決定的な検証（socks5
+//     経由の実疎通確認 / portfwd による target:port への実アクセス）を通った
+//     ときだけ alive を付ける。リバース待ち受け口の accept ≠ 目標への到達性。
 //
-// 隧道是长寿命受管资源：平台 server 进程 pid/命令行、目标 client pid、stage 投递
-// 条目全部落 deploy_params 台账；用完必须 Teardown。agent 侧只见 tunnel_* 工具，
-// 不允许用裸 Bash 自起隧道进程（会被端口审计/收割兜底）。
+// トンネルは寿命の長い管理対象リソース。プラットフォーム server プロセスの pid/
+// コマンドライン、目標 client の pid、stage 配信エントリは、すべて deploy_params
+// の台帳に保存する。使い終わったら必ず Teardown すること。agent 側から見えるのは
+// tunnel_* ツールだけで、素の Bash によるトンネルプロセスの自前起動は許されない
+// （ポート監査/回収のフォールバックで検出される）。
 package tunnel
 
 import (
@@ -20,17 +27,17 @@ import (
 	"strings"
 )
 
-// 隧道类型与适配器。
+// トンネル種別とアダプタ。
 const (
 	KindSocks     = "socks"
 	KindPortfwd   = "portfwd"
 	AdapterChisel = "chisel"
 )
 
-// DefaultPortRange 是平台侧隧道端口池默认值（env ARTEX_TUNNEL_PORT_RANGE 可覆盖）。
+// DefaultPortRange はプラットフォーム側トンネルのポートプールのデフォルト値（env ARTEX_TUNNEL_PORT_RANGE で上書き可能）。
 const DefaultPortRange = "20000-21000"
 
-// ParsePortRange 解析 "min-max" 端口池。纯函数。
+// ParsePortRange は "min-max" 形式のポートプールを解析する。純関数。
 func ParsePortRange(s string) (min, max int, err error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -38,18 +45,19 @@ func ParsePortRange(s string) (min, max int, err error) {
 	}
 	a, b, ok := strings.Cut(s, "-")
 	if !ok {
-		return 0, 0, fmt.Errorf("端口池格式应为 min-max（如 %s)，实际 %q", DefaultPortRange, s)
+		return 0, 0, fmt.Errorf("ポートプールの形式は min-max である必要があります（例 %s）。実際は %q", DefaultPortRange, s)
 	}
 	min, err1 := strconv.Atoi(strings.TrimSpace(a))
 	max, err2 := strconv.Atoi(strings.TrimSpace(b))
 	if err1 != nil || err2 != nil || min <= 0 || max > 65535 || min > max {
-		return 0, 0, fmt.Errorf("非法端口池 %q（需 1-65535 且 min<=max)", s)
+		return 0, 0, fmt.Errorf("不正なポートプール %q（1-65535 かつ min<=max である必要があります）", s)
 	}
 	return min, max, nil
 }
 
-// AllocatePort 从端口池 [min,max] 挑一个既不在 used 集合、又能真实绑定成功的端口。
-// canListen 注入真实绑定检查（生产用 net.Listen 试绑；测试用纯函数）。纯逻辑可测。
+// AllocatePort はポートプール [min,max] から、used 集合になく実際にバインドできる
+// ポートを 1 つ選ぶ。canListen は実バインドの検査を注入する（本番は net.Listen で
+// 試し、テストは純関数）。純粋なロジックなのでテストできる。
 func AllocatePort(min, max int, used map[int]bool, canListen func(port int) bool) (int, error) {
 	for p := min; p <= max; p++ {
 		if used[p] {
@@ -60,5 +68,5 @@ func AllocatePort(min, max int, used map[int]bool, canListen func(port int) bool
 		}
 		return p, nil
 	}
-	return 0, fmt.Errorf("端口池 %d-%d 无可用端口", min, max)
+	return 0, fmt.Errorf("ポートプール %d-%d に利用可能なポートがありません", min, max)
 }

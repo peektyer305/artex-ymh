@@ -6,9 +6,9 @@ import (
 )
 
 // ScopeRule is one RoE authorization-scope rule. Kind is one of
-// domain|ip|cidr|icp|keyword (db task_scope 的 root_domain/subdomain 在 server
-// 装配时归一化为 domain,ip 行的 /32、/128 网段按 cidr 传入)。
-// keyword 与 db/task_scope.go 的既有语义一致:登记后不参与匹配(死规则)。
+// domain|ip|cidr|icp|keyword (db task_scope の root_domain/subdomain は server の
+// 組み立て時に domain へ正規化し、ip 行の /32・/128 は cidr として渡す)。
+// keyword は db/task_scope.go の既存セマンティクスと一致:登録後はマッチングに参加しない（死規則）。
 type ScopeRule struct {
 	Kind  string
 	Value string
@@ -18,7 +18,7 @@ type ScopeRule struct {
 type ScopeVerdict int
 
 const (
-	// ScopeUnknown means the task has no registered scope — 未登记范围,放行(保持现状语义)。
+	// ScopeUnknown means the task has no registered scope — 未登録範囲、通過（現行セマンティクスを維持）。
 	ScopeUnknown ScopeVerdict = iota
 	// ScopeIn means the host matches at least one scope rule.
 	ScopeIn
@@ -45,9 +45,9 @@ type ScopeMatcher struct {
 	cidrs    []*net.IPNet
 	hasRules bool
 	// AllowLocal treats worker-local targets (loopback / link-local / localhost)
-	// as in-scope: 本机操作不算出界。默认开;关掉后本机地址也走范围匹配。
-	// 注意:RFC1918 内网地址不在放行之列——内网任务必须把目标网段登记进
-	// task_scope,否则 RoE 对内网形同虚设。
+	// as in-scope: 本機操作は範囲外としない。デフォルトは有効。無効にすると本機アドレスも範囲マッチングに回る。
+	// 注意：RFC1918 の内部ネットワークアドレスは通過対象外——内部ネットワークのタスクは対象セグメントを
+	// task_scope に登録する必要があり、そうしなければ RoE は内部ネットワークに対して形骸化する。
 	AllowLocal bool
 }
 
@@ -62,7 +62,7 @@ func NewScopeMatcher(rules []ScopeRule) *ScopeMatcher {
 		}
 		switch strings.ToLower(strings.TrimSpace(r.Kind)) {
 		case "domain", "icp":
-			// icp 按 domain 语义处理(域名后缀匹配)。
+			// icp は domain のセマンティクスで扱う（ドメインのサフィックス一致）。
 			d := normalizeHost(v)
 			if d != "" && net.ParseIP(d) == nil {
 				m.domains = append(m.domains, d)
@@ -79,7 +79,7 @@ func NewScopeMatcher(rules []ScopeRule) *ScopeMatcher {
 				m.hasRules = true
 			}
 		case "keyword":
-			// 死规则:不参与匹配(见 db/task_scope.go covTargetCTE 注释)。
+			// 死規則:マッチングに参加しない（db/task_scope.go の covTargetCTE のコメント参照）。
 		}
 	}
 	return m

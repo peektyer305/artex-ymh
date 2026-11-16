@@ -103,7 +103,7 @@ func (s *AssetStore) upsertTaskScope(ts TaskScope) error {
 
 // AddAutoScope records the conservative task scope implied by ONE explicitly-inserted
 // asset item (source='auto'). MUST be called only from insertAssets' top-level loop —
-// never from a db-layer side effect (linkHostAssets), so派生资产不会盲目扩大范围。
+// never from a db-layer side effect (linkHostAssets), so 派生アセットが範囲を盲目的に広げることはない。
 // Rule: scope granularity follows the asset's own type. taskID<=0 → no-op.
 func (s *AssetStore) AddAutoScope(taskID int64, assetType, domain, rawURL, ip string) error {
 	if taskID <= 0 {
@@ -149,16 +149,16 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 	}
 	ts := TaskScope{TaskID: taskID, Kind: kind, Source: source, Reason: reason}
 	if taskID <= 0 {
-		return ts, fmt.Errorf("需要 task_id")
+		return ts, fmt.Errorf("task_id が必要です")
 	}
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return ts, fmt.Errorf("value 不能为空")
+		return ts, fmt.Errorf("value を入力してください")
 	}
 	switch kind {
 	case "company":
 		if s.company == nil {
-			return ts, fmt.Errorf("company store 未启用")
+			return ts, fmt.Errorf("company store が有効になっていません")
 		}
 		var comp *Company
 		var err error
@@ -171,7 +171,7 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 			return ts, err
 		}
 		if comp == nil {
-			return ts, fmt.Errorf("company 不存在: %s（先用 list_companies 确认，或建好企业）", value)
+			return ts, fmt.Errorf("company が存在しません: %s（先に list_companies で確認するか、企業を作成してください）", value)
 		}
 		ts.CompanyID = &comp.ID
 	case "root_domain":
@@ -181,13 +181,13 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 			root = d
 		}
 		if root == "" {
-			return ts, fmt.Errorf("无效根域: %s", value)
+			return ts, fmt.Errorf("不正なルートドメインです: %s", value)
 		}
 		ts.Domain = root
 	case "subdomain":
 		d := DomainKey(stripHostPort(value))
 		if d == "" {
-			return ts, fmt.Errorf("无效子域: %s", value)
+			return ts, fmt.Errorf("不正なサブドメインです: %s", value)
 		}
 		ts.Domain = d
 	case "ip", "cidr":
@@ -199,22 +199,22 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 			ts.Kind = "cidr"
 		}
 		if v == "" {
-			return ts, fmt.Errorf("无效 ip/cidr: %s", value)
+			return ts, fmt.Errorf("不正な ip/cidr です: %s", value)
 		}
 		if _, _, err := net.ParseCIDR(v); err != nil {
-			return ts, fmt.Errorf("无效 ip/cidr: %s", value)
+			return ts, fmt.Errorf("不正な ip/cidr です: %s", value)
 		}
 		ts.Net = v
 	case "icp", "keyword":
-		// 注意:keyword 范围行登记后不参与覆盖度分母(covTargetCTE 没有 keyword 的
-		// 匹配谓词),目前是死规则,见 ROADMAP.md;icp 有匹配谓词,正常计入。
+		// 注意：keyword の範囲行は登録後もカバレッジの分母に参加しない（covTargetCTE に keyword の
+		// マッチ述語がない）。現状は死んだルールで、ROADMAP.md を参照;icp にはマッチ述語があり、通常どおり計上される。
 		parsed, err := ParseScopeInput(ScopeInput{Kind: kind, Value: value})
 		if err != nil {
 			return ts, err
 		}
 		ts.Value = parsed.Value
 	default:
-		return ts, fmt.Errorf("不支持的 kind: %s（company/root_domain/subdomain/ip/cidr/icp/keyword）", kind)
+		return ts, fmt.Errorf("未対応の kind です: %s（company/root_domain/subdomain/ip/cidr/icp/keyword）", kind)
 	}
 	if err := s.upsertTaskScope(ts); err != nil {
 		return ts, err
@@ -279,12 +279,12 @@ type CoverageByType struct {
 // NOT a precise metric. Denominator = assets matching any active task_scope row;
 // Tested = those anchored to at least one fact node in the exploration.
 type Coverage struct {
-	Enabled     bool             `json:"enabled"`     // 资产覆盖度功能是否开启；false 时其余字段为零值
-	ScopeRows   int              `json:"scope_rows"`  // 0 → 范围未锚定
-	Denominator int              `json:"denominator"` // 范围内资产数
-	Tested      int              `json:"tested"`      // 已测(约)
-	Pct         *float64         `json:"pct"`         // 覆盖度；分母 0 时 null
-	ByType      []CoverageByType `json:"by_type"`     // 按资产类型的 总数/已测
+	Enabled     bool             `json:"enabled"`     // アセットカバレッジ機能が有効か;false のとき残りのフィールドはゼロ値
+	ScopeRows   int              `json:"scope_rows"`  // 0 → 範囲が未アンカー
+	Denominator int              `json:"denominator"` // 範囲内のアセット数
+	Tested      int              `json:"tested"`      // テスト済み（概算）
+	Pct         *float64         `json:"pct"`         // カバレッジ;分母が 0 のとき null
+	ByType      []CoverageByType `json:"by_type"`     // アセットタイプ別の 総数/テスト済み
 }
 
 // CoverageEnabled reports whether a task has the asset-coverage feature turned on
@@ -302,8 +302,8 @@ func (s *AssetStore) CoverageEnabled(taskID int64) bool {
 }
 
 // task_scope→assets match predicate, reused by the count / by-type / untested queries. $1=taskID.
-// 注意:kind='keyword' 的范围行故意没有出现在这里——keyword 不参与覆盖度分母
-// (死规则,见 ROADMAP.md);但它仍计入 Coverage.ScopeRows(范围未锚定判定)。
+// 注意：kind='keyword' の範囲行は意図的にここに出していない——keyword はカバレッジの分母に参加しない
+// （死んだルール、ROADMAP.md を参照）。ただし Coverage.ScopeRows（範囲未アンカーの判定）には計上される。
 const covTargetCTE = `
 target AS (
   SELECT DISTINCT a.id, a.type,

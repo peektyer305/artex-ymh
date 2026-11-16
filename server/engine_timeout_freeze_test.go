@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// 时钟跳变检测纯函数:注入计划/实际睡眠时长(等价于假时钟),验证冻结判定与顺延量。
+// 時計の跳び検出の純粋関数:計画/実際の睡眠時間(偽の時計に相当)を注入し、凍結判定と繰り延べ量を検証する。
 func TestDetectFreeze(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -13,13 +13,13 @@ func TestDetectFreeze(t *testing.T) {
 		actual  time.Duration
 		want    time.Duration
 	}{
-		{"正常轮询 2s 不顺延", 2 * time.Second, 2*time.Second + 50*time.Millisecond, 0},
-		{"正常 nap 30s 不顺延", 30 * time.Second, 30*time.Second + 500*time.Millisecond, 0},
-		{"首轮 planned=0 立即醒不顺延", 0, 10 * time.Millisecond, 0},
-		{"跳 65s 顺延 65s", 2 * time.Second, 67 * time.Second, 65 * time.Second},
-		{"冻结 7 小时顺延差值", 30 * time.Second, 7*time.Hour + 30*time.Second, 7 * time.Hour},
-		{"恰好低于阈值不顺延", 30 * time.Second, 30*time.Second + freezeDetectThreshold - time.Second, 0},
-		{"时钟回拨不顺延", 30 * time.Second, 5 * time.Second, 0},
+		{"正常なポーリング 2s は繰り延べなし", 2 * time.Second, 2*time.Second + 50*time.Millisecond, 0},
+		{"正常な nap 30s は繰り延べなし", 30 * time.Second, 30*time.Second + 500*time.Millisecond, 0},
+		{"初回 planned=0 は即起床で繰り延べなし", 0, 10 * time.Millisecond, 0},
+		{"65s の跳びは 65s 繰り延べ", 2 * time.Second, 67 * time.Second, 65 * time.Second},
+		{"7 時間の凍結は差分を繰り延べ", 30 * time.Second, 7*time.Hour + 30*time.Second, 7 * time.Hour},
+		{"ちょうどしきい値未満は繰り延べなし", 30 * time.Second, 30*time.Second + freezeDetectThreshold - time.Second, 0},
+		{"時計の巻き戻しは繰り延べなし", 30 * time.Second, 5 * time.Second, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -30,25 +30,25 @@ func TestDetectFreeze(t *testing.T) {
 	}
 }
 
-// 连续小跳:每轮各自低于阈值,不累计、不顺延。
+// 連続する小さな跳び:各回はしきい値未満で、累積も繰り延べもしない。
 func TestDetectFreezeConsecutiveSmallJumps(t *testing.T) {
 	total := time.Duration(0)
 	for i := 0; i < 5; i++ {
-		// 每轮超睡 30s(< 60s 阈值),连跳 5 轮共超 150s 也不应顺延。
+		// 各回 30 秒余分に眠る(60 秒のしきい値未満)。5 回連続で計 150 秒を超えても繰り延べすべきではない。
 		total += detectFreeze(2*time.Second, 32*time.Second)
 	}
 	if total != 0 {
-		t.Fatalf("连续小跳累计顺延 %v, want 0", total)
+		t.Fatalf("連続する小さな跳びの累計繰り延べ %v, want 0", total)
 	}
 }
 
-// 顺延累计正确:两次大跳分别检出,由调用方累加。
+// 繰り延べの累積が正しい：2 回の大きな跳びをそれぞれ検出し、呼び出し側が加算する。
 func TestDetectFreezeAccumulates(t *testing.T) {
 	var shift time.Duration
 	shift += detectFreeze(30*time.Second, 30*time.Second+65*time.Second)
 	shift += detectFreeze(30*time.Second, 30*time.Second+time.Hour)
 	want := 65*time.Second + time.Hour
 	if shift != want {
-		t.Fatalf("累计顺延 %v, want %v", shift, want)
+		t.Fatalf("累計繰り延べ %v, want %v", shift, want)
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// 以下 fixture 是 2026-09-13 测试机(penelope --mcp)真实返回的 text block 内容。
+// 以下の fixture は 2026-09-13 のテスト機(penelope --mcp)が実際に返した text block の内容。
 const (
 	penListFixture = `{
   "sessions": [
@@ -56,18 +56,18 @@ func TestParsePenSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(ss) != 1 {
-		t.Fatalf("期望 1 条会话,实际 %d", len(ss))
+		t.Fatalf("期待するセッションは 1 件、実際は %d", len(ss))
 	}
 	s := ss[0]
 	if s.ID != 1 || s.IP != "127.0.0.1" || s.Port != 39960 || s.OS != "Unix" || s.User != "root(0)" || s.Source != "reverse" {
-		t.Fatalf("字段不符: %+v", s)
+		t.Fatalf("フィールドが不一致: %+v", s)
 	}
 	empty, err := parsePenSessions(penListEmptyFixture)
 	if err != nil || len(empty) != 0 {
-		t.Fatalf("空列表解析不符: %v %v", empty, err)
+		t.Fatalf("空リストの解析が不一致: %v %v", empty, err)
 	}
 	if _, err := parsePenSessions("not json"); err == nil {
-		t.Fatal("坏 JSON 应报错")
+		t.Fatal("壊れた JSON はエラーになるべき")
 	}
 }
 
@@ -77,7 +77,7 @@ func TestParsePenInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ps.Hostname != "ubuntu" || ps.System != "Linux" || ps.Arch != "x86_64" || ps.CWD != "/root" {
-		t.Fatalf("info 字段不符: %+v", ps)
+		t.Fatalf("info フィールドが不一致: %+v", ps)
 	}
 }
 
@@ -87,20 +87,20 @@ func TestParseExecOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out != "uid=0(root) gid=0(root) groups=0(root)\nubuntu" {
-		t.Fatalf("output 不符: %q", out)
+		t.Fatalf("output が不一致: %q", out)
 	}
 	if _, err := parseExecOutput(`{"error":"exec failed or session not ready"}`); err == nil {
-		t.Fatal("error 字段应上抛")
+		t.Fatal("error フィールドは上に伝播すべき")
 	}
 }
 
 func TestParseStringList(t *testing.T) {
 	got, err := parseStringList("downloaded", `{"downloaded":["/root/.penelope/sessions/x/downloads/etc/hostname"]}`)
 	if err != nil || len(got) != 1 || !strings.HasSuffix(got[0], "etc/hostname") {
-		t.Fatalf("downloaded 解析不符: %v %v", got, err)
+		t.Fatalf("downloaded の解析が不一致: %v %v", got, err)
 	}
 	if _, err := parseStringList("uploaded", `{"downloaded":[]}`); err == nil {
-		t.Fatal("缺键应报错")
+		t.Fatal("キーがない場合はエラーになるべき")
 	}
 }
 
@@ -115,7 +115,7 @@ func TestSplitRemotePath(t *testing.T) {
 	for _, c := range cases {
 		dir, base := splitRemotePath(c.in)
 		if dir != c.dir || base != c.base {
-			t.Fatalf("splitRemotePath(%q)=(%q,%q),期望(%q,%q)", c.in, dir, base, c.dir, c.base)
+			t.Fatalf("splitRemotePath(%q)=(%q,%q)、期待は(%q,%q)", c.in, dir, base, c.dir, c.base)
 		}
 	}
 }
@@ -124,14 +124,14 @@ func TestDiffPenSessions(t *testing.T) {
 	known := map[int]int64{1: 10, 2: 11}
 	newIDs, dead := diffPenSessions([]int{2, 3}, known)
 	if len(newIDs) != 1 || newIDs[0] != 3 {
-		t.Fatalf("newIDs 不符: %v", newIDs)
+		t.Fatalf("newIDs が不一致: %v", newIDs)
 	}
 	if len(dead) != 1 || dead[1] != 10 {
-		t.Fatalf("dead 不符: %v", dead)
+		t.Fatalf("dead が不一致: %v", dead)
 	}
 	newIDs, dead = diffPenSessions([]int{1, 2}, known)
 	if len(newIDs) != 0 || len(dead) != 0 {
-		t.Fatalf("全量重合应为空 diff: %v %v", newIDs, dead)
+		t.Fatalf("全量が重なる場合は空の diff になるべき: %v %v", newIDs, dead)
 	}
 }
 
@@ -139,17 +139,17 @@ func TestReversePayloads(t *testing.T) {
 	p := reversePayloads("10.8.0.6", 4444)
 	for _, k := range []string{"bash", "python", "nc"} {
 		if !strings.Contains(p[k], "10.8.0.6") || !strings.Contains(p[k], "4444") {
-			t.Fatalf("payload %s 缺回连地址: %q", k, p[k])
+			t.Fatalf("payload %s に接続先アドレスがない: %q", k, p[k])
 		}
 	}
 	if !strings.Contains(p["bash"], "/dev/tcp/10.8.0.6/4444") {
-		t.Fatalf("bash payload 形态不符: %q", p["bash"])
+		t.Fatalf("bash payload の形式が不一致: %q", p["bash"])
 	}
 }
 
-// fakeMCP 是单测用的假 mcpCaller:按工具名返回罐头响应,记录调用参数。
+// fakeMCP は単体テスト用の偽 mcpCaller:ツール名ごとに固定の応答を返し、呼び出しパラメータを記録する。
 type fakeMCP struct {
-	responses map[string]string // tool → text block 内容
+	responses map[string]string // tool → text block の内容
 	err       map[string]error
 	calls     []map[string]any
 }
@@ -173,40 +173,40 @@ func TestReverseShellExec(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stderr != "" {
-		t.Fatalf("reverse 通道 stderr 恒为空,实际 %q", stderr)
+		t.Fatalf("reverse チャネルの stderr は常に空のはず、実際は %q", stderr)
 	}
 	if !strings.Contains(stdout, "uid=0(root)") {
-		t.Fatalf("stdout 不符: %q", stdout)
+		t.Fatalf("stdout が不一致: %q", stdout)
 	}
 	args := fm.calls[0]["args"].(map[string]any)
 	if args["session_id"] != 1 || args["command"] != "id; hostname" {
-		t.Fatalf("MCP 参数不符: %v", args)
+		t.Fatalf("MCP 引数が不一致: %v", args)
 	}
 }
 
 func TestReverseShellExecDeadSession(t *testing.T) {
-	// penelope 对未知/已死会话返回 JSON-RPC -32602(mcphttp.Call 上抛为 error)。
+	// penelope は未知/死んだセッションに対して JSON-RPC -32602 を返す(mcphttp.Call では error として上に伝わる)。
 	fm := &fakeMCP{err: map[string]error{"exec_in_session": fmt.Errorf("mcp rpc error -32602: session 1 not found")}}
 	sh := &reverseShell{id: 7, penID: 1, caller: fm}
 	if _, _, err := sh.Exec(context.Background(), "id", 0); err == nil ||
 		!strings.Contains(err.Error(), "not found") {
-		t.Fatalf("死会话错误应如实上抛: %v", err)
+		t.Fatalf("死んだセッションのエラーはそのまま上に伝播すべき: %v", err)
 	}
 }
 
 func TestReverseShellTestProbe(t *testing.T) {
-	// Test 发 echo 哨兵,回显含哨兵才算活;这里假 MCP 直接回显命令本身。
+	// Test は echo のセンチネルを送り、そのエコーが返ってきたときだけ生存と見なす。ここでは偽 MCP がコマンド自体をそのまま返す。
 	fm := &fakeMCP{responses: map[string]string{}}
 	fm.responses["exec_in_session"] = ""
 	sh := &reverseShell{id: 7, penID: 1, caller: fm}
-	// 回显为空 → 哨兵未回显 → 报错
+	// エコーが空 → センチネルが返らない → エラー
 	if err := sh.Test(context.Background()); err == nil {
-		t.Fatal("哨兵未回显应报错")
+		t.Fatal("センチネルが返らなければエラーになるべき")
 	}
 }
 
 func TestReverseShellReadFile(t *testing.T) {
-	// 模拟 penelope 下载落本地:先造本地文件,假 MCP 返回其路径。
+	// penelope のダウンロードがローカルに落ちる様子を模擬:まずローカルファイルを作り、偽 MCP がそのパスを返す。
 	local := filepath.Join(t.TempDir(), "hostname")
 	if err := os.WriteFile(local, []byte("ubuntu\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -220,11 +220,11 @@ func TestReverseShellReadFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(data) != "ubuntu\n" {
-		t.Fatalf("内容不符: %q", data)
+		t.Fatalf("内容が不一致: %q", data)
 	}
 	args := fm.calls[0]["args"].(map[string]any)
 	if args["remote_path"] != "/etc/hostname" {
-		t.Fatalf("remote_path 不符: %v", args)
+		t.Fatalf("remote_path が不一致: %v", args)
 	}
 }
 
@@ -234,8 +234,8 @@ func TestReverseShellReadFileMultiMatch(t *testing.T) {
 	}}
 	sh := &reverseShell{id: 7, penID: 1, caller: fm}
 	if _, err := sh.ReadFile(context.Background(), "/etc/ho*"); err == nil ||
-		!strings.Contains(err.Error(), "精确路径") {
-		t.Fatalf("多匹配应报精确路径错误: %v", err)
+		!strings.Contains(err.Error(), "正確なパス") {
+		t.Fatalf("複数一致の場合は正確なパスを求めるエラーになるべき: %v", err)
 	}
 }
 
@@ -248,23 +248,23 @@ func TestReverseShellWriteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := fm.calls[0]["args"].(map[string]any)
-	// remote_path 必须是目录(实测语义);local_path 的 basename 必须等于目标 basename。
+	// remote_path はディレクトリでなければならない(実測のセマンティクス)。local_path の basename は対象の basename と一致する必要がある。
 	if args["remote_path"] != "/tmp" {
-		t.Fatalf("remote_path 应为目录: %v", args)
+		t.Fatalf("remote_path はディレクトリであるべき: %v", args)
 	}
 	if filepath.Base(fmt.Sprint(args["local_path"])) != "up.txt" {
-		t.Fatalf("local_path basename 必须保留目标文件名: %v", args["local_path"])
+		t.Fatalf("local_path の basename は対象のファイル名を保持すべき: %v", args["local_path"])
 	}
 }
 
 func TestReverseShellWriteFileEmptyUpload(t *testing.T) {
-	// penelope 对不可写目录/非持久 shell 返回 {"uploaded":[]}(实测),必须报错不装成功。
+	// penelope は書き込めないディレクトリ/非永続 shell に対して {"uploaded":[]} を返す(実測)ので、必ずエラーにして成功扱いしない。
 	fm := &fakeMCP{responses: map[string]string{
 		"upload_to_session": `{"uploaded":[]}`,
 	}}
 	sh := &reverseShell{id: 7, penID: 1, caller: fm}
 	if err := sh.WriteFile(context.Background(), "/root/x", []byte("x")); err == nil {
-		t.Fatal("空 uploaded 应报错")
+		t.Fatal("空の uploaded はエラーになるべき")
 	}
 }
 
@@ -276,11 +276,11 @@ func TestReverseShellClose(t *testing.T) {
 	}
 	args := fm.calls[0]["args"].(map[string]any)
 	if args["session_id"] != 3 {
-		t.Fatalf("kill_session 参数不符: %v", args)
+		t.Fatalf("kill_session の引数が不一致: %v", args)
 	}
-	// 会话已死(kill 返回 -32602)也不应报错——Registry 清理语义。
+	// セッションが既に死んでいても(kill が -32602 を返す)エラーにしない——Registry のクリーンアップのセマンティクス。
 	fm.err = map[string]error{"kill_session": fmt.Errorf("mcp rpc error -32602: session 3 not found")}
 	if err := sh.Close(context.Background()); err != nil {
-		t.Fatalf("已死会话 Close 应吞错: %v", err)
+		t.Fatalf("死んだセッションの Close はエラーを飲み込むべき: %v", err)
 	}
 }

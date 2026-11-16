@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 批 5 B4:默认池存在且是主流 Chrome(Windows x64);settings 未配置/非法时回落默认池。
+// バッチ 5 B4: デフォルトプールが存在し主流 Chrome（Windows x64）であること。settings が未設定/不正ならデフォルトプールへ戻る。
 func TestUAPoolDefaults(t *testing.T) {
 	pool := DefaultUAPool()
 	if len(pool) < 2 {
@@ -16,21 +16,21 @@ func TestUAPoolDefaults(t *testing.T) {
 			t.Fatalf("default UA should be mainstream Chrome on Windows x64: %q", ua)
 		}
 	}
-	// 未配置 / 非法 JSON / 空数组 / 全空条目 → 默认池。
+	// 未設定 / 不正な JSON / 空配列 / 全項目が空 → デフォルトプール。
 	for _, raw := range []string{"", "not-json", "[]", `["", "  "]`} {
 		got := UAPoolFromSetting(raw)
 		if len(got) != len(pool) || got[0] != pool[0] {
 			t.Fatalf("UAPoolFromSetting(%q) should fall back to default pool, got %v", raw, got)
 		}
 	}
-	// 合法配置:解析并剔除空条目。
+	// 正当な設定: 解析し、空の項目を除く。
 	got := UAPoolFromSetting(`["UA-A", " ", "UA-B"]`)
 	if len(got) != 2 || got[0] != "UA-A" || got[1] != "UA-B" {
 		t.Fatalf("custom pool should parse and trim, got %v", got)
 	}
 }
 
-// 批 5 B4:同任务稳定(每次调用同一个),不同任务可不同,空池回落默认。
+// バッチ 5 B4: 同一タスクでは安定（毎回同じ）、タスクが違えば変わりうる、空のプールはデフォルトへ戻る。
 func TestUAPickStable(t *testing.T) {
 	pool := DefaultUAPool()
 	first := PickUA(pool, 42)
@@ -46,13 +46,13 @@ func TestUAPickStable(t *testing.T) {
 	if len(seen) < 2 {
 		t.Fatalf("different tasks should be able to get different UAs, got %v", seen)
 	}
-	// 空池 → 默认池,且非空。
+	// 空のプール → デフォルトプール、かつ非空。
 	if ua := PickUA(nil, 7); ua == "" {
 		t.Fatal("nil pool should fall back to the default pool")
 	}
 }
 
-// 批 5 B4:BashEnv 注入——ua 非空追加 ARTEX_UA,为空原样返回。
+// バッチ 5 B4: BashEnv への注入——ua が非空なら ARTEX_UA を追加し、空ならそのまま返す。
 func TestUAEnv(t *testing.T) {
 	env := uaEnv(nil, "UA-X")
 	if len(env) != 1 || env[0] != "ARTEX_UA=UA-X" {

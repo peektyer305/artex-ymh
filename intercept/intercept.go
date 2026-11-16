@@ -145,7 +145,7 @@ var defaultEnabledTools = []string{
 	"Bash", "WebFetch", "web_search",
 	"shell_open", "shell_send",
 	"Write", "Edit", "MultiEdit",
-	// 立足点会话工具(期 1a):登记 webshell 与目标侧命令/文件操作,默认进拦截规则体系。
+	// フットホールドセッションツール（フェーズ 1a）：webshell とターゲット側のコマンド・ファイル操作を登録し、デフォルトでインターセプトルール体系に入る。
 	"register_session", "session_exec", "session_read", "session_write",
 }
 
@@ -248,7 +248,7 @@ func (i *Interceptor) IsToolEnabled(name string) bool {
 	defer i.mu.Unlock()
 	if i.enabledTools == nil {
 		if err := i.loadLocked(); err != nil {
-			log.Printf("[intercept] 启用工具列表加载失败,工具 %s 按 fail-closed 进入拦截流程: %v", name, err)
+			log.Printf("[intercept] 有効なツール一覧の読み込みに失敗しました。ツール %s は fail-closed としてインターセプト処理に入ります：%v", name, err)
 			return true
 		}
 	}
@@ -460,19 +460,19 @@ func (i *Interceptor) Judge(ctx context.Context, tool string, arguments json.Raw
 	if contextErr != nil {
 		// Invalid current arguments cannot be reviewed faithfully, regardless of
 		// the configured model-failure strategy. A human must resolve the input.
-		out = Decision{Action: "ask", ModelFallback: true, Message: "审查上下文不完整，需要人工确认：" + contextErr.Error()}
+		out = Decision{Action: "ask", ModelFallback: true, Message: "審査コンテキストが不完全なため、手動での確認が必要です：" + contextErr.Error()}
 	} else {
 		modelInput, _ = json.Marshal(input)
 		out, err = rv(cctx, cfg.ProfileID, cfg.Prompt, input)
 	}
 	if err != nil {
-		out = Decision{ProfileID: out.ProfileID, ModelFallback: true, Action: cfg.FailAction, Message: "模型审批失败,按失败策略处理: " + err.Error()}
+		out = Decision{ProfileID: out.ProfileID, ModelFallback: true, Action: cfg.FailAction, Message: "モデル承認に失敗しました。失敗ポリシーに従って処理します: " + err.Error()}
 	}
 	switch out.Action {
 	case "allow", "ask", "deny":
 		// valid verdict
 	default:
-		out = Decision{ProfileID: out.ProfileID, ModelFallback: true, Action: cfg.FailAction, Message: "模型输出无法解析,按失败策略处理"}
+		out = Decision{ProfileID: out.ProfileID, ModelFallback: true, Action: cfg.FailAction, Message: "モデル出力を解析できませんでした。失敗ポリシーに従って処理します"}
 	}
 	// A model verdict never carries a rule; keep RuleID 0 (→ NULL) for history.
 	out.RuleID = 0
@@ -502,11 +502,11 @@ func (i *Interceptor) Judge(ctx context.Context, tool string, arguments json.Raw
 func judgeActionLabel(action string) string {
 	switch action {
 	case "allow":
-		return "放行"
+		return "許可"
 	case "deny":
-		return "拦截"
+		return "ブロック"
 	case "ask":
-		return "转人工审批"
+		return "手動承認へ"
 	default:
 		return action
 	}
@@ -521,11 +521,11 @@ func judgeActionLabel(action string) string {
 func (i *Interceptor) Match(toolName string, input []byte) (Decision, bool) {
 	rules, err := i.rules()
 	if err != nil {
-		log.Printf("[intercept] 规则加载失败,工具 %s 按 fail-closed 拒绝: %v", toolName, err)
+		log.Printf("[intercept] ルールの読み込みに失敗しました。ツール %s は fail-closed として拒否します：%v", toolName, err)
 		return Decision{
 			RuleName: "rule-load-error",
 			Action:   "deny",
-			Message:  "拦截规则加载失败,平台按 fail-closed 策略禁止执行此工具",
+			Message:  "インターセプトルールの読み込みに失敗しました。fail-closed ポリシーによりこのツールの実行を禁止します",
 		}, true
 	}
 	if len(rules) == 0 {
@@ -571,9 +571,9 @@ func ruleMatches(r compiledRule, toolName string, input []byte) bool {
 func defaultMessage(action, name string) string {
 	switch action {
 	case "deny":
-		return "拦截规则 [" + name + "] 禁止执行此工具"
+		return "インターセプトルール [" + name + "] によりこのツールの実行は禁止されています"
 	case "ask":
-		return "拦截规则 [" + name + "] 要求用户审批，请等待"
+		return "インターセプトルール [" + name + "] によりユーザー承認が必要です。お待ちください"
 	default:
 		return ""
 	}
@@ -598,17 +598,17 @@ func (i *Interceptor) Log(ctx context.Context, convID int64, dec Decision, toolN
 // (via /api/intercept/pending/{id}/decide) or the per-rule timeout elapses.
 // Returns true if the user approved.
 //
-// 一键放行(guard_auto_allow)启用中时不创建 pending 记录,直接批准并写历史
-// (decision_source = "auto_allow");到期后自动恢复人工审批。
+// ワンクリック許可（guard_auto_allow）が有効な間は pending レコードを作成せず、直接承認して履歴を書き込む
+// （decision_source = "auto_allow"）。期限が切れると自動で手動承認に戻る。
 //
 // convID == 0 means no active conversation (background pentest task). The
 // pending record is still created (conversation_id = NULL) so the approvals
 // page shows it and the sidebar badge lights up. The worker thread blocks just
 // like in a chat session — the user must visit the approvals page to unblock it.
 func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision, toolName string, input []byte) bool {
-	// 一键放行(带时限):启用中直接放行,不进 pending;历史记 decision_source=
-	// "auto_allow"。每次裁决前 AutoAllowStatus 做惰性到期检查,过期自动关闭。
-	// 仅作用于 ask 审批;deny 规则在 guard 的 deny 分支拦截,不经过这里。
+	// ワンクリック許可（期限付き）：有効な間は直接許可し、pending には入らない。履歴には decision_source=
+	// "auto_allow" を記録する。各判定の前に AutoAllowStatus が遅延失効チェックを行い、失効していれば自動でオフになる。
+	// 対象は ask 承認のみ。deny ルールは guard の deny 分岐でブロックされ、ここは通らない。
 	if i.AutoAllowStatus().Enabled {
 		i.autoAllowApprove(ctx, convID, dec, toolName, input)
 		return true
@@ -641,7 +641,7 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 	})
 	activity := db.Activity{
 		Kind:    "intercept_request",
-		Summary: fmt.Sprintf("工具 %s 请求审批 (#%d)", toolName, pendingID),
+		Summary: fmt.Sprintf("ツール %s が承認を要求しています (#%d)", toolName, pendingID),
 		Detail:  string(detail),
 	}
 
@@ -660,8 +660,8 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 		case allowed := <-ch:
 			return allowed
 		case <-ctx.Done():
-			_, _ = i.db.ResolveIntercept(pendingID, "denied", "deny", "工作已取消")
-			_ = i.db.CompleteIntercept(pendingID, audit.RunID, audit.ToolUseID, "not_executed", "执行前工作已取消", false)
+			_, _ = i.db.ResolveIntercept(pendingID, "denied", "deny", "作業がキャンセルされました")
+			_ = i.db.CompleteIntercept(pendingID, audit.RunID, audit.ToolUseID, "not_executed", "実行前に作業がキャンセルされました", false)
 			return false
 		}
 	}
@@ -681,7 +681,7 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 		if allowed {
 			action = "allow"
 		}
-		resolved, err := i.db.ResolveIntercept(pendingID, "timeout", action, "审批超时，按超时策略处理")
+		resolved, err := i.db.ResolveIntercept(pendingID, "timeout", action, "承認がタイムアウトしました。タイムアウトポリシーに従って処理します")
 		if err != nil {
 			return false
 		}
@@ -691,13 +691,13 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 		}
 		return allowed
 	case <-ctx.Done():
-		_, _ = i.db.ResolveIntercept(pendingID, "denied", "deny", "工作已取消")
-		_ = i.db.CompleteIntercept(pendingID, audit.RunID, audit.ToolUseID, "not_executed", "执行前工作已取消", false)
+		_, _ = i.db.ResolveIntercept(pendingID, "denied", "deny", "作業がキャンセルされました")
+		_ = i.db.CompleteIntercept(pendingID, audit.RunID, audit.ToolUseID, "not_executed", "実行前に作業がキャンセルされました", false)
 		return false
 	}
 }
 
-var ErrAlreadyDecided = errors.New("审批已处理或不存在，请刷新记录")
+var ErrAlreadyDecided = errors.New("承認は既に処理済みか存在しません。記録を更新してください")
 
 // Decide resolves a pending request. Called by the HTTP decide endpoint.
 func (i *Interceptor) Decide(pendingID int64, allowed bool) error {
@@ -705,9 +705,9 @@ func (i *Interceptor) Decide(pendingID int64, allowed bool) error {
 	if allowed {
 		status = "allowed"
 	}
-	action, reason := "deny", "人工拒绝执行"
+	action, reason := "deny", "手動で実行を拒否"
 	if allowed {
-		action, reason = "allow", "人工允许执行"
+		action, reason = "allow", "手動で実行を許可"
 	}
 	resolved, err := i.db.ResolveIntercept(pendingID, status, action, reason)
 	if err != nil {

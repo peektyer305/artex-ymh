@@ -1,16 +1,16 @@
 package db
 
-// 批 6 L1 蜜罐静态签名识别(HONEYPOT-DETECTION-DESIGN.md 二·L1):db 层只做
-// 存取,签名匹配逻辑全部在 honeydetect 包。评分与证据由 server/agent 挂点在
-// service 资产落库后写入;planner 注入与 UI 经这里读出。
+// バッチ 6 L1 ハニーポット静的シグネチャ識別(HONEYPOT-DETECTION-DESIGN.md 二·L1):db 層は
+// 保存/取得のみを担い、シグネチャ照合ロジックはすべて honeydetect パッケージにある。スコアとエビデンスは
+// server/agent のフックが service アセットの保存後に書き込み、planner への注入と UI はここから読み出す。
 
 import (
 	"encoding/json"
 	"fmt"
 )
 
-// SetHoneypotScore 写入资产的蜜罐评分与证据。重复评估取更高分,证据(JSON 数组
-// 文本)合并去重;评分不升且证据无新增时不动行(幂等)。
+// SetHoneypotScore はアセットのハニーポットスコアとエビデンスを書き込む。再評価では高い方のスコアを採り、
+// エビデンス(JSON 配列テキスト)はマージして重複を除く。スコアが上がらずエビデンスも増えない場合は行を更新しない(冪等)。
 func (s *AssetStore) SetHoneypotScore(assetID int64, score float64, evidence []string) error {
 	if assetID <= 0 || score <= 0 {
 		return nil
@@ -24,7 +24,7 @@ func (s *AssetStore) SetHoneypotScore(assetID int64, score float64, evidence []s
 	}
 	merged := MergeHoneypotEvidence(curEvidence, evidence)
 	if score < curScore {
-		score = curScore // 取更高分
+		score = curScore // 高い方のスコアを採る
 	}
 	if score == curScore && merged == curEvidence {
 		return nil
@@ -35,8 +35,8 @@ func (s *AssetStore) SetHoneypotScore(assetID int64, score float64, evidence []s
 	return err
 }
 
-// MergeHoneypotEvidence 把新命中证据合并进已有证据(JSON 数组文本),去重;
-// 旧值不是合法 JSON 数组时按无旧值处理(不丢新证据)。
+// MergeHoneypotEvidence は新たにヒットしたエビデンスを既存のエビデンス(JSON 配列テキスト)へマージし、重複を除く。
+// 旧値が有効な JSON 配列でない場合は旧値なしとして扱う(新しいエビデンスを失わない)。
 func MergeHoneypotEvidence(existing string, add []string) string {
 	var items []string
 	if existing != "" {
@@ -63,15 +63,15 @@ func MergeHoneypotEvidence(existing string, add []string) string {
 	return string(b)
 }
 
-// HoneypotAsset 是 planner 注入用的一行疑似蜜罐资产。
+// HoneypotAsset は planner への注入に使う 1 行分のハニーポット疑いアセット。
 type HoneypotAsset struct {
 	ID       int64
-	Label    string // url,否则 host:port
+	Label    string // url、それ以外は host:port
 	Score    float64
-	Evidence string // JSON 数组文本
+	Evidence string // JSON 配列テキスト
 }
 
-// HoneypotAssetsByTask 列出本任务 score>0 的资产,按评分降序,limit<=0 默认 20。
+// HoneypotAssetsByTask は本タスクの score>0 のアセットをスコア降順で一覧する。limit<=0 ならデフォルト 20。
 func (s *AssetStore) HoneypotAssetsByTask(taskID int64, limit int) ([]HoneypotAsset, error) {
 	if limit <= 0 {
 		limit = 20

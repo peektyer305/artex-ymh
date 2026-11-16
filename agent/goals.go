@@ -80,7 +80,7 @@ type GoalSpec struct {
 // shares the rate limiter, gets recorded by llmrec, and participates in LLM
 // failover instead of quietly bypassing all three.
 //
-// desc is the task's free-text description (背景：靶标范围/flag 数量/交战说明等).
+// desc is the task's free-text description (背景：ターゲット範囲/flag 数/交戦説明など).
 // It is fed alongside the goal so the decomposer no longer splits blind — the
 // prompt still forbids inventing anything the two texts don't state.
 //
@@ -117,8 +117,9 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 	// {{.EngagementDescription}} template var — else a prompt that references the var
 	// would inject the description twice. System prompt stays pure static instructions.
 	sys := renderSystem("goals", goalsDefaultTmpl, GoalsVars{DataDir: dataDir, Now: nowStr()})
-	// set_constraints 始终可用(不依赖 asset store):正文已含「先抽操作约束再拆目标」这步
-	// (可在 agent 编辑页改措辞),这里只需接上工具。
+	// set_constraints は常に利用可能(asset store に依存しない)：本文に「先に操作制約を抽出し、
+	// その後に目標を分割する」手順が含まれる(agent の編集ページで文言を変えられる)。ここでは
+	// ツールを接続するだけでよい。
 	tools := []actool.CoreTool{tsx.setGoals(), tsx.setConstraints()}
 	// Wire add_task_scope only when we have a real asset store + task to write to.
 	// The scope-extraction tail is appended in lockstep so the prompt never asks for
@@ -145,10 +146,11 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 		Tools:                  tools,
 		PermissionMode:         acperm.ModeBypass,
 		DisableBackgroundTasks: true,
-		// 3 步(抽约束 → 登记范围 → 拆目标)各需一次工具调用,给足回合避免收尾前漏调 set_goals。
+		// 3 ステップ(制約の抽出 → 範囲の登録 → 目標の分割)にそれぞれ 1 回のツール呼び出しが要る。
+		// ターンを十分に与え、終了前に set_goals を呼び忘れないようにする。
 		MaxTurns:     8,
-		NonStreaming: nonStreaming, // 该 profile 选非流式时走 Provider.Complete
-		MaxTokens:    maxTokens,    // 0 = 不发上限,由服务端默认值决定
+		NonStreaming: nonStreaming, // この profile で非ストリーミングを選んだ場合は Provider.Complete を通る
+		MaxTokens:    maxTokens,    // 0 = 上限を送らず、サーバー側のデフォルト値に任せる
 	}, userMsg, captureEmit)
 	// set_goals persisted the goals directly; read them back so the caller sees what
 	// was written (empty slice ⇒ the LLM produced nothing ⇒ caller falls back).

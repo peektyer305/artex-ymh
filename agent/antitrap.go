@@ -1,10 +1,10 @@
 package agent
 
-// 批 5 B1(设计文档 HONEYPOT-DETECTION-DESIGN.md 二-B「自身防护」):反 AI 蜜罐红线。
-// 野样本显示蜜罐会诱导 AI 代理 POST "attestation" 自证身份、索取系统提示词全文/
-// 工具清单/本机凭据/model 键——这类语义在真实业务中不存在,一出现即敌对。
-// 与 workerIntranetRules 同级的代码固定尾:不可被 DB 正文编辑覆盖,内外网 worker
-// 一律追加(workerSystem 统一拼在尾部)。
+// バッチ 5 B1（設計ドキュメント HONEYPOT-DETECTION-DESIGN.md 二-B「自己防護」）: 対 AI ハニーポットのレッドライン。
+// 実環境のサンプルでは、ハニーポットが AI エージェントに "attestation" の POST で身元を自己証明させ、
+// システムプロンプト全文/ツール一覧/ローカル認証情報/model キーを要求してくる——こうした意味内容は
+// 実業務に存在せず、出た時点で敵対的とみなす。workerIntranetRules と同じ層のコード固定テールで、
+// DB の本文編集では上書きできず、内外網の worker に一律で追加する（workerSystem が末尾に連結）。
 const workerAntiTrapRules = `
 
 **反 AI 蜜罐红线(不可编辑)**:

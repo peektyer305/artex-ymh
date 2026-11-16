@@ -38,8 +38,8 @@ const banner = `
 // printBanner writes the startup banner + version/runtime info to stdout.
 func printBanner(addr string) {
 	fmt.Print(banner)
-	fmt.Println("  AI 自主渗透测试系统")
-	fmt.Printf("  版本 %s  ·  %s/%s  ·  %s  ·  监听 %s\n\n",
+	fmt.Println("  AI 自律ペネトレーションテストシステム")
+	fmt.Printf("  バージョン %s  ·  %s/%s  ·  %s  ·  リッスン %s\n\n",
 		version, runtime.GOOS, runtime.GOARCH, runtime.Version(), addr)
 }
 
@@ -52,7 +52,7 @@ func main() {
 }
 
 func run() int {
-	// `artex doctor` 部署预检（期 6)：只读检查，在解析服务 flag / 起任何子系统之前分流。
+	// `artex doctor` デプロイ事前チェック（フェーズ 6）。読み取り専用チェックで、サービス flag の解析や各サブシステムの起動より前に分岐する。
 	if len(os.Args) > 1 && os.Args[1] == "doctor" {
 		return runDoctor(os.Args[2:])
 	}
@@ -91,9 +91,9 @@ func run() int {
 		cfgPath = abs
 	}
 	if _, e := os.Stat(cfgPath); e == nil {
-		log.Printf("[config] 配置文件: %s", cfgPath)
+		log.Printf("[config] 設定ファイル: %s", cfgPath)
 	} else {
-		log.Printf("[config] 配置文件: %s (不存在 — 将仅尝试环境变量 ARTEX_PG_DSN)", cfgPath)
+		log.Printf("[config] 設定ファイル: %s（存在しません — 環境変数 ARTEX_PG_DSN のみを試行します）", cfgPath)
 	}
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -117,23 +117,23 @@ func run() int {
 	if abs, err := filepath.Abs(skillDir); err == nil {
 		skillDir = abs
 	}
-	log.Printf("[config] skill 目录: %s", skillDir)
-	// ARTEX_CALLBACK_ADDR:反弹 shell/隧道(期 3/5)回连平台用;期 1a 仅启动校验提示。
+	log.Printf("[config] skill ディレクトリ: %s", skillDir)
+	// ARTEX_CALLBACK_ADDR：リバースシェル/トンネル（フェーズ 3/5）のプラットフォームへのコールバック用。フェーズ 1a では起動時の検証メッセージのみ。
 	if cb := config.CallbackAddr(); cb != "" {
-		log.Printf("[config] 回连地址(ARTEX_CALLBACK_ADDR): %s", cb)
+		log.Printf("[config] コールバックアドレス（ARTEX_CALLBACK_ADDR）: %s", cb)
 	} else {
-		log.Printf("[config] ARTEX_CALLBACK_ADDR 未设置：反弹 shell/隧道(期 3/5)需要平台回连地址,立足点(webshell)功能不受影响")
+		log.Printf("[config] ARTEX_CALLBACK_ADDR が未設定です：リバースシェル/トンネル（フェーズ 3/5）にはプラットフォームへのコールバックアドレスが必要です。フットホールド（webshell）機能には影響しません")
 	}
 	srv := server.New(ctx, mgr, skillDir, *dataDir, config.BaseDir())
 
-	// 反测绘伪装门控(F14):绑非 loopback 时默认开启,ARTEX_GATE=off 可关。
+	// 対偵察偽装ゲート（F14）:非 loopback にバインドした場合は既定で有効、ARTEX_GATE=off で無効化できる。
 	gate, err := server.NewGate(*addr, *dataDir, config.BaseDir())
 	if err != nil {
 		log.Fatalf("gate: %v", err)
 	}
 	srv.SetGate(gate)
 
-	// 受管暂存(F13)的下载 URL 复用主监听地址(工具返回里给 worker 一个可用的绝对 URL)。
+	// 管理対象ステージング（F13）のダウンロード URL はメインのリッスンアドレスを再利用する（ツールの戻り値で worker に使用可能な絶対 URL を渡す）。
 	srv.SetStageBaseURL(*addr)
 
 	httpSrv := &http.Server{

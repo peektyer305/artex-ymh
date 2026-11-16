@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// 全部样例来自真实命令输出(Linux 为主,Windows 中英文变体),覆盖边界:
-// 无 IPv6、多网卡、Windows 中文输出、ARP 不完整项、UDP 无 state 列。
+// サンプルはすべて実際のコマンド出力（Linux が中心、Windows は中国語・英語の変種）で、境界を網羅:
+// IPv6 なし、複数 NIC、Windows の中国語出力、ARP の不完全な項目、UDP の state 列なし。
 
 const sampleIPAddr = `1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
     link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
@@ -50,44 +50,44 @@ lo        Link encap:Local Loopback
 func TestParseIPAddr(t *testing.T) {
 	nics := ParseIPAddr(sampleIPAddr)
 	if len(nics) != 3 {
-		t.Fatalf("期望 3 张网卡(含 lo),得 %d: %+v", len(nics), nics)
+		t.Fatalf("NIC は 3 件(lo を含む)を期待, got %d: %+v", len(nics), nics)
 	}
 	want := map[string]NIC{"eth0": {Iface: "eth0", IP: "192.168.1.10", Prefix: 24}, "eth1": {Iface: "eth1", IP: "10.0.0.5", Prefix: 24}}
 	for _, n := range nics {
 		if w, ok := want[n.Iface]; ok && (n.IP != w.IP || n.Prefix != w.Prefix) {
-			t.Errorf("%s = %+v,期望 %+v", n.Iface, n, w)
+			t.Errorf("%s = %+v, want %+v", n.Iface, n, w)
 		}
 		if n.Iface == "lo" && (n.IP != "127.0.0.1" || n.Prefix != 8) {
 			t.Errorf("lo = %+v", n)
 		}
 	}
-	// 无 IPv6 的输出也必须正常(样例里 inet6 行不得被误解析)。
+	// IPv6 のない出力でも正常に動くこと（サンプル内の inet6 行を誤解析しない）。
 	for _, n := range nics {
 		if strings.Contains(n.IP, ":") {
-			t.Errorf("IPv6 地址混入: %+v", n)
+			t.Errorf("IPv6 アドレスが混入しています: %+v", n)
 		}
 	}
 }
 
 func TestParseIPAddrOneline(t *testing.T) {
-	// ip -o -4 addr show 的单行布局(带续行反斜杠,webshell 回显原样)。
+	// ip -o -4 addr show の単一行レイアウト（継続行のバックスラッシュ付き、webshell のエコーそのまま）。
 	nics := ParseIPAddr(sampleIPOneline)
 	if len(nics) != 3 || nics[1].Iface != "eth0" || nics[1].IP != "192.168.1.10" || nics[1].Prefix != 24 {
-		t.Fatalf("ip -o 解析失败: %+v", nics)
+		t.Fatalf("ip -o の解析に失敗しました: %+v", nics)
 	}
 	if nics[2].Iface != "eth1" || nics[2].IP != "10.0.0.5" {
-		t.Fatalf("eth1 解析失败: %+v", nics[2])
+		t.Fatalf("eth1 の解析に失敗しました: %+v", nics[2])
 	}
 }
 
 func TestParseIfconfig(t *testing.T) {
 	nics := ParseIfconfig(sampleIfconfig)
 	if len(nics) != 2 || nics[0].Iface != "eth0" || nics[0].IP != "192.168.1.10" || nics[0].Prefix != 24 {
-		t.Fatalf("新式 ifconfig 解析失败: %+v", nics)
+		t.Fatalf("新形式 ifconfig の解析に失敗しました: %+v", nics)
 	}
 	old := ParseIfconfig(sampleIfconfigOld)
 	if len(old) != 2 || old[0].Iface != "eth0" || old[0].IP != "10.0.0.5" || old[0].Prefix != 24 {
-		t.Fatalf("老式 ifconfig(Link encap)解析失败: %+v", old)
+		t.Fatalf("旧形式 ifconfig(Link encap)の解析に失敗しました: %+v", old)
 	}
 }
 
@@ -114,13 +114,13 @@ Ethernet adapter Ethernet1:
 func TestParseIPConfigAll(t *testing.T) {
 	nics := ParseIPConfigAll(sampleIPConfigAllCN)
 	if len(nics) != 2 {
-		t.Fatalf("期望 2 张网卡,得 %d: %+v", len(nics), nics)
+		t.Fatalf("NIC は 2 件を期待, got %d: %+v", len(nics), nics)
 	}
 	if nics[0].IP != "192.168.1.10" || nics[0].Prefix != 24 || !strings.Contains(nics[0].Iface, "以太网") {
-		t.Errorf("中文适配器解析失败: %+v", nics[0])
+		t.Errorf("中国語アダプタの解析に失敗しました: %+v", nics[0])
 	}
 	if nics[1].IP != "10.0.0.5" || nics[1].Prefix != 24 {
-		t.Errorf("英文适配器解析失败: %+v", nics[1])
+		t.Errorf("英語アダプタの解析に失敗しました: %+v", nics[1])
 	}
 }
 
@@ -134,7 +134,7 @@ const sampleIPRoute = `default via 192.168.1.1 dev eth0 proto dhcp metric 100
 func TestParseIPRoute(t *testing.T) {
 	routes := ParseIPRoute(sampleIPRoute)
 	if len(routes) != 5 {
-		t.Fatalf("期望 5 条路由,得 %d: %+v", len(routes), routes)
+		t.Fatalf("ルートは 5 件を期待, got %d: %+v", len(routes), routes)
 	}
 	static := map[string]Route{}
 	for _, r := range routes {
@@ -143,14 +143,14 @@ func TestParseIPRoute(t *testing.T) {
 		}
 	}
 	if len(static) != 2 || static["10.0.0.0/8"].Via != "10.0.0.1" || static["172.16.0.0/16"].Via != "192.168.1.254" {
-		t.Fatalf("静态路由标注错误: %+v", static)
+		t.Fatalf("静的ルートのマーキングが誤っています: %+v", static)
 	}
 	for _, r := range routes {
 		if r.Dest == "default" && r.IsStatic {
-			t.Error("默认路由不得标静态")
+			t.Error("デフォルトルートを静的とマークしてはなりません")
 		}
 		if strings.Contains(r.Dest, "/24") && r.IsStatic {
-			t.Errorf("直连路由不得标静态: %+v", r)
+			t.Errorf("直結ルートを静的とマークしてはなりません: %+v", r)
 		}
 	}
 }
@@ -166,7 +166,7 @@ Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
 func TestParseRouteN(t *testing.T) {
 	routes := ParseRouteN(sampleRouteN)
 	if len(routes) != 4 {
-		t.Fatalf("期望 4 条路由,得 %d: %+v", len(routes), routes)
+		t.Fatalf("ルートは 4 件を期待, got %d: %+v", len(routes), routes)
 	}
 	var def, static *Route
 	for i := range routes {
@@ -179,10 +179,10 @@ func TestParseRouteN(t *testing.T) {
 		}
 	}
 	if def == nil || def.Via != "192.168.1.1" || def.Iface != "eth0" {
-		t.Fatalf("默认路由解析失败: %+v", def)
+		t.Fatalf("デフォルトルートの解析に失敗しました: %+v", def)
 	}
 	if static == nil || static.Dest != "10.0.0.0/8" || static.Via != "10.0.0.1" {
-		t.Fatalf("静态路由标注错误: %+v", static)
+		t.Fatalf("静的ルートのマーキングが誤っています: %+v", static)
 	}
 }
 
@@ -204,7 +204,7 @@ IPv4 路由表
 func TestParseRoutePrint(t *testing.T) {
 	routes := ParseRoutePrint(sampleRoutePrintCN)
 	if len(routes) != 4 {
-		t.Fatalf("期望 4 条路由,得 %d: %+v", len(routes), routes)
+		t.Fatalf("ルートは 4 件を期待, got %d: %+v", len(routes), routes)
 	}
 	var static *Route
 	for i := range routes {
@@ -213,32 +213,32 @@ func TestParseRoutePrint(t *testing.T) {
 		}
 	}
 	if static == nil || static.Dest != "10.0.0.0/8" || static.Via != "10.0.0.1" {
-		t.Fatalf("中文 route print 静态路由解析失败: %+v", static)
+		t.Fatalf("中国語 route print の静的ルート解析に失敗しました: %+v", static)
 	}
 	for _, r := range routes {
 		if r.Dest == "192.168.1.0/24" && (r.IsStatic || r.Via != "") {
-			t.Errorf("「在链路上」路由不得有网关/不得标静态: %+v", r)
+			t.Errorf("「在链路上」ルートはゲートウェイを持たず、静的とマークしてもいけません: %+v", r)
 		}
 	}
 }
 
 func TestParseNeighbors(t *testing.T) {
-	// ip neigh:FAILED 项跳过。
+	// ip neigh:FAILED の項目はスキップ。
 	neigh := ParseNeighbors(`192.168.1.1 dev eth0 lladdr 08:00:27:11:22:33 REACHABLE
 10.0.0.9 dev eth1 FAILED
 10.0.0.7 dev eth1 lladdr 08:00:27:44:55:66 STALE
 `)
 	if len(neigh) != 2 || neigh[0].IP != "192.168.1.1" || neigh[1].IP != "10.0.0.7" || neigh[1].Iface != "eth1" {
-		t.Fatalf("ip neigh 解析失败: %+v", neigh)
+		t.Fatalf("ip neigh の解析に失敗しました: %+v", neigh)
 	}
-	// Linux arp -a:<incomplete> 跳过。
+	// Linux arp -a:<incomplete> はスキップ。
 	neigh = ParseNeighbors(`? (192.168.1.1) at 08:00:27:11:22:33 [ether] on eth0
 ? (10.0.0.9) at <incomplete> on eth1
 `)
 	if len(neigh) != 1 || neigh[0].IP != "192.168.1.1" || neigh[0].Iface != "eth0" {
-		t.Fatalf("Linux arp -a 解析失败: %+v", neigh)
+		t.Fatalf("Linux arp -a の解析に失敗しました: %+v", neigh)
 	}
-	// Windows arp -a(中文):广播/组播跳过。
+	// Windows arp -a（中国語）:ブロードキャスト／マルチキャストはスキップ。
 	neigh = ParseNeighbors(`
 接口: 192.168.1.10 --- 0x6
   Internet 地址         物理地址              类型
@@ -248,22 +248,22 @@ func TestParseNeighbors(t *testing.T) {
   255.255.255.255       ff-ff-ff-ff-ff-ff     静态
 `)
 	if len(neigh) != 1 || neigh[0].IP != "192.168.1.1" || neigh[0].MAC != "08-00-27-11-22-33" {
-		t.Fatalf("Windows arp -a 解析失败: %+v", neigh)
+		t.Fatalf("Windows arp -a の解析に失敗しました: %+v", neigh)
 	}
 }
 
 func TestParseHosts(t *testing.T) {
 	entries := ParseHosts(`127.0.0.1	localhost
 ::1	localhost ip6-localhost
-# 注释行
-10.0.0.5	web01 web01.corp.local   # 行内注释
+# コメント行
+10.0.0.5	web01 web01.corp.local   # 行内コメント
 192.168.1.1	gw
 `)
 	if len(entries) != 3 {
-		t.Fatalf("期望 3 条 hosts 记录,得 %d: %+v", len(entries), entries)
+		t.Fatalf("hosts は 3 件を期待, got %d: %+v", len(entries), entries)
 	}
 	if entries[1].IP != "10.0.0.5" || len(entries[1].Names) != 2 || entries[1].Names[1] != "web01.corp.local" {
-		t.Fatalf("hosts 行解析失败: %+v", entries[1])
+		t.Fatalf("hosts 行の解析に失敗しました: %+v", entries[1])
 	}
 }
 
@@ -284,10 +284,10 @@ func TestParseNetstatLinux(t *testing.T) {
 		ports[l.Port] = l.Proto
 	}
 	if len(listening) != 4 || ports[22] != "tcp" || ports[3306] != "tcp" || ports[80] != "tcp" || ports[68] != "udp" {
-		t.Fatalf("netstat 监听端口解析失败: %+v", listening)
+		t.Fatalf("netstat の待ち受けポート解析に失敗しました: %+v", listening)
 	}
 	if len(peers) != 1 || peers[0].IP != "10.8.0.5" || peers[0].Port != 445 {
-		t.Fatalf("netstat 对端解析失败(TIME_WAIT 不应算): %+v", peers)
+		t.Fatalf("netstat の対向先解析に失敗しました(TIME_WAIT は数えない): %+v", peers)
 	}
 }
 
@@ -301,7 +301,7 @@ tcp   ESTAB  0      0      192.168.1.10:45678 10.8.0.5:445
 func TestParseSS(t *testing.T) {
 	listening, peers := ParseConnTable(sampleSS)
 	if len(listening) != 3 || len(peers) != 1 || peers[0].IP != "10.8.0.5" || peers[0].Port != 445 {
-		t.Fatalf("ss 解析失败: listening=%+v peers=%+v", listening, peers)
+		t.Fatalf("ss の解析に失敗しました: listening=%+v peers=%+v", listening, peers)
 	}
 }
 
@@ -318,7 +318,7 @@ const sampleNetstatWinCN = `
 func TestParseNetstatWindows(t *testing.T) {
 	listening, peers := ParseConnTable(sampleNetstatWinCN)
 	if len(listening) != 3 || len(peers) != 1 || peers[0].IP != "10.8.0.5" || peers[0].Port != 445 {
-		t.Fatalf("Windows netstat -ano 解析失败: listening=%+v peers=%+v", listening, peers)
+		t.Fatalf("Windows netstat -ano の解析に失敗しました: listening=%+v peers=%+v", listening, peers)
 	}
 }
 
@@ -335,8 +335,8 @@ func TestInfer(t *testing.T) {
 		},
 		Neighbors: []Neighbor{{IP: "192.168.1.1", MAC: "08:00:27:11:22:33"}},
 		Peers: []Peer{
-			{IP: "10.8.0.5", Port: 445}, // 不在本机网段 = 已证明可通
-			{IP: "10.0.0.9", Port: 22},  // 本机网段内,不算
+			{IP: "10.8.0.5", Port: 445}, // 自ホストのセグメント外 = 疎通が証明済み
+			{IP: "10.0.0.9", Port: 22},  // 自ホストのセグメント内なので数えない
 		},
 	}
 	inf := Infer(report)
@@ -345,38 +345,38 @@ func TestInfer(t *testing.T) {
 		kinds[i.Kind] = i
 	}
 	if _, ok := kinds["multi_nic"]; !ok {
-		t.Error("多网卡跳板推断缺失")
+		t.Error("マルチ NIC の踏み台推論が欠落しています")
 	}
 	if sr, ok := kinds["static_route"]; !ok || !strings.Contains(sr.Summary, "172.16.0.0/16") {
-		t.Errorf("静态路由推断错误: %+v", sr)
+		t.Errorf("静的ルートの推論が誤っています: %+v", sr)
 	}
 	pp, ok := kinds["proven_peer"]
 	if !ok || !strings.Contains(pp.Detail, "10.8.0.5:445") || strings.Contains(pp.Detail, "10.0.0.9") {
-		t.Errorf("已证明可通对端推断错误(本段对端不得计入): %+v", pp)
+		t.Errorf("疎通が証明済みの対向先の推論が誤っています(自セグメントの対向先は数えない): %+v", pp)
 	}
 	if _, ok := kinds["arp_neighbors"]; !ok {
-		t.Error("ARP 邻居推断缺失")
+		t.Error("ARP ネイバーの推論が欠落しています")
 	}
 
-	// 单网卡无静态路由无对端:只有邻居推断。
+	// 単一 NIC で静的ルートも対向先もない:ネイバーの推論のみ。
 	minimal := Infer(&ReconReport{
 		NICs:      []NIC{{Iface: "eth0", IP: "192.168.1.10", Prefix: 24}},
 		Neighbors: []Neighbor{{IP: "192.168.1.2", MAC: "08:00:27:99:88:77"}},
 	})
 	if len(minimal) != 1 || minimal[0].Kind != "arp_neighbors" {
-		t.Fatalf("单网卡场景推断错误: %+v", minimal)
+		t.Fatalf("単一 NIC のシナリオの推論が誤っています: %+v", minimal)
 	}
 }
 
 func TestAutoDetect(t *testing.T) {
-	// Auto 系列:ip 系输出优先,空输出回退,互不串格式。
+	// Auto 系：ip 系の出力を優先し、空出力ならフォールバック。形式同士が混ざらないこと。
 	if n := ParseNICsAuto(sampleIfconfig); len(n) != 2 || n[0].IP != "192.168.1.10" {
-		t.Fatalf("ParseNICsAuto 回退 ifconfig 失败: %+v", n)
+		t.Fatalf("ParseNICsAuto の ifconfig フォールバックに失敗しました: %+v", n)
 	}
 	if r := ParseRoutesAuto(sampleRouteN); len(r) != 4 {
-		t.Fatalf("ParseRoutesAuto 回退 route -n 失败: %+v", r)
+		t.Fatalf("ParseRoutesAuto の route -n フォールバックに失敗しました: %+v", r)
 	}
 	if r := ParseRoutesAuto(sampleRoutePrintCN); len(r) != 4 {
-		t.Fatalf("ParseRoutesAuto 回退 route print 失败: %+v", r)
+		t.Fatalf("ParseRoutesAuto の route print フォールバックに失敗しました: %+v", r)
 	}
 }

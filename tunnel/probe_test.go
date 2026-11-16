@@ -1,4 +1,4 @@
-// probe_test.go 是探针解析与证据分档的纯函数单测。
+// probe_test.go はプローブ解析とエビデンス格付けの純関数単体テスト。
 package tunnel
 
 import (
@@ -13,13 +13,13 @@ func TestParseProbeOutput(t *testing.T) {
 		wantOK    bool
 		wantFound bool
 	}{
-		{"ok 标记", "TCP_1", "ARTEX_TCP_1_OK\n", true, true},
-		{"fail 标记", "TCP_1", "ARTEX_TCP_1_FAIL\n", false, true},
-		{"标记混在回显里", "DNS", ";; reply\nARTEX_DNS_OK\n;; done", true, true},
-		{"无标记（通道异常）", "TCP_1", "bash: connect: 拒绝\n", false, false},
-		{"空输出", "TCP_1", "", false, false},
-		{"OK 子串不误命中 FAIL", "HTTP_2", "ARTEX_HTTP_2_OK_200", true, true},
-		{"其它探针标记不误命中", "TCP_1", "ARTEX_TCP_2_OK\n", false, false},
+		{"ok マーカー", "TCP_1", "ARTEX_TCP_1_OK\n", true, true},
+		{"fail マーカー", "TCP_1", "ARTEX_TCP_1_FAIL\n", false, true},
+		{"マーカーがエコーに混在", "DNS", ";; reply\nARTEX_DNS_OK\n;; done", true, true},
+		{"マーカーなし（チャネル異常）", "TCP_1", "bash: connect: 拒否\n", false, false},
+		{"空の出力", "TCP_1", "", false, false},
+		{"OK の部分文字列が FAIL を誤検知しない", "HTTP_2", "ARTEX_HTTP_2_OK_200", true, true},
+		{"他のプローブマーカーを誤検知しない", "TCP_1", "ARTEX_TCP_2_OK\n", false, false},
 	}
 	for _, c := range cases {
 		ok, found := ParseProbeOutput(c.tag, c.out)
@@ -39,10 +39,10 @@ func TestProbeCmdTCPThreeState(t *testing.T) {
 	for _, want := range []string{
 		"timeout 6", "/dev/tcp/10.0.0.5/20000", "rc=$?",
 		"ARTEX_TCP_1_OK_FILTERED", "ARTEX_TCP_1_OK_REFUSED", "ARTEX_TCP_1_OK_FAIL",
-		"refused", // 拒连关键词匹配（RST 算通）
+		"refused", // 拒否キーワードのマッチ（RST は疎通とみなす）
 	} {
 		if !strings.Contains(cmd, want) {
-			t.Errorf("tcp 探针命令缺少 %q:\n%s", want, cmd)
+			t.Errorf("tcp プローブコマンドに %q がありません:\n%s", want, cmd)
 		}
 	}
 }
@@ -54,15 +54,15 @@ func TestParseTCPOutput(t *testing.T) {
 		wantState TCPState
 		wantFound bool
 	}{
-		{"连接成功", "TCP_1", "ARTEX_TCP_1_OK\n", TCPConnected, true},
-		{"refused 拒连（路径通、暂无监听）", "TCP_1", "ARTEX_TCP_1_OK_REFUSED\n", TCPRefused, true},
-		{"refused 不得误判为 connected", "TCP_1", "bash: connect: Connection refused\nARTEX_TCP_1_OK_REFUSED\n", TCPRefused, true},
-		{"超时 filtered", "TCP_1", "ARTEX_TCP_1_OK_FILTERED\n", TCPFiltered, true},
-		{"filtered 不得误判为 connected", "TCP_1", "ARTEX_TCP_1_OK_FILTERED\n", TCPFiltered, true},
-		{"其它失败", "TCP_1", "ARTEX_TCP_1_OK_FAIL\n", TCPFail, true},
-		{"无标记（通道异常）", "TCP_1", "bash: command not found\n", TCPFail, false},
-		{"空输出", "TCP_1", "", TCPFail, false},
-		{"其它探针标记不误命中", "TCP_1", "ARTEX_TCP_2_OK\n", TCPFail, false},
+		{"接続成功", "TCP_1", "ARTEX_TCP_1_OK\n", TCPConnected, true},
+		{"refused 接続拒否（経路は通るがリスナーなし）", "TCP_1", "ARTEX_TCP_1_OK_REFUSED\n", TCPRefused, true},
+		{"refused を connected と誤判定しない", "TCP_1", "bash: connect: Connection refused\nARTEX_TCP_1_OK_REFUSED\n", TCPRefused, true},
+		{"タイムアウト filtered", "TCP_1", "ARTEX_TCP_1_OK_FILTERED\n", TCPFiltered, true},
+		{"filtered を connected と誤判定しない", "TCP_1", "ARTEX_TCP_1_OK_FILTERED\n", TCPFiltered, true},
+		{"その他の失敗", "TCP_1", "ARTEX_TCP_1_OK_FAIL\n", TCPFail, true},
+		{"マーカーなし（チャネル異常）", "TCP_1", "bash: command not found\n", TCPFail, false},
+		{"空の出力", "TCP_1", "", TCPFail, false},
+		{"他のプローブマーカーを誤検知しない", "TCP_1", "ARTEX_TCP_2_OK\n", TCPFail, false},
 	}
 	for _, c := range cases {
 		state, found := ParseTCPOutput(c.tag, c.out)
@@ -81,27 +81,27 @@ func TestProbeAddrs(t *testing.T) {
 		want      []string
 	}{
 		{
-			"常用口 + 端口池起始终端采样",
+			"常用ポート + ポートプールの先頭と末尾をサンプリング",
 			"10.0.0.5", "20000-21000",
 			[]string{"10.0.0.5:443", "10.0.0.5:80", "10.0.0.5:53", "10.0.0.5:20000", "10.0.0.5:21000"},
 		},
 		{
-			"空池走默认端口池",
+			"空のプールはデフォルトポートプールを使用",
 			"10.0.0.5", "",
 			[]string{"10.0.0.5:443", "10.0.0.5:80", "10.0.0.5:53", "10.0.0.5:20000", "10.0.0.5:21000"},
 		},
 		{
-			"非法池只保留常用口",
+			"不正なプールは常用ポートのみ残す",
 			"10.0.0.5", "abc",
 			[]string{"10.0.0.5:443", "10.0.0.5:80", "10.0.0.5:53"},
 		},
 		{
-			"池口与常用口重复时去重",
+			"プールのポートが常用ポートと重複する場合は重複排除",
 			"10.0.0.5", "80-90",
 			[]string{"10.0.0.5:443", "10.0.0.5:80", "10.0.0.5:53", "10.0.0.5:90"},
 		},
 		{
-			"单口池不重复采样",
+			"単一ポートのプールは重複サンプリングしない",
 			"10.0.0.5", "20000-20000",
 			[]string{"10.0.0.5:443", "10.0.0.5:80", "10.0.0.5:53", "10.0.0.5:20000"},
 		},
@@ -136,20 +136,20 @@ func TestConcludeGrades(t *testing.T) {
 		wantFeasible bool
 		wantPort     int
 	}{
-		{"TCP 通→反向 socks", rep(tcpOK, dnsOK), GradeTCPEgress, true, 443},
-		{"TCP 通建议端口取首个探通口", rep(ProbeResult{Kind: "tcp", Target: "10.0.0.5:80", OK: true}, tcpOK), GradeTCPEgress, true, 80},
-		{"refused 算通（RST 证明路径可达）", rep(tcpFiltered, tcpRefused, dnsOK), GradeTCPEgress, true, 20000},
-		{"常用口 filtered 但池口 refused→tcp_egress", rep(
+		{"TCP 疎通→リバース socks", rep(tcpOK, dnsOK), GradeTCPEgress, true, 443},
+		{"TCP 疎通時は最初の疎通ポートを推奨", rep(ProbeResult{Kind: "tcp", Target: "10.0.0.5:80", OK: true}, tcpOK), GradeTCPEgress, true, 80},
+		{"refused も疎通扱い（RST で経路到達を証明）", rep(tcpFiltered, tcpRefused, dnsOK), GradeTCPEgress, true, 20000},
+		{"常用ポートは filtered だがプールのポートが refused→tcp_egress", rep(
 			ProbeResult{Kind: "tcp", Target: "10.0.0.5:443", State: string(TCPFiltered)},
 			ProbeResult{Kind: "tcp", Target: "10.0.0.5:80", State: string(TCPFiltered)},
 			ProbeResult{Kind: "tcp", Target: "10.0.0.5:53", State: string(TCPFiltered)},
 			tcpRefused, dnsOK), GradeTCPEgress, true, 20000},
-		{"只 HTTP→http_only", rep(tcpFiltered, httpOK, dnsOK), GradeHTTPOnly, true, 0},
-		{"全 filtered 但 DNS 通→dns_only 不建议隧道", rep(tcpFiltered, dnsOK), GradeDNSOnly, false, 0},
-		{"只 DNS→dns_only 不建议隧道", rep(tcpFail, dnsOK), GradeDNSOnly, false, 0},
-		{"只 ICMP→icmp_only", rep(tcpFail, icmpOK), GradeICMPOnly, false, 0},
-		{"全断→isolated 建议正向/webshell", rep(tcpFail), GradeIsolated, false, 0},
-		{"空报告→isolated", rep(), GradeIsolated, false, 0},
+		{"HTTP のみ→http_only", rep(tcpFiltered, httpOK, dnsOK), GradeHTTPOnly, true, 0},
+		{"全て filtered だが DNS は疎通→dns_only でトンネル非推奨", rep(tcpFiltered, dnsOK), GradeDNSOnly, false, 0},
+		{"DNS のみ→dns_only でトンネル非推奨", rep(tcpFail, dnsOK), GradeDNSOnly, false, 0},
+		{"ICMP のみ→icmp_only", rep(tcpFail, icmpOK), GradeICMPOnly, false, 0},
+		{"全断→isolated でフォワード/WebShell を推奨", rep(tcpFail), GradeIsolated, false, 0},
+		{"空のレポート→isolated", rep(), GradeIsolated, false, 0},
 	}
 	for _, c := range cases {
 		got := Conclude(c.report)
@@ -158,7 +158,7 @@ func TestConcludeGrades(t *testing.T) {
 				c.name, got, c.wantGrade, c.wantFeasible, c.wantPort)
 		}
 		if got.Recommendation == "" {
-			t.Errorf("%s: Recommendation 不能为空", c.name)
+			t.Errorf("%s: Recommendation が空です", c.name)
 		}
 	}
 }
@@ -170,7 +170,7 @@ func TestProbeReportHelpers(t *testing.T) {
 		ProbeResult{Kind: "dns", Target: "x", OK: true},
 	)
 	if !r.OKKind("tcp") || !r.OKKind("dns") || r.OKKind("http") {
-		t.Error("OKKind 判定错误")
+		t.Error("OKKind の判定が誤っています")
 	}
 	if p := r.FirstOKPort(); p != 53 {
 		t.Errorf("FirstOKPort = %d, want 53", p)

@@ -3,7 +3,7 @@ package server
 import "testing"
 
 func TestFindingVerifyAutoEnabled(t *testing.T) {
-	// 默认(未设置/未知值)为 auto;只有显式 off 关闭(内网阶段)。
+	// デフォルト（未設定/未知の値）は auto。明示的な off のみ無効化する（イントラネット段階）。
 	for _, mode := range []string{"", "auto", "AUTO", "whatever"} {
 		if !findingVerifyAutoEnabled(mode) {
 			t.Errorf("mode %q should keep auto-verify enabled", mode)

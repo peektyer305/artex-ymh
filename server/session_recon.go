@@ -1,13 +1,13 @@
-// session_recon.go 内网被动侦察工具(内网渗透期 2,INTRANET-PIVOT-DESIGN.md §5 期 2):
-// 经立足点会话逐条执行【只读】侦察命令包(ip addr/ip route/arp/hosts/netstat,
-// 目标无 ip 命令自动回退 ifconfig/route -n),recon 包解析结构化结果后:
+// session_recon.go はイントラネットのパッシブ偵察ツール(イントラネット侵攻フェーズ 2、INTRANET-PIVOT-DESIGN.md §5 フェーズ 2):
+// フットホールドセッション経由で【読み取り専用】の偵察コマンドパッケージ(ip addr/ip route/arp/hosts/netstat、
+// 対象に ip コマンドがなければ自動で ifconfig/route -n にフォールバック)を 1 件ずつ実行し、recon パッケージが構造化した結果を解析したうえで:
 //
-//	① 新 IP/邻居 → ip 资产、监听端口 → service 资产(复用 insert_assets 的落库路径);
-//	② 高价值推断与结构化报告 record_fact 进探索图;
-//	③ 返回摘要。
+//	① 新しい IP/ネイバー → ip アセット、待ち受けポート → service アセット(insert_assets の永続化経路を再利用);
+//	② 高価値な推論と構造化レポートを record_fact で探索グラフへ;
+//	③ 要約を返す。
 //
-// 设计判据照 chains pivot 骨架「被动六表」(agent/chainskel/pivot.md):先不发包,
-// 被动拿到什么算什么;逐条执行是为了绕开 session_exec 64KB 输出截断。
+// 設計判断は chains の pivot 骨格「パッシブ六表」(agent/chainskel/pivot.md)に従う:まずパケットを送らず、
+// パッシブで取れたものだけで判断する。1 件ずつ実行するのは session_exec の 64KB 出力切り詰めを避けるため。
 package server
 
 import (
@@ -23,8 +23,8 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 )
 
-// reconCommands 被动侦察命令包(全部只读;每条单独执行单独取输出,避开 64KB 截断)。
-// shell 级 || 回退:目标无 ip/ss 时自动落 ifconfig/route -n/netstat。
+// reconCommands はパッシブ偵察コマンドパッケージ(すべて読み取り専用。1 件ずつ実行して出力を個別に取得し、64KB の切り詰めを避ける)。
+// shell レベルの || フォールバック:対象に ip/ss がなければ自動で ifconfig/route -n/netstat に落ちる。
 var reconCommands = []struct {
 	key string
 	cmd string
@@ -36,20 +36,20 @@ var reconCommands = []struct {
 	{"conns", "(ss -ant 2>/dev/null; ss -anu 2>/dev/null) || netstat -an 2>/dev/null"},
 }
 
-// sessionReconTool 经会话执行被动侦察命令包并结构化回库。
+// sessionReconTool はセッション経由でパッシブ偵察コマンドパッケージを実行し、構造化して DB に戻す。
 func (s *Server) sessionReconTool() actool.CoreTool {
 	return actool.Build(actool.Spec{
 		Name: "session_recon",
-		Description: "【被动优先】经立足点会话在目标侧执行【只读】被动侦察命令包(ip addr / ip route / arp -a / /etc/hosts / netstat," +
-			"目标无 ip 命令自动回退 ifconfig/route -n),不发任何探测包。" +
-			"输出结构化报告(网卡/路由/邻居/hosts/监听端口/已建立对端)+ 高价值推断(非默认静态路由指向的网段、" +
-			"已证明可通的对端主机、多网卡跳板);" +
-			"发现的存活 IP 自动登记为 ip 资产、监听端口登记为 service 资产,报告与推断 record_fact 进探索图。" +
-			"被动信息不够再考虑主动慢扫(另过 guard)。",
+		Description: "【パッシブ優先】フットホールドセッション経由で対象側で【読み取り専用】のパッシブ偵察コマンドパッケージ(ip addr / ip route / arp -a / /etc/hosts / netstat," +
+			"対象に ip コマンドがなければ自動で ifconfig/route -n にフォールバック)を実行し、プローブパケットは一切送らない。" +
+			"構造化レポート(NIC/ルート/ネイバー/hosts/待ち受けポート/確立済みピア)+ 高価値な推論(デフォルト以外の静的ルートが指すセグメント、" +
+			"到達可能と証明されたピアホスト、複数 NIC の踏み台)を出力し、" +
+			"発見した生存 IP は自動で ip アセット、待ち受けポートは service アセットとして登録し、レポートと推論は record_fact で探索グラフへ書き込む。" +
+			"パッシブ情報で足りない場合に初めて能動的な低速スキャンを検討する(別途 guard を通る)。",
 		Schema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"session_id": map[string]any{"type": "integer", "description": "register_session 返回的会话 id"},
+				"session_id": map[string]any{"type": "integer", "description": "register_session が返すセッション id"},
 			},
 			"required": []any{"session_id"},
 		},
@@ -64,8 +64,8 @@ func (s *Server) sessionReconTool() actool.CoreTool {
 			if err != nil {
 				return actool.Errorf(err.Error()), nil
 			}
-			// 逐条执行:每条单独取输出(绕开 64KB 截断),失败不中断整体——
-			// 被动侦察的原则是「拿到什么算什么」,一条命令挂了其余照常。
+			// 1 件ずつ実行:各コマンドの出力を個別に取得し(64KB の切り詰めを回避)、失敗しても全体を止めない——
+			// パッシブ偵察の原則は「取れたものだけで判断する」であり、1 つのコマンドが落ちても残りは通常どおり実行する。
 			outputs := map[string]string{}
 			cmdErrs := map[string]string{}
 			for _, c := range reconCommands {
@@ -113,7 +113,7 @@ func (s *Server) sessionReconTool() actool.CoreTool {
 	})
 }
 
-// reconSummary 给模型的一句话摘要。
+// reconSummary はモデル向けの一言要約。
 func reconSummary(r *recon.ReconReport, inf []recon.Inference) string {
 	static := 0
 	for _, rt := range r.Routes {
@@ -121,14 +121,14 @@ func reconSummary(r *recon.ReconReport, inf []recon.Inference) string {
 			static++
 		}
 	}
-	return fmt.Sprintf("网卡 %d / 路由 %d(静态 %d)/ 邻居 %d / hosts %d / 监听 %d / 已建立对端 %d;高价值推断 %d 条",
+	return fmt.Sprintf("NIC %d / ルート %d(静的 %d)/ ネイバー %d / hosts %d / 待ち受け %d / 確立済みピア %d;高価値な推論 %d 件",
 		len(r.NICs), len(r.Routes), static, len(r.Neighbors), len(r.HostsEntries),
 		len(r.Listening), len(r.Peers), len(inf))
 }
 
-// reconInsertAssets 把侦察发现落资产库(best-effort):邻居/对端/hosts/本机 NIC 的
-// 新 IP → ip 资产;监听端口 → 本机主 IP 上的 service 资产。返回锚定资产 id 列表、
-// 摘要与错误(逐条错误不中断整体)。
+// reconInsertAssets は偵察結果をアセットストアへ書き込む(best-effort):ネイバー/ピア/hosts/自ホスト NIC の
+// 新しい IP → ip アセット;待ち受けポート → 自ホスト主 IP の service アセット。アンカーしたアセット id 一覧、
+// 要約、エラーを返す(1 件のエラーで全体を止めない)。
 func (s *Server) reconInsertAssets(ctx context.Context, taskID int64, r *recon.ReconReport) ([]int64, string, []string) {
 	if s.m.Assets() == nil || taskID <= 0 {
 		return nil, "", nil
@@ -152,7 +152,7 @@ func (s *Server) reconInsertAssets(ctx context.Context, taskID int64, r *recon.R
 		ipCount++
 	}
 
-	// 本机非回环 NIC IP(双网卡全部登记);主 IP(第一个)挂监听端口的 service 资产。
+	// 自ホストの非ループバック NIC IP(デュアル NIC はすべて登録)。主 IP(先頭)に待ち受けポートの service アセットを紐付ける。
 	hostIP := ""
 	for _, n := range r.NICs {
 		addr := n.IP
@@ -195,17 +195,17 @@ func (s *Server) reconInsertAssets(ctx context.Context, taskID int64, r *recon.R
 			svcCount++
 		}
 	}
-	summary := fmt.Sprintf("登记 ip 资产 %d 个、service 资产 %d 个", ipCount, svcCount)
+	summary := fmt.Sprintf("ip アセット %d 件、service アセット %d 件を登録", ipCount, svcCount)
 	if len(ids) > 20 {
-		ids = ids[:20] // 锚定列表控制规模
+		ids = ids[:20] // アンカー一覧の規模を制限
 	}
-	// 期 4:出当前授权范围的新 IP 按 /24 登记 pending_scope 等人工审批(见 pendingscope.go)。
+	// フェーズ 4:現在の認可範囲外の新しい IP は /24 単位で pending_scope として登録し、手動承認を待つ(pendingscope.go 参照)。
 	s.reconRegisterPendingScope(taskID, seenIP)
 	return ids, summary, errs
 }
 
-// reconRecordFact 把侦察报告与推断写进探索图(record_fact 同路径:fact 节点 +
-// intent→yields 边)。非任务运行/图不可用则跳过(返回 0)。
+// reconRecordFact は偵察レポートと推論を探索グラフに書き込む(record_fact と同じ経路：fact ノード +
+// intent→yields エッジ)。タスク実行外/グラフ利用不可ならスキップする(0 を返す)。
 func (s *Server) reconRecordFact(ri agent.RunInfo, sessionID int64, r *recon.ReconReport, inf []recon.Inference, anchors []int64) int64 {
 	if ri.ExplorationID <= 0 || s.m.pg == nil {
 		return 0
@@ -220,12 +220,12 @@ func (s *Server) reconRecordFact(ri agent.RunInfo, sessionID int64, r *recon.Rec
 	}
 	detail := reconSummary(r, inf)
 	if len(lines) > 0 {
-		detail += "\n高价值推断:\n" + strings.Join(lines, "\n")
+		detail += "\n高価値な推論:\n" + strings.Join(lines, "\n")
 	}
 	payload := map[string]any{
-		"summary":    fmt.Sprintf("session %d 内网被动侦察:%s", sessionID, reconSummary(r, inf)),
+		"summary":    fmt.Sprintf("session %d イントラネットパッシブ偵察:%s", sessionID, reconSummary(r, inf)),
 		"detail":     detail,
-		"evidence":   "session_recon 被动命令包(ip addr/ip route/arp -a/hosts/netstat,只读)",
+		"evidence":   "session_recon パッシブコマンドパッケージ(ip addr/ip route/arp -a/hosts/netstat、読み取り専用)",
 		"confidence": "observed",
 	}
 	store := s.m.pg.Exploration(ri.ExplorationID)

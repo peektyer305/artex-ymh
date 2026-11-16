@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-artex}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.env に POSTGRES_PASSWORD を設定してください}
       POSTGRES_DB: ${POSTGRES_DB:-artex}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -15,8 +15,8 @@ services:
     restart: unless-stopped
 
   artex:
-    # 从源码构建二开版镜像(Dockerfile.source 自包含构建:前端+Go+工具层)。
-    # 不要用 autumn27/artex 官方镜像——那是上游原版,不含二开代码。
+    # ソースからカスタマイズ版イメージをビルド（Dockerfile.source による自己完結ビルド：フロントエンド＋Go＋ツール層）。
+    # 公式イメージ autumn27/artex は使わない——あれは上流のオリジナルで、カスタマイズコードを含まない。
     build:
       context: .
       dockerfile: Dockerfile.source
@@ -36,11 +36,11 @@ services:
       - "8787:8787"
       - "127.0.0.1:8788:8788"
     volumes:
-      # 把数据目录（含 jwt.key、SQLite 等）绑定到项目根目录的 data/，
-      # 方便在宿主机直接查看/备份，容器重建也不丢。
+      # データディレクトリ（jwt.key、SQLite など）をプロジェクトルートの data/ にバインドし、
+      # ホスト側で直接確認／バックアップでき、コンテナ再作成でも失わない。
       - ./data:/app/data
-      # 把项目根目录的 skills 挂进容器（覆盖镜像内置的 /app/skills）；
-      # 改 skill 无需重建镜像，容器读的就是宿主机这份。
+      # プロジェクトルートの skills をコンテナへマウント（イメージ内蔵の /app/skills を上書き）。
+      # skill の変更にイメージ再ビルドは不要で、コンテナはホスト側のこのファイルを読む。
       - ./skills:/app/skills
     restart: unless-stopped
 
