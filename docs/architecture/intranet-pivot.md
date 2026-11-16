@@ -1,7 +1,7 @@
 # ARTEX ネイティブ・イントラネット浸透能力設計（二段階作戦構想）
 
 > 日付：2026-09-13。ステータス：**方向性は確定済み**（著者提案、評価により実現可能と判断）。
-> 前提資料：`PIVOTHUB-AUDIT-AND-FUSION-EVALUATION.md`（PivotHub の原理と参考にすべき点）、`AUDIT-REPORT.md`、`CHAINS-INTEGRATION-DESIGN.md`（chains の四層アーキテクチャ）。
+> 前提資料：`PIVOTHUB-AUDIT-AND-FUSION-EVALUATION.md`（PivotHub の原理と参考にすべき点）、`AUDIT-REPORT.md`、`chains-integration.md`（chains の四層アーキテクチャ）。
 > 位置付け：**システム連携は行わない**。PivotHub の動作原理／動作プロセスを参考に、コードレベルで ARTEX にネイティブなイントラネット浸透能力を追加し、「外部ネットワーク突破 → フットホールド移譲 → イントラネット深部」の二段階の自律作戦を実現する。
 
 ## 1. 作戦構想（著者の原意）
@@ -19,7 +19,7 @@
 | フットホールド生成後の自動移譲 | `agent_triggers` トリガー（on_finding / on_tool_call）、Scheduler がウォーターマークをポーリングしてセッションを起動 | `server/scheduler.go:152-182,284-320` |
 | 「後方で新たに agent の波を起こす」 | 関連タスク + 黒板継承機構（専用テストあり） | `agent/blackboard_inheritance_test.go` |
 | 新たな状況による計画の起床 | fact の書き戻し → debounce で planner を起床 → 新しい意図を派遣 | `agent/worker.go:362` notifyFinding |
-| イントラネット知識（どう横展開するか／どうトンネルを選ぶか） | chains pivot-\*(5)/ad-\*(10)/priv-\*(7)、四層接続設計は確定稿 | `CHAINS-INTEGRATION-DESIGN.md` L3 ルーティング |
+| イントラネット知識（どう横展開するか／どうトンネルを選ぶか） | chains pivot-\*(5)/ad-\*(10)/priv-\*(7)、四層接続設計は確定稿 | `chains-integration.md` L3 ルーティング |
 | イントラネット操作の承認と証跡 | guard PreToolUse フック + activity への全記録、セッション系ツール呼び出しは自然にカバーされる | `guard/guard.go:103-124` |
 | トンネル消費側 | `SetUpstreamProxy` が認証付き socks5、アトミックなホットスイッチに対応 | `traffic/traffic.go:205-233` |
 | 対話型 shell の仕組み | `shell_open` は「ssh 対話／nc リバース」シナリオを明示的に想定済み | `server/assembly.go:238,312-314` |
@@ -100,7 +100,7 @@ P6 のエビデンス：現在の `uq_av2_ip` により 1 つの IP はグロー
 ### 4.5 ステージ編成（二段階をどう切り分けるか）
 
 1. 段階 1 は従来どおり。worker が webshell を取得 → `register_session` → fact（「フットホールド@hostX」）+ finding を書き込む。
-2. fact が planner を起床させる。planner は chains の pivot 骨格（L3 ルーティング、`CHAINS-INTEGRATION-DESIGN.md`）から「まず偵察してから線を広げる」ことを知り、`session_exec`（ifconfig／arp／ルーティング）の偵察意図を派遣する → 新セグメントのアセットが登録される。
+2. fact が planner を起床させる。planner は chains の pivot 骨格（L3 ルーティング、`chains-integration.md`）から「まず偵察してから線を広げる」ことを知り、`session_exec`（ifconfig／arp／ルーティング）の偵察意図を派遣する → 新セグメントのアセットが登録される。
 3. **人手承認のチェックポイント（必須）**：新セグメントを発見した ≠ 新セグメントを攻撃する権限がある。イントラネットの RoE は外部ネットワークとほぼ必然に異なるため、タスクが「イントラネット段階」に入るには guard ask + 人手による確認の後で新たな scope を登録する（`db/task_scope.go`）——これは修正案 F5（コード層での RoE 強制）と同じゲートであり、**それゆえ F5 は「提案」からイントラネット機能の前提依存へ変わる**。
 4. 確認後、**関連タスク**を作成する（継承機構は既に存在する）：scope=イントラネットセグメント、worker のツール面に session/tunnel ツールを追加、proxyEnv をトンネルにバインド、プロンプトをイントラネットの語彙に差し替え（chains の pivot/ad/priv が L3 ルーティング経由で意図に応じて注入される）、planner は pivot/priv/ad 骨格で深部を計画する。
 5. 認証情報の収集 → 認証情報庫 → 再利用スコアリング → 横展開意図（ssh／wmi／psexec を session またはトンネル経由で）——prove_goal まで循環する。
@@ -108,7 +108,7 @@ P6 のエビデンス：現在の `uq_av2_ip` により 1 つの IP はグロー
 ### 4.6 プロンプトと chains の役割
 
 - worker のイントラネット向けプロンプト：現状はすべて Web の語彙である（`agent/worker.go:220-233`）。イントラネット変種（横展開、トンネル、認証情報、OPSEC）が必要である。
-- chains の L3 ルーティング（`CHAINS-INTEGRATION-DESIGN.md`）が意図 tag に応じて pivot-tunnel-choice / priv-linux / ad-kerberos 骨格を注入する——**イントラネット機能は chains 設計の第一の受益シナリオであり**、二つのプロジェクトは互いを前提とする。
+- chains の L3 ルーティング（`chains-integration.md`）が意図 tag に応じて pivot-tunnel-choice / priv-linux / ad-kerberos 骨格を注入する——**イントラネット機能は chains 設計の第一の受益シナリオであり**、二つのプロジェクトは互いを前提とする。
 - L1 のコード判定基準はイントラネットでも同様に適用できる（同質なレスポンス→WAF／ハニーポットの識別。ハニーポットはイントラネットでより一般的であり、chains の meta-trust-obs に対応する判定基準がある）。
 
 ## 5. 実施フェーズ（提案）

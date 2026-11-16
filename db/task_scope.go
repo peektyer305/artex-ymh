@@ -207,7 +207,7 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 		ts.Net = v
 	case "icp", "keyword":
 		// 注意：keyword の範囲行は登録後もカバレッジの分母に参加しない（covTargetCTE に keyword の
-		// マッチ述語がない）。現状は死んだルールで、ROADMAP.md を参照;icp にはマッチ述語があり、通常どおり計上される。
+		// マッチ述語がない）。現状は死んだルールで、docs/roadmap/roadmap.md を参照;icp にはマッチ述語があり、通常どおり計上される。
 		parsed, err := ParseScopeInput(ScopeInput{Kind: kind, Value: value})
 		if err != nil {
 			return ts, err
@@ -303,7 +303,7 @@ func (s *AssetStore) CoverageEnabled(taskID int64) bool {
 
 // task_scope→assets match predicate, reused by the count / by-type / untested queries. $1=taskID.
 // 注意：kind='keyword' の範囲行は意図的にここに出していない——keyword はカバレッジの分母に参加しない
-// （死んだルール、ROADMAP.md を参照）。ただし Coverage.ScopeRows（範囲未アンカーの判定）には計上される。
+// （死んだルール、docs/roadmap/roadmap.md を参照）。ただし Coverage.ScopeRows（範囲未アンカーの判定）には計上される。
 const covTargetCTE = `
 target AS (
   SELECT DISTINCT a.id, a.type,

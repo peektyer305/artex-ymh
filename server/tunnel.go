@@ -1,4 +1,4 @@
-// tunnel.go は多層プロキシトンネルサブシステムを組み込む（イントラネット侵攻フェーズ 3a,INTRANET-PIVOT-DESIGN.md
+// tunnel.go は多層プロキシトンネルサブシステムを組み込む（イントラネット侵攻フェーズ 3a,docs/architecture/intranet-pivot.md
 // §4.3/4.3a):tunnel.Manager（プロセス監視 + ヘルスチェック）+ 4 つの host ツール
 // (tunnel_probe/tunnel_deploy/tunnel_list/tunnel_teardown、デフォルトで worker に紐付け）。
 // トンネルは長寿命の管理対象リソース:プラットフォームの server プロセス、ターゲットの client プロセス、stage 配信エントリを

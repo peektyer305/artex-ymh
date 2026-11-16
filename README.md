@@ -14,12 +14,12 @@ AI 自律型ペネトレーションテスト基盤 · 二次開発版（Go バ�
 | **内部ネットワーク作戦** | WebShell 暗号化セッション管理（PHP/JSP）、リバースシェル（penelope 管理下）、フットホールドのパッシブ偵察（`session_recon`）、多層プロキシトンネル（suo5/chisel の自動選定、タスク単位の MITM ホットスイッチ）、内部ネットワークトポロジ図（タスクで絞り込み）、認証情報ストア |
 | **ステージ編成** | 未承認セグメントの承認（偵察で scope 外のセグメントを検出 → 人手で承認して scope を拡張）、外部 → 内部ネットワークのタスク移管（handoff テンプレートでサブタスクを作成）、内部ネットワーク worker プロンプトのバリアント（フットホールドがあれば自動で切り替え） |
 | **セキュリティと対偵察対策** | 偽装ゲート（ゲートを通過しないアクセスは一律でバイト単位に固定された nginx ウェルカムページを返し、入口パスはランダム化）、ワンクリック許可（2/4/8h の期限付き承認免除、deny は免除なし）、RoE 範囲の強制 3 状態（off/warn/strict） |
-| **ハニーポット識別と対 AI ハニーポット防御** | 静的シグネチャ識別レイヤー（`honeydetect/`、組み込みシグネチャライブラリが Cowrie/OpenCanary/Kippo/Glastopf/HFish/Dionaea をカバー）、アセットのハニーポットスコアリングと UI バッジ、planner の対応規律。さらに「AI 攻撃エージェントを獲物とする」新型トラップへの対策：worker のレッドライン（決して自証しない）、外向きの機密情報インターセプト、tarpit 取得のサーキットブレーカー、UA プール。設計は `HONEYPOT-DETECTION-DESIGN.md` を参照 |
+| **ハニーポット識別と対 AI ハニーポット防御** | 静的シグネチャ識別レイヤー（`honeydetect/`、組み込みシグネチャライブラリが Cowrie/OpenCanary/Kippo/Glastopf/HFish/Dionaea をカバー）、アセットのハニーポットスコアリングと UI バッジ、planner の対応規律。さらに「AI 攻撃エージェントを獲物とする」新型トラップへの対策：worker のレッドライン（決して自証しない）、外向きの機密情報インターセプト、tarpit 取得のサーキットブレーカー、UA プール。設計は [docs/architecture/honeypot-detection.md](docs/architecture/honeypot-detection.md) を参照 |
 | **chains のシナリオ化** | 9 種類の自問型思考チェーン骨格を意図に応じて自動注入、脆弱性カテゴリ別の反証判定基準（誤検知は fact として記録し、真の脆弱性のみグラフに反映）、カテゴリ別の方向転換プロンプト |
 | **武器庫とデプロイチェーン** | 17 項目の外部ツールのバージョン固定リスト（`packaging/tools-manifest.json`、起動時に sha256 を自己検査）、`artex doctor` によるデプロイ事前チェック、systemd unit |
 | **安定性** | タスク deadline のフリーズ検知（ホストのスリープでタスクを消費しない）、LLM 呼び出しのハードウォールクロック、セッションの生存確認と起動時のクリーンアップ |
 
-二次開発の詳細は `README-FORK.md`、分散化への進化の評価は `FUTURE.md` を参照してください。
+二次開発の詳細は [docs/architecture/fork-differences.md](docs/architecture/fork-differences.md)、分散化への進化の評価は [docs/roadmap/future.md](docs/roadmap/future.md) を参照してください。
 
 ---
 
@@ -144,14 +144,16 @@ ARTEX は **LLM マルチ agent 駆動の自律型ペネトレーションテス
 
 ## ドキュメント索引
 
+一覧と読む順番は [docs/README.md](docs/README.md) にまとめています。
+
 | ドキュメント | 内容 |
 | --- | --- |
-| `README-FORK.md` | 二次開発の完全な説明（アップストリームとの関係、追加能力の一覧、検証状況） |
-| `FUTURE.md` | 分散化への改修の全面的な評価（server の頭脳 + リモート node 実行） |
-| `HONEYPOT-DETECTION-DESIGN.md` | ハニーポット識別モジュールの調査と設計（対 AI エージェントハニーポットを含む） |
-| `INTRANET-PIVOT-DESIGN.md` | 内部ネットワーク作戦サブシステムの設計 |
-| `CHAINS-INTEGRATION-DESIGN.md` | chains のシナリオ化有効化の設計 |
-| `POSTMORTEM-RED-SUN-3.md` / `AB-REPORT-RED-SUN-3.md` | RED SUN 3 レンジでの実戦振り返り |
+| [fork-differences.md](docs/architecture/fork-differences.md) | 二次開発の完全な説明（アップストリームとの関係、追加能力の一覧、検証状況） |
+| [future.md](docs/roadmap/future.md) | 分散化への改修の全面的な評価（server の頭脳 + リモート node 実行） |
+| [honeypot-detection.md](docs/architecture/honeypot-detection.md) | ハニーポット識別モジュールの調査と設計（対 AI エージェントハニーポットを含む） |
+| [intranet-pivot.md](docs/architecture/intranet-pivot.md) | 内部ネットワーク作戦サブシステムの設計 |
+| [chains-integration.md](docs/architecture/chains-integration.md) | chains のシナリオ化有効化の設計 |
+| [postmortem-red-sun-3.md](docs/operations/postmortem-red-sun-3.md) / [ab-report-red-sun-3.md](docs/operations/ab-report-red-sun-3.md) | RED SUN 3 レンジでの実戦振り返り |
 
 ## ライセンスと免責事項
 

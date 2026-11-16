@@ -1,5 +1,5 @@
 // Package honeydetect はバッチ 6 L1 のハニーポット静的シグネチャ識別層
-// （設計ドキュメント HONEYPOT-DETECTION-DESIGN.md 二·L1）。service アセットの
+// （設計ドキュメント docs/architecture/honeypot-detection.md 二·L1）。service アセットの
 // 既知の静的特徴（banner/HTTP タイトル/本文/TLS 証明書）を部分一致で
 // シグネチャ照合し、0-1 のハニーポット信頼度スコアとヒットのエビデンスを
 // 返す。シグネチャライブラリは既定で本パッケージに埋め込み（go:embed

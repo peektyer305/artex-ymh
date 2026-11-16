@@ -1,5 +1,5 @@
 // Package tunnel は多層プロキシ（イントラネット期 3a）の中核サブシステム。
-// probe/plan/deploy/health の 4 点セット（INTRANET-PIVOT-DESIGN.md §4.3）と、
+// probe/plan/deploy/health の 4 点セット（docs/architecture/intranet-pivot.md §4.3）と、
 // 管理対象リソースの原則（§4.3a）からなる。
 //
 // 意味づけは PivotHub pivothub（Go での書き直し。丸写しではない）を参考にし、

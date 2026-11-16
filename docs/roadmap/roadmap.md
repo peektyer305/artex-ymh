@@ -1,7 +1,7 @@
 # ARTEX 要件総綱と実施ロードマップ（ROADMAP）
 
 > 日付：2026-09-13。本稿は 2026-09-12〜13 の全議論の成果を集約したもので、5 本の特集ドキュメントの索引と実施総綱です。
-> 特集ドキュメント：`AUDIT-REPORT.md`（審査）、`FIXPLAN-AND-EVALUATION.md`（修正案 F1-F14 + 要件一/二の評価）、`CHAINS-INTEGRATION-DESIGN.md`（自問型思考チェーンの四層アーキテクチャ）、`PIVOTHUB-AUDIT-AND-FUSION-EVALUATION.md`（PivotHub の審査と融合評価）、`INTRANET-PIVOT-DESIGN.md`（内部ネットワーク浸透能力の設計）。
+> 特集ドキュメント：`AUDIT-REPORT.md`（審査）、`FIXPLAN-AND-EVALUATION.md`（修正案 F1-F14 + 要件一/二の評価）、`../architecture/chains-integration.md`（自問型思考チェーンの四層アーキテクチャ）、`PIVOTHUB-AUDIT-AND-FUSION-EVALUATION.md`（PivotHub の審査と融合評価）、`../architecture/intranet-pivot.md`（内部ネットワーク浸透能力の設計）。
 
 ## 1. 要件一覧と実現可能性の総評
 
@@ -91,7 +91,7 @@ F14 偽装ゲート（1-2 日）。F13 は期 1 に統合しないなら単独�
 
 | # | 衝突 | 解決策 |
 |---|---|---|
-| C1 | F13 のプロセスグループ回収 × トンネル/リバースリスニングの長命性：一律の回収は agent が正規に張ったトンネルまで殺してしまう | 規則を定める：長命リソースは素の Bash で起動することを禁じ、管理対象ツール（`tunnel_deploy`/`reverse_listen`）で台帳登録して回収を免除する。guard ルールで誘導する。**2026-09-13 の緩和**：フットホールド戦略を webshell-first（`INTRANET-PIVOT-DESIGN.md` 4.2）と定め、リバースリスニングは一時的な TTL チャネルに格下げし、session 層を本衝突から外した。C1 には本質的に長命なリソースであるトンネルだけが残る |
+| C1 | F13 のプロセスグループ回収 × トンネル/リバースリスニングの長命性：一律の回収は agent が正規に張ったトンネルまで殺してしまう | 規則を定める：長命リソースは素の Bash で起動することを禁じ、管理対象ツール（`tunnel_deploy`/`reverse_listen`）で台帳登録して回収を免除する。guard ルールで誘導する。**2026-09-13 の緩和**：フットホールド戦略を webshell-first（`../architecture/intranet-pivot.md` 4.2）と定め、リバースリスニングは一時的な TTL チャネルに格下げし、session 層を本衝突から外した。C1 には本質的に長命なリソースであるトンネルだけが残る |
 | C2 | 統合 × 検証：delta を confirmed 済みの finding に統合すると、新しいエビデンスが「検証済み」に便乗してしまう | 統合のたびにその delta の増分再検証をトリガーする（finding_checks パイプラインを再利用） |
 | C3 | タスク単位のトンネルバインディング × MITM の単一インスタンス単一上流（`traffic/traffic.go:158-186`）：MITM は接続がどのタスクに属するか区別できない | タスクごとに独立した MITM リスンポートを持たせる（それぞれに上流を持つ）。**go-mitmproxy の複数インスタンスの実現可能性は未検証**。退路：プロキシ認証ユーザーごとに上流を振り分ける |
 | C4 | pending プレースホルダーノード × planner の意味論：planner は未検証の finding を「突破済み」とみなしてしまう | 厳格なルール：pending ノードは prove_goal に算入しないが、意図の重複排除には参加させる。planner のツールとプロンプトに明記する |

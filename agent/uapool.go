@@ -1,6 +1,6 @@
 package agent
 
-// バッチ 5 B4（設計ドキュメント HONEYPOT-DETECTION-DESIGN.md 二-B「自己防護」第 4 条）: クライアント UA プール。
+// バッチ 5 B4（設計ドキュメント docs/architecture/honeypot-detection.md 二-B「自己防護」第 4 条）: クライアント UA プール。
 // 実環境のサンプルでハニーポットのトリガーになるのは「UA/TLS フィンガープリントの不一致」——裸の Chrome UA + curl の TLS という
 // 中途半端な偽装は、しないに越したことはない。プラットフォームはタスクごとに主流 UA を 1 つ安定して割り当て、BashEnv 経由で ARTEX_UA に注入し、
 // worker の HTTP クライアント（curl/httpx など）はタスク全体で同じものを使う。切り替えない、中途半端な偽装もしない。

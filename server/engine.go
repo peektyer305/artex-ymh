@@ -544,7 +544,7 @@ func (e *Engine) drainSteer(intentID int64) (string, bool) {
 // call, handing the message back to the model — which re-plans its next step instead
 // of running the tool. No queued message → the guard behaves exactly as before.
 // また「空転ターン」の続行(Stop 参照)と「同質レスポンスの停滞検出」(PostToolUse 参照、
-// chains L1、CHAINS-INTEGRATION-DESIGN.md §3)も担う。
+// chains L1、docs/architecture/chains-integration.md §3)も担う。
 type steerHooks struct {
 	inner harness.HookRunner
 	drain func() (string, bool)
@@ -556,7 +556,7 @@ type steerHooks struct {
 	limit int
 	// label は "worker-1 · #42" の形式で、ログ専用。
 	label string
-	// det は同質レスポンスの停滞検出器(chains L1、POSTMORTEM-RED-SUN-3.md R4):PostToolUse
+	// det は同質レスポンスの停滞検出器(chains L1、docs/operations/postmortem-red-sun-3.md R4):PostToolUse
 	// が各ステップの tool_result を渡し、「情報の勾配がゼロ」と判定したら PreToolUse の
 	// drain 経由で方向転換の指示を注入する。ポインタで nudges と同様——しかも意図的に
 	// model_error の再実行ループの外に置き(runIntent 参照)、1 つの意図の発動枠(クール

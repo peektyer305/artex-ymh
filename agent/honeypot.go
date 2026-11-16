@@ -1,6 +1,6 @@
 package agent
 
-// バッチ 6 L1（設計ドキュメント HONEYPOT-DETECTION-DESIGN.md 二・L1 +「処置戦略」表）:
+// バッチ 6 L1（設計ドキュメント docs/architecture/honeypot-detection.md 二・L1 +「処置戦略」表）:
 // ハニーポットの静的シグネチャ識別層を agent 側に組み込むフックと、planner の処置規律。
 // - evaluateHoneypot: service アセットの登録後に honeydetect のシグネチャ評価を実行し、score>0 なら
 //   アセットの honeypot_score/evidence を書き戻し（db.SetHoneypotScore、高いスコアを採用し証拠を重複排除）、

@@ -1,4 +1,4 @@
-// reverse.go は reverse のリバースシェル handler を組み立てる（イントラネット侵攻フェーズ 5、INTRANET-PIVOT-DESIGN.md
+// reverse.go は reverse のリバースシェル handler を組み立てる（イントラネット侵攻フェーズ 5、docs/architecture/intranet-pivot.md
 // §4.3a 管理リソース原則 + フェーズ 5）:管理下の penelope プロセス（--mcp ローカルトークン認証、自動 PTY
 // 昇格、セッションログの永続化）+ MCP ブリッジ（penelope セッションを sessions 台帳 kind="reverse"
 // とプロセス内 Registry へ同期）+ reverse_listen ツール。同期後は session_exec/session_read/

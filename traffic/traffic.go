@@ -568,7 +568,7 @@ func (t *Traffic) UpstreamProxy() string {
 // Close stops the listener and waits for background tree reclamation to finish
 // before closing the index, so shutdown never leaves a goroutine unlinking files
 // out from under a removed data directory. proxy.Close has a known attacker-
-// goroutine leak in go-mitmproxy (ROADMAP.md 6.3 spike) — accepted because
+// goroutine leak in go-mitmproxy (docs/roadmap/roadmap.md 6.3 spike) — accepted because
 // instance count is bounded by task count (per-task instances, phase 3b) and the
 // global one closes only at process exit.
 func (t *Traffic) Close() error {

@@ -1,5 +1,5 @@
 // credentials.go は認証情報を一級エンティティとして扱う 3 つの host ツールを組み込む(イントラネット侵攻フェーズ 2,
-// INTRANET-PIVOT-DESIGN.md §4.4):add_credential/list_credentials/
+// docs/architecture/intranet-pivot.md §4.4):add_credential/list_credentials/
 // credential_reuse_plan。フェーズ 1a のセッションツールと同じ方式:通常のツール呼び出しで、guard 承認を自動で通過し、
 // activity に自動で記録される;tools テーブルに seed し、デフォルトで worker に紐付ける。
 package server

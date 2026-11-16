@@ -1,6 +1,6 @@
 package guard
 
-// バッチ 5 B2（設計ドキュメント HONEYPOT-DETECTION-DESIGN.md 二-B「自己防護」第 3 条）:出口審査。
+// バッチ 5 B2（設計ドキュメント docs/architecture/honeypot-detection.md 二-B「自己防護」第 3 条）:出口審査。
 // 対 AI ハニーポットの狙いはプラットフォームの機密情報（LLM API key、jwt.key、gate 入口パス、
 // PG DSN パスワード、callback_addr）。本ファイルは guard に機密フィンガープリントのインターセプトを
 // 組み込む:登録時は原文の SHA256 先頭部分（16 個の 16 進文字 = 8 バイト）のみを保持し、原文は保存しない。

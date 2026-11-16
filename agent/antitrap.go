@@ -1,6 +1,6 @@
 package agent
 
-// バッチ 5 B1（設計ドキュメント HONEYPOT-DETECTION-DESIGN.md 二-B「自己防護」）: 対 AI ハニーポットのレッドライン。
+// バッチ 5 B1（設計ドキュメント docs/architecture/honeypot-detection.md 二-B「自己防護」）: 対 AI ハニーポットのレッドライン。
 // 実環境のサンプルでは、ハニーポットが AI エージェントに "attestation" の POST で身元を自己証明させ、
 // システムプロンプト全文/ツール一覧/ローカル認証情報/model キーを要求してくる——こうした意味内容は
 // 実業務に存在せず、出た時点で敵対的とみなす。workerIntranetRules と同じ層のコード固定テールで、

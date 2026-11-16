@@ -1,4 +1,4 @@
-// session.go はフットホールドセッションサブシステム（イントラネット侵攻フェーズ 1a,INTRANET-PIVOT-DESIGN.md §4.2）を組み込む:
+// session.go はフットホールドセッションサブシステム（イントラネット侵攻フェーズ 1a,docs/architecture/intranet-pivot.md §4.2）を組み込む:
 // プロセス内 Registry + DB 復元 + 4 つの host ツール（register_session/session_exec/
 // session_read/session_write)。ツールはすべて通常のツール呼び出し——guard 承認を自動で通過し、
 // activity に自動で記録される。これが外部チャネルに対する本質的な優位性。

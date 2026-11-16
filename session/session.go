@@ -1,4 +1,4 @@
-// Package session はフットホールドのセッションサブシステム(イントラネット侵入フェーズ 1a、INTRANET-PIVOT-DESIGN.md
+// Package session はフットホールドのセッションサブシステム(イントラネット侵入フェーズ 1a、docs/architecture/intranet-pivot.md
 // §4.2 参照)。すべてのドライバ(http_shell のワンライナー WebShell、ssh/reverse は予約)が同じ Session 抽象を実装し、
 // agent から見えるのは「セッションツール」だけで、目標側コマンドの唯一の出口は Session.Exec/ReadFile/WriteFile。
 //

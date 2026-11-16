@@ -1,5 +1,5 @@
 {
-  "_comment": "バッチ 6 L1 ハニーポット静的シグネチャライブラリ（HONEYPOT-DETECTION-DESIGN.md 二·L1）。シグネチャは公開ソースのあるものだけを収録し、source フィールドに出典を明記。ホットリロード：ファイル変更で即反映（mtime で再読み込み）。",
+  "_comment": "バッチ 6 L1 ハニーポット静的シグネチャライブラリ（docs/architecture/honeypot-detection.md 二·L1）。シグネチャは公開ソースのあるものだけを収録し、source フィールドに出典を明記。ホットリロード：ファイル変更で即反映（mtime で再読み込み）。",
   "signatures": [
     {
       "name": "cowrie_default_ssh_banner",

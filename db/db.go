@@ -632,7 +632,7 @@ ON CONFLICT DO NOTHING`,
 }
 
 // lateralHint は横展開/スプレー遮断ルールの統一ヒント（イントラネットの blast radius は外部ネットワークより
-// はるかに大きい：スプレーでドメイン全体のアカウントがロックされ、SMB で端末が落ちる。INTRANET-PIVOT-DESIGN.md §6.3 参照）。
+// はるかに大きい：スプレーでドメイン全体のアカウントがロックされ、SMB で端末が落ちる。docs/architecture/intranet-pivot.md §6.3 参照）。
 const lateralHint = "横展開/パスワードスプレーは高ノイズな動作です（アカウントのロックやアラートを招く）。手動での確認が必要で、かつ目標が RoE の範囲内であることを確認してください（新しいセグメント≠承認済み。まずタスクスコープに登録）。"
 
 // builtinLateralRules はイントラネット期 2 のプラットフォーム下限ルール（§4.4：スプレー/ブルート
@@ -671,7 +671,7 @@ var builtinLateralRules = []struct {
 
 // builtinTunnelBinaryRules は「トンネルバイナリの直接使用」を遮断する（イントラネット期 3 の実戦の教訓）：worker が
 // tunnel_deploy を迂回して chisel/frp などでトンネルを張る——台帳もヘルス監視も自動回収もなく、
-// 管理対象リソースの原則に反する（INTRANET-PIVOT-DESIGN.md 4.3a）。プラットフォーム下限ルール、builtin=true。
+// 管理対象リソースの原則に反する（docs/architecture/intranet-pivot.md 4.3a）。プラットフォーム下限ルール、builtin=true。
 var builtinTunnelBinaryRules = []struct {
 	name    string
 	pattern string

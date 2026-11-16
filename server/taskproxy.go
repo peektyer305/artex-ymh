@@ -1,9 +1,9 @@
 // taskproxy.go フェーズ 3b: worker のトラフィックをタスク単位で上流にバインドする——タスクごとに独立した traffic.Traffic
 // (MITM) インスタンスを遅延生成し、上流 = そのタスクで現在 alive な socks トンネルの入口とする。トンネルがなければグローバル出口プロキシ
 // (globalProxy) または直接接続へフォールバックする。経路: worker Bash/WebFetch → タスク MITM（ローカルでは従来どおり記録し、
-// 証跡の連鎖は途切れない） → socks5 トンネル → イントラネットの対象（INTRANET-PIVOT-DESIGN.md §4.3「トンネル消費」）。
+// 証跡の連鎖は途切れない） → socks5 トンネル → イントラネットの対象（docs/architecture/intranet-pivot.md §4.3「トンネル消費」）。
 //
-// spike の結論（ROADMAP.md 6.3）の実装:
+// spike の結論（docs/roadmap/roadmap.md 6.3）の実装:
 //   - go-mitmproxy の複数インスタンス共存は可能だが、初回生成の競合を避けるためインスタンスごとに独立した CaRootPath が必要
 //     → インスタンスディレクトリ data/traffic-tasks/<taskID>/（_ca/_index/_auth をすべてここに置く）
 //   - SetUpstreamProxy はインスタンスのフィールドで、アトミックにホットスイッチできる → トンネルの追加／消失／再起動では上流だけを差し替え、

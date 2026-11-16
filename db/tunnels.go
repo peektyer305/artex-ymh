@@ -1,5 +1,5 @@
 // tunnels.go は多段プロキシトンネルの台帳の永続化層（schema.sql §L、イントラネット侵入フェーズ 3a、
-// INTRANET-PIVOT-DESIGN.md §4.3/4.3a）。deploy_params は完全なデプロイパラメータの JSON
+// docs/architecture/intranet-pivot.md §4.3/4.3a）。deploy_params は完全なデプロイパラメータの JSON
 // （auth、server_pid、stage_token、リモートパス、検証ターゲットを含む）——切断時の自動再デプロイはこれに依存する
 // （PivotHub の教訓:パラメータを列に分散して保存し、セッション参照を保存しなければ、再デプロイは有名無実;ここでは必ず全部保存する）。
 // deploy_params にはトンネルの auth token が含まれ、プラットフォームの信頼ドメイン内データなので平文 JSONB で保存する

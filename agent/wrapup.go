@@ -91,7 +91,7 @@ func resolveWrapupTurns(agentKey string) int {
 	return WrapupTurnsDefault(agentKey)
 }
 
-// wrapupSelfCheck はコード固定の終了処理セルフチェック段（chains L1、CHAINS-INTEGRATION-DESIGN.md §4）:
+// wrapupSelfCheck はコード固定の終了処理セルフチェック段（chains L1、docs/architecture/chains-integration.md §4）:
 // 「問い返し」を知識からワークフロー内の強制アクションへ変えるもの。「先に書き戻し、その後に
 // まとめる」という既存の分担と一致する——書き戻しの要求は本文側（DB で編集可能）にあり、
 // このセルフチェックは末尾に付加されてコード固定なので、管理画面で本文を変えても外れない。

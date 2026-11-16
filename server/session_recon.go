@@ -1,4 +1,4 @@
-// session_recon.go はイントラネットのパッシブ偵察ツール(イントラネット侵攻フェーズ 2、INTRANET-PIVOT-DESIGN.md §5 フェーズ 2):
+// session_recon.go はイントラネットのパッシブ偵察ツール(イントラネット侵攻フェーズ 2、docs/architecture/intranet-pivot.md §5 フェーズ 2):
 // フットホールドセッション経由で【読み取り専用】の偵察コマンドパッケージ(ip addr/ip route/arp/hosts/netstat、
 // 対象に ip コマンドがなければ自動で ifconfig/route -n にフォールバック)を 1 件ずつ実行し、recon パッケージが構造化した結果を解析したうえで:
 //

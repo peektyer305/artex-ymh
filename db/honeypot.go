@@ -1,6 +1,6 @@
 package db
 
-// バッチ 6 L1 ハニーポット静的シグネチャ識別(HONEYPOT-DETECTION-DESIGN.md 二·L1):db 層は
+// バッチ 6 L1 ハニーポット静的シグネチャ識別(docs/architecture/honeypot-detection.md 二·L1):db 層は
 // 保存/取得のみを担い、シグネチャ照合ロジックはすべて honeydetect パッケージにある。スコアとエビデンスは
 // server/agent のフックが service アセットの保存後に書き込み、planner への注入と UI はここから読み出す。
 

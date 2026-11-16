@@ -1,4 +1,4 @@
-// credential_score.go は認証情報の再利用スコアリング（サーバ側版、INTRANET-PIVOT-DESIGN.md §4.4）。
+// credential_score.go は認証情報の再利用スコアリング（サーバ側版、docs/architecture/intranet-pivot.md §4.4）。
 // PivotHub cred.js:44-50 のフロントエンドの naive なスコアリングを参考に、ここでは純関数 + データ表駆動のルールにした:
 // ルールごとに 1 つの点数と可読な reason を持ち、ルール追加は表の変更だけで済み、ロジックには触れない。DB 依存ゼロで直接単体テストできる。
 package db

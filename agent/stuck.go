@@ -8,8 +8,8 @@ import (
 	"unicode/utf8"
 )
 
-// chains L1（CHAINS-INTEGRATION-DESIGN.md §3 L1 行）：worker ループ内の同質レスポンス停滞検出。
-// 振り返りの根拠 POSTMORTEM-RED-SUN-3.md R4：同一のクラッシュ署名（malloc(): memory
+// chains L1（docs/architecture/chains-integration.md §3 L1 行）：worker ループ内の同質レスポンス停滞検出。
+// 振り返りの根拠 docs/operations/postmortem-red-sun-3.md R4：同一のクラッシュ署名（malloc(): memory
 // corruption）が十数ターン続いても再試行し、169 拍を使い切った。chains meta の「15〜25 回
 // 同質レスポンスなら方向転換」という規則はプロンプト内にしかなく、コードには入っていない。
 // 本ファイルはそれを決定的な判定基準にする：純粋関数・I/O なし。呼び出し元（engine の

@@ -1,5 +1,5 @@
 // credentials.go は認証情報の一級エンティティの永続化層（schema.sql §K、イントラネット侵入フェーズ 2、
-// INTRANET-PIVOT-DESIGN.md §4.4）。secret は AES-GCM で暗号化して保存する：sessions と同様の
+// docs/architecture/intranet-pivot.md §4.4）。secret は AES-GCM で暗号化して保存する：sessions と同様の
 // 派生方式（jwt.key → SHA-256 ドメイン分離）だがドメインラベルが異なり、両サブシステムの鍵は独立している。
 package db
 

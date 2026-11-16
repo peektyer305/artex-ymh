@@ -1,5 +1,5 @@
 // Package recon はイントラネット受動偵察の出力を解析するレイヤー（イントラネットペネトレーションの
-// フェーズ 2、INTRANET-PIVOT-DESIGN.md §5 フェーズ 2。意味は PivotHub の pivothub/service/recon.py
+// フェーズ 2、docs/architecture/intranet-pivot.md §5 フェーズ 2。意味は PivotHub の pivothub/service/recon.py
 // から移植し、Go で書き直したもので丸写しではない）。
 // パーサーと推論ルールはすべて純粋関数で、DB にもネットワークにも触れず、実際のコマンド出力の
 // サンプルでそのまま単体テストする。
