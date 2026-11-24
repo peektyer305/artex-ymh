@@ -45,7 +45,7 @@ func TestEgressGuardCheck(t *testing.T) {
 	}
 }
 
-// バッチ 5 B2:guard.preToolUse の出口審査——Bash/WebFetch に機密フィンガープリントが含まれれば deny。
+// バッチ 5 B2:guard.preToolUse の出口審査。Bash/WebFetch に機密フィンガープリントが含まれれば deny。
 // 文言は固定で、監査には kind のみを記録し原文は保存しない。RoE/インターセプトルールより先に効く。
 func TestGuardEgressDeny(t *testing.T) {
 	const secret = "pg-password-s3cr3t-value"
@@ -60,7 +60,7 @@ func TestGuardEgressDeny(t *testing.T) {
 	if !blocked {
 		t.Fatal("Bash exfil of a registered secret should be blocked")
 	}
-	if !strings.Contains(msg, "操作包含平台敏感信息，禁止外发") {
+	if !strings.Contains(msg, "操作にプラットフォームの機密情報が含まれており、外部送信を禁止します") {
 		t.Fatalf("unexpected block message: %q", msg)
 	}
 	if strings.Contains(msg, secret) {
@@ -91,7 +91,7 @@ func TestGuardEgressDeny(t *testing.T) {
 	}
 }
 
-// バッチ 5 B3:tarpit サーキットブレーカー——しきい値で hint は 1 回だけ発動し、超過も誤発動もなく、以降は warn で通過。
+// バッチ 5 B3:tarpit サーキットブレーカー。しきい値で hint は 1 回だけ発動し、超過も誤発動もなく、以降は warn で通過。
 func TestGuardTarpit(t *testing.T) {
 	g := New()
 	var hints []string
@@ -136,10 +136,10 @@ func TestGuardTarpit(t *testing.T) {
 	// 監査には発動警告と以降の warn 記録が含まれる。
 	var trip, after int
 	for _, a := range g.Audit() {
-		if strings.Contains(a.Reason, "疑似 tarpit 迷宫") {
+		if strings.Contains(a.Reason, "tarpit 迷路の疑い") {
 			trip++
 		}
-		if strings.Contains(a.Reason, "tarpit 熔断后仍抓取") {
+		if strings.Contains(a.Reason, "遮断後もクロールを継続") {
 			after++
 		}
 	}

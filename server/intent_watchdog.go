@@ -20,7 +20,7 @@ import (
 // （プロセス内の台帳、Engine.p0Reported）。
 const (
 	// p0PriorityThreshold は「決勝枠」の priority 閾値である：add_intent の priority は 0-10、
-	// mainagent の人手直投入は 8-10、planner の既定は 5——8 以上を P0 とみなす。
+	// mainagent の人手直投入は 8-10、planner の既定は 5。8 以上を P0 とみなす。
 	p0PriorityThreshold = 8
 	// p0ClaimTimeout は P0 意図の取得タイムアウトである：open のままこの時間を超えて
 	// 取得されなければ報告する。
@@ -55,7 +55,7 @@ func (e *Engine) p0Unmark(taskID string, intentID int64) {
 }
 
 // reportOverdueP0Intents は frontier を 1 回走査し、取得期限を過ぎた P0 意図それぞれに
-// 「【调度】P0 意图 #N 已等待 X 分钟未被领取」の hint を書く（意図ごとに 1 回だけ）。
+// 「【スケジュール】P0 意図 #N は X 分間未取得のまま待機しています」の hint を書く（意図ごとに 1 回だけ）。
 // DB の読み書きだけを行い、planner は起こさない（graph_overview から自然に気付く）。
 // LLM 呼び出しも発生しない。
 func (e *Engine) reportOverdueP0Intents(t *Task) {
@@ -85,7 +85,7 @@ func (e *Engine) reportOverdueP0Intents(t *Task) {
 		if !e.p0MarkReported(t.ID, n.ID) {
 			continue // クールダウン：同じ意図は一度だけ報告する
 		}
-		msg := fmt.Sprintf("【调度】P0 意图 #%d 已等待 %d 分钟未被领取，建议 mainagent 点名派发或人工确认",
+		msg := fmt.Sprintf("【スケジュール】P0 意図 #%d は %d 分間未取得のまま待機しています。mainagent による指名配信または人手での確認を推奨します",
 			n.ID, int(waited.Minutes()))
 		_, err := t.Store.AddNode(db.KindHint, map[string]any{
 			"text":      msg,

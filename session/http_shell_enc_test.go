@@ -170,7 +170,7 @@ func randKey(t *testing.T) []byte {
 
 // ---------------- テスト ----------------
 
-// TestEncPHPFullFlow: phpenc(GCM)の全経路——暗号化プローブ/関数列挙/Exec/分割書き込み・読み取りの往復。
+// TestEncPHPFullFlow: phpenc(GCM)の全経路。暗号化プローブ/関数列挙/Exec/分割書き込み・読み取りの往復。
 func TestEncPHPFullFlow(t *testing.T) {
 	key := randKey(t)
 	mock := newEncMock(key, "gcm", newPHPMock("eval"))
@@ -220,7 +220,7 @@ func TestEncPHPFullFlow(t *testing.T) {
 	}
 }
 
-// TestEncCBCModeFallback: 目標が CBC のみ(PHP に GCM がない場合のフォールバック経路)——ドライバはまず gcm を試して
+// TestEncCBCModeFallback: 目標が CBC のみ(PHP に GCM がない場合のフォールバック経路)。ドライバはまず gcm を試して
 // 失敗し、自動的に cbc をラッチする。以降は全経路が正常。
 func TestEncCBCModeFallback(t *testing.T) {
 	key := randKey(t)
@@ -354,7 +354,7 @@ func TestEncHTTP404(t *testing.T) {
 	}
 }
 
-// TestEncJSPFullFlow: jspenc(GCM)の全経路——プローブ/Exec/shell 経路の分割書き込み・読み取りの往復。
+// TestEncJSPFullFlow: jspenc(GCM)の全経路。プローブ/Exec/shell 経路の分割書き込み・読み取りの往復。
 func TestEncJSPFullFlow(t *testing.T) {
 	key := randKey(t)
 	mock := newEncMock(key, "gcm", nil) // php == nil → jspenc の意味論

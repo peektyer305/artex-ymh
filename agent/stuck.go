@@ -114,7 +114,7 @@ type stuckEntry struct {
 
 // StuckDetector はローリング停滞検出器で、意図ごとに 1 つ（model_error の再実行ループの外に
 // 置くため、再実行しても発火回数はクリアされない）。呼び出し元が tool_result を 1 つずつ渡す。
-// 並行安全性はない——harness の hook は直列に呼ばれ、steerHooks の既存の前提と一致する。
+// 並行安全性はない。harness の hook は直列に呼ばれ、steerHooks の既存の前提と一致する。
 type StuckDetector struct {
 	cfg        StuckConfig
 	recent     []stuckEntry // ローリングウィンドウ。cap = cfg.Window
@@ -236,16 +236,16 @@ func shortStuckSig(sig string) string {
 // chains meta の「同質レスポンスなら方向転換」規則に合わせる：次元を変えるか、fact を書き戻して
 // この方向を掘り尽くしたと示し方向転換を求めるか。
 func StuckIntervention(ev StuckEvent) string {
-	what := "完全同质"
+	what := "完全に同質"
 	if ev.Kind == "same_tool_failure" {
-		what = "高度相似的连续失败"
+		what = "類似度の高い連続失敗"
 	}
 	tool := ev.Tool
 	if tool == "" {
 		tool = "?"
 	}
-	return fmt.Sprintf("【停滞检测】最近 %d 次响应%s(签名 %s,工具 %s),信息梯度为零。"+
-		"立即停止同轴重试:要么换维度(参数/信道/漏洞类/入口),要么写回 fact 标记此方向榨干并请求转向。"+
-		"(本次工具调用未执行,先响应这条系统指令;这是本意图第 %d 次停滞提醒,提醒次数有限。)",
+	return fmt.Sprintf("【停滞検出】直近 %d 回の応答が%s(署名 %s、ツール %s)で、情報の勾配がゼロです。"+
+		"同軸での再試行を直ちに停止する:次元(パラメータ/チャネル/脆弱性の種類/入口)を変えるか、fact を書き戻してこの方向をやり尽くしたとマークし、方向転換を要求する。"+
+		"(今回のツール呼び出しは未実行。先にこのシステム指示へ応答してください。これはこの意図で %d 回目の停滞の注意であり、注意できる回数には限りがあります。)",
 		ev.Count, what, ev.Signature, tool, ev.N)
 }

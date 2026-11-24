@@ -6,9 +6,9 @@ import (
 	"fmt"
 )
 
-// 本ファイルは意図スケジューリングの db サポート(红日 3 の振り返り R2):
+// 本ファイルは意図スケジューリングの db サポート(Red Sun 3 の振り返り R2):
 //   - CountOpenIntents:frontier の open 数。「frontier のハード上限」判定(planner
-//     の add_intent 派遣拒否)に使う——Frontier(limit) で全ノードを取って数えるより安い。
+//     の add_intent 派遣拒否)に使う。Frontier(limit) で全ノードを取って数えるより安い。
 //   - CancelOpenIntent:【未開始(open)】の意図を 1 件取り消す(mainagent/planner の
 //     cancel_intent ツール)。CancelIntent(running/paused とその産出を削除)とは異なり:
 //     open の意図にはまだ worker も産出も無いので、状態を stopped にして取り消し理由を

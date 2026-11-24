@@ -457,7 +457,7 @@ func buildCompressionInput(g *coldGraph, b block, nodeByID map[int64]*db.Node) s
 		memberSet[m] = true
 	}
 	var sb strings.Builder
-	sb.WriteString("【成员节点（要压缩的）】：\n")
+	sb.WriteString("【メンバーノード（圧縮対象）】：\n")
 	for _, m := range b.Members {
 		n := nodeByID[m]
 		kind := "fact"
@@ -479,17 +479,17 @@ func buildCompressionInput(g *coldGraph, b block, nodeByID map[int64]*db.Node) s
 	for _, m := range b.Members {
 		for _, to := range g.children[m] {
 			if memberSet[to] {
-				edgeLines = append(edgeLines, fmt.Sprintf("- #%d 产出/派生→ #%d", m, to))
+				edgeLines = append(edgeLines, fmt.Sprintf("- #%d 産出/派生→ #%d", m, to))
 			}
 		}
 	}
 	if len(edgeLines) > 0 {
-		sb.WriteString("\n【成员之间的血缘边（父→子）】：\n")
+		sb.WriteString("\n【メンバー間の血縁エッジ（親→子）】：\n")
 		sort.Strings(edgeLines)
 		sb.WriteString(strings.Join(edgeLines, "\n") + "\n")
 	}
 	if len(b.Anchors) > 0 {
-		sb.WriteString("\n【共同父 / 上下文锚（不是成员，只用于理解这些结果从哪个意图探出）】：\n")
+		sb.WriteString("\n【共通の親 / 文脈アンカー（メンバーではなく、これらの結果がどの意図から探り出されたかを理解するためだけに使う）】：\n")
 		for _, a := range b.Anchors {
 			n := nodeByID[a]
 			state := ""
@@ -523,19 +523,19 @@ func (c *Compactor) compress(ctx context.Context, g *coldGraph, b block, nodeByI
 }
 
 // compressionSystemPrompt is the §4 body prompt.
-const compressionSystemPrompt = `你在压缩一组【彼此关联】的探索节点，产出一段综合结论(body)，供规划者快速掌握"这一片已经探明了什么"。
+const compressionSystemPrompt = `あなたは【互いに関連する】探索ノードの一群を圧縮し、総合的な結論(body)を 1 つ産出する。プランナーが「この一片で何が既に明らかになっているか」を素早く把握するためのもの。
 
-输入是一个连通子图：
-- 节点：每条是一个意图或事实的 summary（一句话），带 id、类型(intent/fact)、state、confidence(若有)。
-- 关系：节点之间的血缘边（A 派生自 B / A 产出 B），说明它们如何串联。
-- 若节点间没有直接血缘边、但同属一个上游意图（会另给出该上游意图作为"共同父 #p"），则按"这个意图（#p）探到了什么"来综合它们——共同父只是上下文锚、不是要压缩的成员。
+入力は連結した部分グラフ：
+- ノード：各項目は 1 つの意図または事実の summary(一文)。id、型(intent/fact)、state、confidence(あれば)付き。
+- 関係：ノード間の血縁エッジ(A は B から派生 / A は B を産出)。それらがどう連なっているかを示す。
+- ノード間に直接の血縁エッジがなくても、同じ上流の意図に属する場合(その上流の意図を「共通の親 #p」として別途与える)、「この意図(#p)が何を探り当てたか」でそれらを総合する。共通の親は文脈アンカーにすぎず、圧縮対象のメンバーではない。
 
-据此写一段 body：
-1. 综合、不罗列：顺着关系把因果串起来（哪个事实催生哪个意图、哪条意图产出了哪个结论），讲成"这一片探索得出了什么"，不要把每条 summary 抄一遍。
-2. 保留区分度：彼此不同的结论分别说清，别揉成一句笼统的话。
-3. 保留证据强度：带 confidence 的结论标出 observed / inferred；inferred 的否定/存疑结论要点明它只是推断、可复核，别写成定论。
-4. 带上 id：每条结论后标注来源节点 id（如"…（#12,#28）"），让规划者能按 id 还原原节点。
-5. 正向陈述、只写输入里有的：不脑补、不引入输入中没有的判断。
-6. 长度随内容自适应：结论少就短，多且互不相同就写够——但整体显著短于所有输入 summary 的总和。
+これに基づいて body を書く：
+1. 総合する。列挙しない。関係に沿って因果をつなぎ(どの事実がどの意図を生み、どの意図がどの結論を産出したか)、「この一片の探索で何が得られたか」として語る。各 summary を写し書きしない。
+2. 区別を保つ：互いに異なる結論はそれぞれ明確に述べ、曖昧な一文に丸めない。
+3. 証拠の強さを保つ：confidence 付きの結論は observed / inferred を明示する。inferred の否定/疑義のある結論は、あくまで推測であり再確認可能と明記し、結論として書かない。
+4. id を付ける：各結論の後に出典ノードの id を記す(例：「…（#12,#28）」)。プランナーが id から元ノードを復元できるようにする。
+5. 肯定的に述べ、入力にあることだけを書く：想像で補わず、入力にない判断を持ち込まない。
+6. 長さは内容に応じて調整する：結論が少なければ短く、多く互いに異なれば十分に書く。ただし全体はすべての入力 summary の合計より顕著に短くする。
 
-只输出 body 正文本身。`
+body の本文だけを出力する。`

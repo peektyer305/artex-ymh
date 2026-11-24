@@ -37,20 +37,20 @@ func TestNormalizeVulnClass(t *testing.T) {
 		// blind sqli は sqli に寄せる（既存の粗い分類と一致。ブラインドは利用手法であり新しい分類ではない）
 		"SQL Injection (Blind)": "sqli",
 		"Blind SQL Injection":   "sqli",
-		"SQL 盲注":                "sqli",
-		// 中国語 / CVE 番号付き / 括弧内の略語
-		"任意文件上传 (CVE-2017-12615)": "upload",
-		"任意文件上传":                  "upload",
-		"远程代码执行":                  "cmdi",
-		"远程命令执行":                  "cmdi",
-		"跨站脚本":                    "xss",
-		"本地文件包含 (LFI)":            "lfi",
-		"敏感信息泄露":                  "info-leak",
-		"业务逻辑漏洞":                  "logic",
-		"密码爆破":                    "brute-force",
+		"SQL ブラインド":                "sqli",
+		// 日本語 / CVE 番号付き / 括弧内の略語
+		"任意ファイルアップロード (CVE-2017-12615)": "upload",
+		"任意ファイルアップロード":                  "upload",
+		"リモートコード実行":                  "cmdi",
+		"リモートコマンド実行":                  "cmdi",
+		"クロスサイトスクリプティング":                    "xss",
+		"ローカルファイルインクルード (LFI)":            "lfi",
+		"機密情報漏えい":                  "info-leak",
+		"ビジネスロジック脆弱性":                  "logic",
+		"パスワードブルートフォース":                    "brute-force",
 		// 保守的："injection" を含んでも sqli とは限らない。SSTI は template-injection キーワードで収束させる
 		"Template Injection":                      "ssti",
-		"Jinja2 模板注入":                             "ssti",
+		"Jinja2 テンプレートインジェクション":                             "ssti",
 		"Insecure Deserialization (Java)":         "deser",
 		"Vertical Privilege Escalation (PrivEsc)": "privesc",
 		"OS Command Injection (RCE)":              "cmdi",
@@ -97,7 +97,7 @@ func TestMergeFindingFields(t *testing.T) {
 	if sev != "high" || sum != "より深い悪用の要約" {
 		t.Fatalf("severity/summary: got (%q,%q)", sev, sum)
 	}
-	for _, want := range []string{"旧エビデンス本文", "[原摘要]", "旧要約", "[新证据]", "新 PoC", "intent #77", "by w2", "2026-09-13T12:00:00Z"} {
+	for _, want := range []string{"旧エビデンス本文", "[元の要約]", "旧要約", "[新たな証拠]", "新 PoC", "intent #77", "by w2", "2026-09-13T12:00:00Z"} {
 		if !strings.Contains(ev, want) {
 			t.Errorf("merged evidence missing %q:\n%s", want, ev)
 		}
@@ -118,10 +118,10 @@ func TestMergeFindingFields(t *testing.T) {
 		t.Fatalf("empty summary/evidence merge: got (%q,%q)", sum, ev)
 	}
 
-	// 旧 summary が空で新 summary が非空：置換するが「原摘要」のアーカイブ段は作らない
+	// 旧 summary が空で新 summary が非空：置換するが「元の要約」のアーカイブ段は作らない
 	emptyOld := DBFinding{Severity: "low", Summary: "", Evidence: "E"}
 	_, sum, ev = mergeFindingFields(emptyOld, RecordFindingInput{Severity: "low", Summary: "S", Evidence: "E2", IntentID: 0}, now)
-	if sum != "S" || strings.Contains(ev, "[原摘要]") || !strings.Contains(ev, "E2") {
+	if sum != "S" || strings.Contains(ev, "[元の要約]") || !strings.Contains(ev, "E2") {
 		t.Fatalf("empty old summary merge: got (%q,%q)", sum, ev)
 	}
 
@@ -130,7 +130,7 @@ func TestMergeFindingFields(t *testing.T) {
 	_, _, ev = mergeFindingFields(oldX, RecordFindingInput{
 		VulnClass: "Stored Cross-Site Scripting (XSS)", Severity: "medium", Summary: "S", Evidence: "新エビデンス",
 	}, now)
-	if !strings.Contains(ev, `本次 vulnclass 原文 "Stored Cross-Site Scripting (XSS)"`) {
+	if !strings.Contains(ev, `今回 vulnclass 原文 "Stored Cross-Site Scripting (XSS)"`) {
 		t.Errorf("drift annotation missing:\n%s", ev)
 	}
 
@@ -146,7 +146,7 @@ func TestMergeFindingFields(t *testing.T) {
 	_, _, ev = mergeFindingFields(oldX, RecordFindingInput{
 		VulnClass: "Stored Cross-Site Scripting (XSS)", Severity: "medium", Summary: "S",
 	}, now)
-	if !strings.Contains(ev, "vulnclass 原文") || !strings.Contains(ev, "仅 vulnclass 措辞漂移") {
+	if !strings.Contains(ev, "vulnclass 原文") || !strings.Contains(ev, "vulnclass の表現揺らぎのみ") {
 		t.Errorf("drift-only segment missing:\n%s", ev)
 	}
 }
@@ -243,7 +243,7 @@ func TestRecordFindingTxMerge(t *testing.T) {
 	if f.Severity != "critical" || f.Summary != "認証情報奪取後の深掘り悪用" {
 		t.Fatalf("merged fields: severity=%q summary=%q", f.Severity, f.Summary)
 	}
-	for _, want := range []string{"旧エビデンス", "[原摘要]", "旧要約", "[新证据]", "新 PoC 出力", "intent #"} {
+	for _, want := range []string{"旧エビデンス", "[元の要約]", "旧要約", "[新たな証拠]", "新 PoC 出力", "intent #"} {
 		if !strings.Contains(f.Evidence, want) {
 			t.Errorf("merged evidence missing %q:\n%s", want, f.Evidence)
 		}
@@ -296,7 +296,7 @@ func TestRecordFindingTxMerge(t *testing.T) {
 		t.Fatalf("merge must not change status, got %q", pf.Status)
 	}
 	if !strings.Contains(pf.Evidence, "pending マージ時エビデンス") ||
-		!strings.Contains(pf.Evidence, `本次 vulnclass 原文 "SQL Injection (Blind)"`) {
+		!strings.Contains(pf.Evidence, `今回 vulnclass 原文 "SQL Injection (Blind)"`) {
 		t.Errorf("pending merged evidence missing segment/drift note:\n%s", pf.Evidence)
 	}
 
@@ -329,8 +329,8 @@ func TestRecordFindingTxMerge(t *testing.T) {
 	defer func() { _, _ = d.DeleteFinding(out6.FindingID) }()
 
 	// 6) マージキーは主資産の一致（asset_ids->0）であり、包含ではない：
-	// (a) 候補 [ep,svc] 対 入力 [svc] —— svc は候補の副資産にすぎず主資産が異なるのでマージしない。
-	// (b) 候補 [ep,svc] 対 入力 [ep] —— 主資産が同一なのでマージする。
+	// (a) 候補 [ep,svc] 対 入力 [svc]。svc は候補の副資産にすぎず主資産が異なるのでマージしない。
+	// (b) 候補 [ep,svc] 対 入力 [ep]。主資産が同一なのでマージする。
 	epAsset := mkAsset("merge-ep.invalid")
 	svcAsset := mkAsset("merge-svc.invalid")
 	defer func() { _, _ = d.Exec(`DELETE FROM assets WHERE id=ANY($1::bigint[])`, []int64{epAsset, svcAsset}) }()

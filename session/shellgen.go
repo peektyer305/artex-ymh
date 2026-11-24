@@ -145,7 +145,7 @@ func GenerateShell(lang string, obfuscate bool, note string) (*GeneratedShell, e
 // (鍵、アルゴリズム名、ドメイン区切り文字列、入力元)を複数の単一引用符リテラルの連結に分割する。
 //
 // 方針(コメントは約束): 分割/連結という「等価な書き換え」だけを行い、eval(base64(...))、
-// gzinflate の入れ子などの高特徴形態は行わない——それはシグネチャライブラリの第一の命中点で、変形の利得が負になる。軽度の変形が
+// gzinflate の入れ子などの高特徴形態は行わない。それはシグネチャライブラリの第一の命中点で、変形の利得が負になる。軽度の変形が
 // 消すのは「文字列全体の定数」という特徴で、同時にシェル本体の可読性と監査可能性は保つ。
 func obfuscatePHP(src, keyB64 string) string {
 	literals := []string{keyB64, "aes-256-gcm", "aes-256-cbc", "artex-enc-v1", "artex-mac-v1", "php://input"}

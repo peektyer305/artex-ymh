@@ -1,43 +1,43 @@
 ---
 name: chains-web
-description: Web 漏洞反问决策链原文索引(SQLi/上传/反序列化/SSRF/SSTI/XXE/命令注入/逻辑越权/认证绕过/CMS/WAF 绕过/落地 shell)。打 Web 目标、payload 被拦、判定存疑、需要转向时查阅。
+description: Web の脆弱性に関する問い返し型意思決定チェーンの原文索引(SQLi/アップロード/デシリアライズ/SSRF/SSTI/XXE/コマンドインジェクション/ロジック権限外アクセス/認証バイパス/CMS/WAF バイパス/シェル足場確保)。Web 対象を攻撃するとき、payload が遮断されたとき、判定に疑義があるとき、方向転換が必要なときに参照する。
 ---
 
-# chains-web · Web 漏洞反问决策链(L4 原文索引)
+# chains-web · Web 脆弱性の問い返し型意思決定チェーン(L4 原文索引)
 
-## 何时使用
+## いつ使うか
 
-- 拿到带参接口,要判定注不注得动、是哪种数据库/注入类型(web-sqli)
-- payload 被拦(403/拦截页/限流),要定位拦截层级并选绕过维度(web-waf-bypass)
-- 有上传/反序列化/SSTI/XXE/SSRF/命令注入入口,要定判定顺序与利用路径
-- 认证会话类目标:JWT/OAuth/SSO 攻击、登录绕过(web-token-attack、web-auth-bypass)
-- 识别出 CMS,要走"识别→已知漏洞→后台 getshell"捷径(web-cms)
-- 已有 Web 漏洞,要落地成系统 shell(web-to-shell)
+- パラメータ付き API を入手し、注入できるか、どのデータベース/注入タイプかを判定したい(web-sqli)
+- payload が遮断された(403/遮断ページ/レート制限)とき、遮断の階層を特定しバイパスの次元を選びたい(web-waf-bypass)
+- アップロード/デシリアライズ/SSTI/XXE/SSRF/コマンドインジェクションの入口があり、判定の順序と利用経路を定めたい
+- 認証・セッション系の対象:JWT/OAuth/SSO 攻撃、ログインバイパス(web-token-attack、web-auth-bypass)
+- CMS を特定できたとき、「特定→既知の脆弱性→管理画面 getshell」の近道を進みたい(web-cms)
+- すでに Web の脆弱性があり、システムシェルに足場確保したい(web-to-shell)
 
-## 铁律
+## 鉄則
 
-- 判注入看"可复现的真假分叉"而非"报错"——报错只说明语法变了,分叉才说明表达式进了执行逻辑(refs/web-sqli.md)
-- 状态码 200 不等于打通:WAF 会伪造 200,先做良性/恶意对照再信响应(refs/web-waf-bypass.md)
-- 上传先传良性文件看三件事:路径回显、重命名策略、可否直接访问,再谈 webshell(refs/web-upload.md)
-- 单点打不动先换注入位置/参数面/协议入口(query→body→header→cookie→JSON),别死磕同一参数(refs/web-sqli.md)
-- 落地 shell 前先填满三格:数据库类型、当前用户权限、DB 与 Web 是否同机(refs/web-to-shell.md)
+- 注入判定は「再現可能な真偽の分岐」で見るのであって「エラー」ではない。エラーは構文が変わったことしか示さず、分岐こそが式が実行ロジックに入ったことを示す(refs/web-sqli.md)
+- ステータスコード 200 は突破と等しくない。WAF は 200 を偽装するため、まず良性/悪意の対照実験をしてからレスポンスを信じる(refs/web-waf-bypass.md)
+- アップロードではまず良性ファイルを送って 3 点を見る。パスのエコー、リネーム方針、直接アクセス可否。それから webshell を検討する(refs/web-upload.md)
+- 単点で攻めきれないなら、まず注入位置/パラメータ面/プロトコル入口を変える(query→body→header→cookie→JSON)。同じパラメータに固執しない(refs/web-sqli.md)
+- シェルを足場確保する前に 3 つの枠を埋める。データベース種別、現在のユーザー権限、DB と Web が同一マシンかどうか(refs/web-to-shell.md)
 
-## refs/ 原文清单
+## refs/ 原文リスト
 
-- `refs/web-auth-bypass.md` — 认证与会话绕过的思路
-- `refs/web-cmdi.md` — 命令注入/代码注入的定位
-- `refs/web-cms.md` — CMS 通用打法:识别→已知漏洞→后台 getshell
-- `refs/web-deser.md` — 反序列化漏洞的判定与链构造
-- `refs/web-logic.md` — 业务逻辑与越权漏洞
-- `refs/web-sqli.md` — SQL 注入:判定→利用→读写→提权
-- `refs/web-ssrf.md` — SSRF 的探测与打内网
-- `refs/web-ssti.md` — SSTI 模板注入的识别与利用
-- `refs/web-to-shell.md` — 从 Web 漏洞落地到系统 shell
-- `refs/web-token-attack.md` — JWT/OAuth/SSO 等认证机制攻击
-- `refs/web-upload.md` — 文件上传绕过决策
-- `refs/web-waf-bypass.md` — WAF/过滤下的绕过决策
-- `refs/web-xxe.md` — XXE 的识别与外带
+- `refs/web-auth-bypass.md` — 認証とセッションバイパスの考え方
+- `refs/web-cmdi.md` — コマンドインジェクション/コードインジェクションの特定
+- `refs/web-cms.md` — CMS の汎用的な攻め方。特定→既知の脆弱性→管理画面 getshell
+- `refs/web-deser.md` — デシリアライズ脆弱性の判定とチェーン構築
+- `refs/web-logic.md` — ビジネスロジックと権限外アクセス脆弱性
+- `refs/web-sqli.md` — SQL インジェクション:判定→利用→読み書き→権限昇格
+- `refs/web-ssrf.md` — SSRF の探査と内部ネットワーク攻撃
+- `refs/web-ssti.md` — SSTI テンプレートインジェクションの識別と利用
+- `refs/web-to-shell.md` — Web の脆弱性からシステムシェルへの足場確保
+- `refs/web-token-attack.md` — JWT/OAuth/SSO などの認証メカニズム攻撃
+- `refs/web-upload.md` — ファイルアップロードバイパスの意思決定
+- `refs/web-waf-bypass.md` — WAF/フィルタリング下でのバイパス意思決定
+- `refs/web-xxe.md` — XXE の識別とデータ持ち出し
 
-## 用法
+## 使い方
 
-先用本索引定位篇目与场景节(`### 场景句`),再 Read 对应文件;回答/决策时优先遵循其中的判据与转向规则。worker 无 Glob/Grep,按上面的精确相对路径直接 Read。
+まず本インデックスで篇目と場面節(`### 場面句`)を特定し、対応するファイルを Read する。回答/意思決定の際は、その中の判定基準と方向転換ルールを優先して従う。worker には Glob/Grep がなく、上の正確な相対パスで直接 Read する。

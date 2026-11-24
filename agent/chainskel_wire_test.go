@@ -50,11 +50,11 @@ func TestAddOneIntentChainTags(t *testing.T) {
 // L2 の meta 鉄則: 静的定数を planner/worker system のコード固定テールに追加する。
 func TestSystemPromptMetaRules(t *testing.T) {
 	p := plannerSystem("X を攻略", "/data", "/data")
-	if !strings.Contains(p, "meta 铁律(反问纪律,全程在场)") {
+	if !strings.Contains(p, "meta 鉄則(反問の規律、常に有効)") {
 		t.Fatal("plannerSystem に planner 版 meta 鉄則がない")
 	}
 	w := workerSystem("", "", "/data", "/data", false)
-	if !strings.Contains(w, "meta 铁律(观测真伪与卡住自检)") {
+	if !strings.Contains(w, "meta 鉄則(観測の真偽と停滞の自己点検)") {
 		t.Fatal("workerSystem に worker 版 meta 鉄則がない")
 	}
 }

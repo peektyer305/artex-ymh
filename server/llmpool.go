@@ -10,7 +10,7 @@ import (
 	"github.com/Autumn-27/norma/llm"
 )
 
-// LLM ポーリング(フェイルオーバー)のサーバー側配線。設計は docs/LLM轮询设计.md を参照：
+// LLM ポーリング(フェイルオーバー)のサーバー側配線。設計は docs/LLMポーリング設計.md を参照：
 //   - グローバル有効設定の経路(agent 未バインド、タスク未 pin)でのみポーリングする;
 //   - バインド/pin の経路は既定でその設定を占有し、失敗すれば失敗(llm_pool_bind_fallback でフォールバックを有効化できる);
 //   - チェーン順 = 有効設定 → 残りを priority DESC で並べ、pool_exclude のものを除外;

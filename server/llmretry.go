@@ -52,7 +52,7 @@ func (s *Server) applyProfileRetry(cfg *agent.Config, p *db.LLMProfile) {
 }
 
 // サーキットブレーカー（ポーリングのクールダウン）の既定値で、llmpool の組み込み値と一致する
-// ——ここでは「ユーザーが値を設定した」場合にだけ上書きする。
+//。ここでは「ユーザーが値を設定した」場合にだけ上書きする。
 // 意図の再実行の既定値は engine.go の modelErrorRetries / modelErrorRetryBackoff を参照。
 
 // applyRetryPolicy pushes the process-wide layers of the policy into the objects
@@ -83,13 +83,13 @@ func (e *Engine) modelErrorRetryPolicy() (retries int, backoff time.Duration) {
 }
 
 // emptyTurnNudgeLimit resolves how many empty-turn continuations one work may
-// inject (see steerHooks.Stop). It deliberately reuses layer ②'s knob ——
+// inject (see steerHooks.Stop). It deliberately reuses layer ②'s knob。
 // 「空応答再試行回数」: 両者は同じ事柄に対する 2 つの手段である。SDK の層は「コンテンツブロックが
 // 1 つも無い」を扱い、手段は同じリクエストをそのまま再送すること。ここは「思考だけで、
 // 本文もツールも無い」を扱い、手段は指示を 1 つ追加してモデルに既存の思考を抱えたまま
 // 続けさせること（そのまま再送しても、コンテキストの形で決まるこの空転には意味がない）。
 // 空判定の基準が違うのは、SDK が「イベントを yield したか」で判断し、思考デルタ自体が
-// イベントになるため——だがユーザーが「空応答を何回再試行するか」を設定するときに
+// イベントになるため。だがユーザーが「空応答を何回再試行するか」を設定するときに
 // 意味しているのは「モデルが実質的な内容を出さなければもう一度」であり、2 つの層が
 // 回数を共有してこそこの認識に合う。
 //

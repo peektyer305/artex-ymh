@@ -139,7 +139,7 @@ func extractToken(r *http.Request) string {
 
 // requireAuth wraps h with access-token validation.
 // /api/auth/* and /api/health are exempt.
-// 无 Bearer ヘッダーのときは使い捨ての ?ticket= を受け付ける(SSE 専用、60s 有効、使用後は即破棄);
+// Bearer ヘッダーがないときは使い捨ての ?ticket= を受け付ける(SSE 専用、60s 有効、使用後は即破棄);
 // 旧来の ?token= 形式は削除済み(token は URL/アクセスログに残すべきではない)。
 func (s *Server) requireAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

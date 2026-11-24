@@ -1,16 +1,16 @@
-# chains-priv L3 决策骨架(场景→判据→转向;蒸馏自 chains 语料,完整 Q&A 见 skills/chains-priv/refs/)
-- 场景:刚拿 shell 想直接提权|判据:先三问:我是谁(id/组)、什么环境(/.dockerenv、/proc/1/cgroup 见 docker/kubepods 命中两条判容器)、通道稳不稳|转向:不稳先升全 TTY 再收集
-- 场景:低权 shell 定枚举顺序|判据:低成本高命中:id/sudo -l/uname -a/ss -tlnp 30 秒定主干,SUID/getcap/cron 次之,翻凭据最后;配置类榨干前不碰内核 exp|转向:无货转 pspy 与 id 附加组(docker/lxd/disk/shadow)
-- 场景:sudo -l 有输出|判据:NOPASSWD 命令能否按 GTFOBins 撬成任意执行;env_keep 留 LD_PRELOAD/PYTHONPATH 即送分;自定义脚本找相对路径调用|转向:要密码→查 sudo --version 对 Baron Samedit 窗口,仍无则离 sudo 面
-- 场景:排查 SUID/cap 面|判据:find -perm -4000 剔标准件,盯自定义与旧版本;getcap 见 cap_setuid/dac_read_search/dac_override 近同提权;strings/ltrace 找相对路径调子命令|转向:PATH 劫持被绝对路径挡转 LD 劫持;SUID 空转 cron/组权限/pspy
-- 场景:找周期性高权执行面|判据:root 定时执行+链条任一环可写:脚本可写、PATH 含可写目录、tar 通配符 checkpoint 注入、unit/ExecStart 可写;crontab 不全用 pspy 补|转向:全紧转凭据面或 ld.so.preload/logrotate 等触发点
-- 场景:想上内核 exp/PwnKit/DirtyPipe|判据:版本+补丁级+架构精确匹配(backport 让 uname 骗人);配置类全断才用;异处静态编译投送;同一 exp 试 2~3 次不成就撤|转向:封死转配置面精查或横向换补丁不勤的机器
-- 场景:Windows 第一轮定位|判据:whoami /priv 第一眼扫 SeImpersonate/SeBackup/SeRestore;服务账户必带 SeImpersonate,按版本选 Juicy/PrintSpoofer/GodPotato 抬 SYSTEM|转向:特权空转服务/任务/注册表面
-- 场景:Windows 服务误配置|判据:unquoted path 须三条件齐备(空格无引号+中间目录可写+高权运行);icacls 复核服务二进制与注册表 ImagePath 弱 DACL|转向:干净转计划任务/WMI 订阅,或补丁差集对 LPE(蓝屏风险列最后)
-- 场景:抓凭据定顺序|判据:Linux 先 history/.ssh/配置明文再 /proc/PID/environ;Windows 先 lsass 再 SAM/SYSTEM hive 再 DPAPI;lsass 被拦用 comsvcs MiniDump 离线解|转向:动不了 lsass 转 GPP cpassword/Kerberoast/ADCS
-- 场景:disable_functions 封死 webshell|判据:先 ini_get/function_exists 测绘名单;putenv+mail 可 fork 即走 LD_PRELOAD;PHP≥7.4 且 ffi.enable 非 false 直接 FFI 秒杀;dl/FPM auto_prepend_file 后梯队|转向:全灭转文件写(cron/authorized_keys)、本机协议面或 Windows COM
-- 场景:容器内找逃逸面|判据:拉平四要素:privileged(CapEff 满值)、危险 cap(sys_admin/sys_module)、挂 docker.sock 或宿主目录、块设备可见;uid_map 映高 uid 则容器 root≠宿主 root|转向:干净转共享内核 CVE、K8s SA token 或容器网络横向
-- 场景:K8s Pod 或云实例|判据:Pod 先读 serviceaccount token,auth can-i --list 看 create pods/get secrets;云先打 169.254.169.254,v1 返回 401 即 IMDSv2,先 PUT 拿 token|转向:IMDS 被挡翻 ~/.aws/环境变量;SA 权限窄转 kubelet 10250 或数据面
-- 场景:注入点执行能级不明|判据:五级原语逐级确证:文件读<文件写<受限求值<代码执行<命令执行;盲态先用带外 DNS/HTTP 证链通,比时间盲稳|转向:spawn 被拦把需求拆成读凭据/横向/持久化
-- 场景:站稳后做持久化|判据:入口越单一越早留保命通道,达标线为 kill 后 30 秒内能从独立路径重进;白利用优先,改已有 unit 的 ExecStartPost 优于新建对象,基线对比不跳出为准|转向:被清则 3 种不同触发分散冗余;共用 C2 全切换
-- 场景:拿到高权/域管后收割|判据:黄金 5 分钟顺序:凭据快照→独立持久化→选择性清痕(全清反暴露);黄金票据存 krbtgt 非必要不开;AdminSDHolder/ADCS 证书是不受轮转影响的非凭据持久|转向:EDR 全拦则凭据本身即持久化;长驻心跳小时级+jitter 30%
+# chains-priv L3 意思決定チェーン骨格(場面→判定基準→方向転換;chains コーパスから蒸留、完全な Q&A は skills/chains-priv/refs/ 参照)
+- 場面:shell を取った直後、すぐに権限昇格したい|判定基準:まず三問:私は誰か(id/グループ)、どんな環境か(/.dockerenv、/proc/1/cgroup で docker/kubepods の二つに該当すればコンテナと判定)、チャネルは安定しているか|方向転換:不安定なら先にフル TTY へ昇格してから収集
+- 場面:低権限 shell で列挙順序を決める|判定基準:低コスト高ヒット:id/sudo -l/uname -a/ss -tlnp で 30 秒で大枠を定める。SUID/getcap/cron が次、認証情報を探るのは最後。設定系をやり尽くす前にカーネル exp に触れない|方向転換:収穫がなければ pspy と id の追加グループ(docker/lxd/disk/shadow)へ
+- 場面:sudo -l に出力がある|判定基準:NOPASSWD コマンドを GTFOBins に従って任意実行にこじ開けられるか。env_keep に LD_PRELOAD/PYTHONPATH が残っていれば即得点。独自スクリプトは相対パス呼び出しを探す|方向転換:パスワード要求なら sudo --version を調べて Baron Samedit の適用可否を確認。それでもなければ sudo 面から離れる
+- 場面:SUID/cap 面を調査する|判定基準:find -perm -4000 で標準品を除外し、独自のものと旧バージョンに注目。getcap で cap_setuid/dac_read_search/dac_override が見えればほぼ権限昇格。strings/ltrace で相対パスによる子コマンド呼び出しを探す|方向転換:PATH ハイジャックが絶対パスで阻まれるなら LD ハイジャックへ。SUID が空なら cron/グループ権限/pspy へ
+- 場面:周期的な高権限実行面を探す|判定基準:root の定期実行 + チェーンのいずれかが書き込み可:スクリプト書き込み可、PATH に書き込み可ディレクトリを含む、tar のワイルドカード checkpoint 注入、unit/ExecStart 書き込み可。crontab が不完全なら pspy で補う|方向転換:全て固ければ認証情報面、または ld.so.preload/logrotate などのトリガーポイントへ
+- 場面:カーネル exp/PwnKit/DirtyPipe を使いたい|判定基準:バージョン + パッチレベル + アーキテクチャの正確な一致(backport があると uname が人を騙す)。設定系が全て断たれてから使う。別の場所で静的コンパイルして投送。同一 exp は 2~3 回試してダメなら撤収|方向転換:封鎖されたら設定面を精査するか、横展開してパッチの遅いマシンへ
+- 場面:Windows の第一ラウンドの位置特定|判定基準:whoami /priv の第一印象で SeImpersonate/SeBackup/SeRestore を確認。サービスアカウントは必ず SeImpersonate を持ち、バージョンに応じて Juicy/PrintSpoofer/GodPotato を選び SYSTEM へ昇格|方向転換:特権が空ならサービス/タスク/レジストリ面へ
+- 場面:Windows サービスの設定ミス|判定基準:unquoted path は三条件が揃う必要(スペースあり引用符なし + 中間ディレクトリ書き込み可 + 高権限で実行)。icacls でサービスバイナリとレジストリの ImagePath の弱い DACL を再確認|方向転換:クリーンならスケジュールタスク/WMI サブスクリプションへ。またはパッチ差分で LPE(ブルースクリーンのリスクは最後に列挙)
+- 場面:認証情報の取得順序を決める|判定基準:Linux は history/.ssh/設定の平文、次に /proc/PID/environ。Windows は lsass、次に SAM/SYSTEM hive、次に DPAPI。lsass がブロックされたら comsvcs MiniDump でオフライン解析|方向転換:lsass を動かせないなら GPP cpassword/Kerberoast/ADCS へ
+- 場面:disable_functions で webshell が封じられる|判定基準:先に ini_get/function_exists でリストを特定。putenv+mail で fork できれば LD_PRELOAD へ。PHP≥7.4 かつ ffi.enable が false でなければ直接 FFI で一撃。dl/FPM auto_prepend_file は後続の梯団|方向転換:全滅ならファイル書き込み(cron/authorized_keys)、ローカルプロトコル面、または Windows COM へ
+- 場面:コンテナ内でエスケープ面を探す|判定基準:四要素を並べる:privileged(CapEff 満値)、危険な cap(sys_admin/sys_module)、docker.sock またはホストディレクトリのマウント、ブロックデバイスの可視化。uid_map が高い uid に写るならコンテナ root≠ホスト root|方向転換:クリーンなら共有カーネルの CVE、K8s SA token、またはコンテナネットワークの横展開へ
+- 場面:K8s Pod またはクラウドインスタンス|判定基準:Pod は先に serviceaccount token を読み、auth can-i --list で create pods/get secrets を見る。クラウドは先に 169.254.169.254 を攻め、v1 が 401 を返せば IMDSv2、先に PUT で token を取る|方向転換:IMDS がブロックされたら ~/.aws/環境変数を探る。SA 権限が狭ければ kubelet 10250 またはデータプレーンへ
+- 場面:インジェクションポイントの実行レベルが不明|判定基準:五段階のプリミティブを順に確認:ファイル読取<ファイル書き込み<制限付き評価<コード実行<コマンド実行。ブラインド状態では先に帯外 DNS/HTTP で経路の疎通を確認、時間ベースブラインドより安定|方向転換:spawn がブロックされたら要件を認証情報の読取/横展開/永続化に分解
+- 場面:足場が安定した後の永続化|判定基準:入口が単一であるほど早めに命綱チャネルを残す。合格ラインは kill 後 30 秒以内に独立パスから再侵入できること。正規(ホワイトリスト)ツールの利用を優先し、既存 unit の ExecStartPost を改変する方が新規オブジェクト作成より優れる。ベースライン比較で浮かないことを基準にする|方向転換:消されたら 3 種類の異なるトリガーで冗長に分散。共用 C2 は全て切り替える
+- 場面:高権限/ドメイン管理取得後の収穫|判定基準:ゴールデン 5 分の順序:認証情報のスナップショット→独立した永続化→選択的な痕跡消去(全消去はかえって露見)。ゴールデンチケットの保存は krbtgt、非必要なら開かない。AdminSDHolder/ADCS 証明書はローテーションの影響を受けない非認証情報の永続化|方向転換:EDR が全て遮断するなら認証情報自体が永続化。常駐のハートビートは時間単位 + jitter 30%

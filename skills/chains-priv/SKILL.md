@@ -1,36 +1,36 @@
 ---
 name: chains-priv
-description: 提权与立足点反问决策链原文索引(Linux/Windows 提权决策树/执行原语分级/disable_functions 绕过/容器云逃逸/立足点侦察/持久化)。拿到低权 shell、执行受限、要提权或站稳时查阅。
+description: 権限昇格と足場の反問決定連鎖の原文インデックス(Linux/Windows 権限昇格決定木/実行原語の等級分け/disable_functions 迂回/コンテナ・クラウドエスケープ/足場の偵察/永続化)。低権限 shell を取得したとき、実行が制限されているとき、権限昇格や足場の固定が必要なときに参照する。
 ---
 
-# chains-priv · 提权立足点反问决策链(L4 原文索引)
+# chains-priv · 権限昇格と足場の反問決定連鎖(L4 原文インデックス)
 
-## 何时使用
+## いつ使うか
 
-- 刚落地低权 shell(www-data/普通用户),要定枚举顺序(priv-linux、priv-foothold-recon)
-- 执行受限:disable_functions、沙箱、spawn 被拦,要选执行原语(priv-exec-primitive、priv-disablefunc)
-- 要打 Linux/Windows 提权决策树,给枚举出的向量排优先级(priv-linux、priv-windows)
-- 目标是容器/云环境,要判逃逸与提权可能(priv-container-cloud)
-- shell 不稳定或要权衡持久化手段(priv-persistence)
+- 低権限 shell(www-data/一般ユーザー)に着地した直後で、列挙順序を決めたいとき(priv-linux、priv-foothold-recon)
+- 実行が制限されているとき:disable_functions、サンドボックス、spawn が遮断されていて、実行原語を選びたいとき(priv-exec-primitive、priv-disablefunc)
+- Linux/Windows の権限昇格決定木を回し、列挙したベクトルに優先順位を付けたいとき(priv-linux、priv-windows)
+- 対象がコンテナ/クラウド環境で、エスケープと権限昇格の可能性を判定したいとき(priv-container-cloud)
+- shell が不安定、または永続化の手段を比較検討したいとき(priv-persistence)
 
-## 铁律
+## 鉄則
 
-- 枚举按"低成本高命中"漏斗:一条命令出结论的先跑(id/sudo -l/uname/ss),要翻一堆文件的排后面(refs/priv-linux.md)
-- 向量按"确定性 × 隐蔽性 × 稳定性"排序:配置类提权(sudo/suid/cron/cap)榨干再考虑内核 exp(refs/priv-linux.md)
-- 先给原语分级:文件读 < 文件写 < 受限求值 < 任意代码执行 < 命令执行,从能确证的一级出发规划,别默认最高级(refs/priv-exec-primitive.md)
-- spawn 被拦就把"命令执行"执念降级成"要达成什么效果"(读凭据/横向连通/持久化),语言层原语覆盖多数刚需(refs/priv-exec-primitive.md)
-- 盲态下带外(OOB)是最可靠的"原语存在性"证据,比时间盲注稳(refs/priv-exec-primitive.md)
+- 列挙は「低コスト・高命中」の漏斗で行う:1 コマンドで結論が出るものを先に実行し(id/sudo -l/uname/ss)、大量のファイルを読む必要があるものは後回しにする(refs/priv-linux.md)
+- ベクトルは「確実性 × 隠蔽性 × 安定性」で並べる:設定由来の権限昇格(sudo/suid/cron/cap)を絞り尽くしてからカーネル exp を検討する(refs/priv-linux.md)
+- 先に原語を等級分けする:ファイル読み取り < ファイル書き込み < 制限付き評価 < 任意コード実行 < コマンド実行。確証できた等級から計画を始め、最初から最上位を前提にしない(refs/priv-exec-primitive.md)
+- spawn が遮断されたら「コマンド実行」への執着を「何を達成したいか」(認証情報の読み取り/横展開の接続/永続化)に格下げする。言語層の原語で主要なニーズの大半をカバーできる(refs/priv-exec-primitive.md)
+- 盲状態では帯域外(OOB)が最も信頼できる「原語の存在」の証拠であり、時間ブラインドより安定している(refs/priv-exec-primitive.md)
 
-## refs/ 原文清单
+## refs/ 原文リスト
 
-- `refs/priv-container-cloud.md` — 容器/云环境逃逸与提权判断
-- `refs/priv-disablefunc.md` — disable_functions/受限执行绕过
-- `refs/priv-exec-primitive.md` — 命令执行受限时执行原语的选择
-- `refs/priv-foothold-recon.md` — 拿到立足点后的第一轮内网信息收集
-- `refs/priv-linux.md` — Linux 提权决策树
-- `refs/priv-persistence.md` — 持久化与稳定性取舍
-- `refs/priv-windows.md` — Windows 提权决策树
+- `refs/priv-container-cloud.md` — コンテナ/クラウド環境のエスケープと権限昇格の判定
+- `refs/priv-disablefunc.md` — disable_functions/制限付き実行の迂回
+- `refs/priv-exec-primitive.md` — コマンド実行が制限されたときの実行原語の選択
+- `refs/priv-foothold-recon.md` — 足場を確保した後の最初の内部ネットワーク情報収集
+- `refs/priv-linux.md` — Linux 権限昇格決定木
+- `refs/priv-persistence.md` — 永続化と安定性の取捨選択
+- `refs/priv-windows.md` — Windows 権限昇格決定木
 
-## 用法
+## 使い方
 
-先用本索引定位篇目与场景节(`### 场景句`),再 Read 对应文件;回答/决策时优先遵循其中的判据与转向规则。worker 无 Glob/Grep,按上面的精确相对路径直接 Read。
+先にこのインデックスで篇目と場面節(`### 場面句`)を特定し、対応するファイルを Read する。回答/判断の際は、その中の判定基準と方向転換のルールを優先して従う。worker には Glob/Grep が無いため、上の正確な相対パスで直接 Read する。

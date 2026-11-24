@@ -330,7 +330,7 @@ function mockAssetMatchesDSL(asset: Asset, dsl: string): boolean {
 }
 
 // mockFilterFindings はファインディングページの共通絞り込み(深刻度/ステータス/タイプ/タスク/キーワード)を適用する。アセット
-// サブツリーの絞り込みは別途 mockApplyAssetScope が担当 —— バックエンド FindingFilter.where() の役割分担と同じ。
+// サブツリーの絞り込みは別途 mockApplyAssetScope が担当。バックエンド FindingFilter.where() の役割分担と同じ。
 function mockFilterFindings(q: URLSearchParams): (typeof mockFindings)[number][] {
   let list = mockFindings.filter((finding) => mockFindingMatchesQuery(finding, q.get("q")));
   const severity = q.get("severity");

@@ -164,7 +164,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 			if err := json.Unmarshal(in, &a); err != nil {
 				return actool.Errorf("invalid input: " + err.Error()), nil
 			}
-			// task_id はプログラムが正式に代入する(worker: SetTaskID)。モデルからの指定は受け付けない——
+			// task_id はプログラムが正式に代入する(worker: SetTaskID)。モデルからの指定は受け付けない。
 			// モデルの未指定・誤指定でアセットがタスクに紐付かない/誤ったタスクに紐付くのを防ぐ。
 			// タスクコンテキストのない呼び出し元(auto/pentest/chat)では t.taskID=0 になる。
 			taskID := t.taskID
@@ -380,7 +380,7 @@ func (t *ToolSet) addTaskScope() actool.CoreTool {
 		"add_task_scope",
 		"テスト範囲を【本タスク】に追加します。これは本タスクの認可境界であり、アセットのテストカバレッジの分母でもあります。\n"+
 			"kind は company(企業配下のアセット全体) / root_domain(ルートドメイン全体、全サブドメインを含む) / subdomain(単一のサブドメイン) / ip / cidr / icp / keyword に対応します。\n"+
-			"補足：worker が個別に遭遇したホストはシステムが【自動】で範囲に追加します(サブドメイン単位)。本ツールは【能動的な拡大】用です——ルートドメイン全体/企業全体を取り込む、または特定のサブドメイン/IP を補足指定します。\n"+
+			"補足：worker が個別に遭遇したホストはシステムが【自動】で範囲に追加します(サブドメイン単位)。本ツールは【能動的な拡大】用です。ルートドメイン全体/企業全体を取り込む、または特定のサブドメイン/IP を補足指定します。\n"+
 			"value：company は企業名または id(企業が既存であること)、root_domain/subdomain はドメイン、ip/cidr は IP またはネットワーク、icp/keyword は登録番号または企業キーワード。\n"+
 			"reason には根拠を必ず書いてください(監査可能)。複数件は entries 配列を使います。",
 		obj(map[string]any{

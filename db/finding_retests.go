@@ -124,9 +124,9 @@ func (d *DB) CreateFindingRetest(ctx context.Context, findingID int64, notes str
 }
 
 func (r *FindingRetest) InitialMessage() string {
-	msg := fmt.Sprintf("请复测漏洞 #%d。先调用 get_finding_retest_context 读取本会话关联的原始证据与约束，再执行针对性验证，最后调用 record_finding_retest_result 保存结论。", r.FindingID)
+	msg := fmt.Sprintf("脆弱性 #%d を再テストしてください。まず get_finding_retest_context を呼び出して、このセッションに関連付けられた元の証拠と制約を読み取り、対象を絞った検証を実行し、最後に record_finding_retest_result を呼び出して結論を保存してください。", r.FindingID)
 	if r.Notes != "" {
-		msg += "\n\n本次复测补充说明：\n" + r.Notes
+		msg += "\n\n今回の再テストの補足説明：\n" + r.Notes
 	}
 	return msg
 }

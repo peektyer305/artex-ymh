@@ -30,7 +30,7 @@ import (
 )
 
 // ChunkSize はファイル読み書きのチャンクサイズ（64KB の元データ、base64 後は約 85KB）。
-// 上限の根拠：Linux の execve では単一引数が MAX_ARG_STRLEN=128KB まで——書き込みが `/bin/sh -c`
+// 上限の根拠：Linux の execve では単一引数が MAX_ARG_STRLEN=128KB まで。書き込みが `/bin/sh -c`
 // 経由のインライン base64 で書き込むとコマンドラインが単一引数になり、512KB のチャンク（b64 で ~700KB）は必ず E2BIG で落ちる
 // （実運用では Tomcat の JSP WebShell が 256KB のインラインで HTTP 500、PHP exec 系も同様）。
 // 暗号化 WebShell の read/write op は JSON POST body 経由でこの制限を受けない。http_shell_enc.go を参照。
@@ -334,12 +334,12 @@ func Probe(ctx context.Context, shellURL, password, lang string) (*HTTPShell, Pr
 // probeAuto は自動判定する（振り返り R1 の修正:旧実装の eval プローブは sh コマンドシェルの「文字列連結」
 // の偽装に騙されて PHP 分岐に入り、最終的に PHP コマンドシェルを http_jsp と誤判定していた）。順序:
 //
-//	① PHP eval プローブ——PHP 専用の構文（文字列連結+算術評価）で、sh コマンドシェルには解釈できない。
-//	② sh コマンドプローブ（1 回）——ヒットすれば「POST フィールドがそのまま shell コマンド」のコマンドシェルで、
+//	① PHP eval プローブ。PHP 専用の構文（文字列連結+算術評価）で、sh コマンドシェルには解釈できない。
+//	② sh コマンドプローブ（1 回）。ヒットすれば「POST フィールドがそのまま shell コマンド」のコマンドシェルで、
 //	  さらに汎用レスポンスヘッダの信号で PHP コマンドシェル（phpcmd）/Java コンテナの WebShell（jsp）を区別する:
 //	  X-Powered-By に PHP → phpcmd;JSESSIONID/コンテナのシグネチャ → jsp;
 //	  信号なしのデフォルトは phpcmd（堅牢化した PHP はヘッダを落とすことが多く、両者の実行チャネルは同構造で誤判定のコストが対称）;
-//	③ ASPX プローブ——cmd.exe 専用（未定義の変数は空に展開される）。
+//	③ ASPX プローブ。cmd.exe 専用（未定義の変数は空に展開される）。
 func probeAuto(ctx context.Context, shellURL, password string) (*HTTPShell, ProbeInfo, error) {
 	var errs []string
 	if s, err := NewHTTPShell(shellURL, password, "php"); err == nil {
@@ -427,7 +427,7 @@ func (s *HTTPShell) probe(ctx context.Context) (ProbeInfo, error) {
 	switch s.lang {
 	case "php":
 		// 1) 存続プローブ：PHP 専用の構文（文字列連結 + 算術評価）。コマンドシェルがこれを shell
-		// コマンドとして実行すると `(20+22)` は構文エラーになり、S42E を返すことは絶対にない——これが eval WebShell と
+		// コマンドとして実行すると `(20+22)` は構文エラーになり、S42E を返すことは絶対にない。これが eval WebShell と
 		// コマンドシェルの境界（振り返り R1:旧プローブの `echo "S"."E"` は sh の連結でエコー出力されてしまう）。
 		m := newSentinel()
 		body, err := s.post(ctx, url.Values{s.password: {`echo "` + m.start + `".(20+22)."` + m.end + `";`}}, 0)
@@ -609,7 +609,7 @@ func scriptDrop(cmd, prefix string) string {
 
 // Exec は shell コマンドを 1 つ実行する。stderr は stdout にマージされる（webshell では分離できない）。
 // セッション単位で直列化する（振り返り R5）:同一セッションでの並行実行は共有の一時ファイルや交錯したエコー出力で混線し、
-// センチネルが「WebShell 失効」と誤報する——同一セッションは強制的に直列、セッション間は並行可能。
+// センチネルが「WebShell 失効」と誤報する。同一セッションは強制的に直列、セッション間は並行可能。
 func (s *HTTPShell) Exec(ctx context.Context, cmd string, timeout time.Duration) (string, string, error) {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {

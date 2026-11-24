@@ -19,7 +19,7 @@ func (s *Server) seedFindingWorkflowTools() {
 	if value, _, _ := s.m.pg.GetSetting(hostSearchDescriptionFlag); value != "true" {
 		// Only replace the original built-in text. A user-edited description is
 		// authoritative and must survive upgrades.
-		legacy := "查询记录代理已抓取的目标流量（必须指定 host，可再按 URL 子串或正文关键词过滤）。body_contains 会在已抓取的请求/响应头与正文中做全文搜索，支持任意子串和中文（至少 3 个字符），可用来找响应里的密码、密钥、报错、内网地址等。仅返回极轻量索引(id/method/url/status/resp_len)，不含任何响应内容。默认只返回 3 条、每页最多 10 条；结果多时用 page 翻页（page=0 起）；要看某条的请求/响应原文用 traffic_get(id)。回看已访问资源、找端点先用它，避免重复 curl 同一 URL。"
+		legacy := "記録プロキシがキャプチャ済みの対象トラフィックを照会します(host の指定は必須。さらに URL の部分文字列や本文のキーワードで絞り込めます)。body_contains はキャプチャ済みのリクエスト/レスポンスのヘッダーと本文を全文検索し、任意の部分文字列と日本語(3 文字以上)に対応します。レスポンス内のパスワード、鍵、エラー、内部ネットワークアドレスなどを探せます。極めて軽量なインデックス(id/method/url/status/resp_len)だけを返し、レスポンスの内容は含みません。デフォルトでは 3 件、1 ページ最大 10 件を返します。結果が多い場合は page でページングします(page=0 から)。特定の件のリクエスト/レスポンス原文は traffic_get(id) で確認します。訪問済みリソースの再確認やエンドポイント探索ではまずこれを使い、同じ URL への curl の繰り返しを避けてください。"
 		if _, err := s.m.pg.Exec(`UPDATE tools SET description=$1,updated_at=now() WHERE key='traffic_search' AND system AND description=$2`, traffic.TrafficSearchDescription, legacy); err != nil {
 			// Log and leave the flag unset so the next startup retries; do not
 			// return, or a transient error here would also skip the reporter
@@ -54,7 +54,7 @@ func (s *Server) seedFindingWorkflowTools() {
 		props := objectProperty(schema, "properties")
 		if key == "report_finding" {
 			if _, exists := props["evidence_hint_id"]; !exists {
-				props["evidence_hint_id"] = map[string]any{"type": "integer", "description": "可选：本任务中对应此漏洞的 hint ID；读取该提示保存的 traffic_refs 一并绑定，无提示时省略"}
+				props["evidence_hint_id"] = map[string]any{"type": "integer", "description": "任意：本タスク内でこの脆弱性に対応する hint ID。そのヒントに保存された traffic_refs を読み取ってまとめてバインドします。ヒントがなければ省略します"}
 			}
 		} else {
 			if _, exists := props["traffic_refs"]; !exists {
@@ -143,8 +143,8 @@ func (s *Server) agentFindingTrafficAccess(ctx context.Context, id int64, write 
 }
 
 func (s *Server) toolBindFindingTraffic() actool.CoreTool {
-	return wrTool("bind_finding_traffic", "为已登记漏洞补绑经核实的真实 HTTP 流量。finding_id 使用独立漏洞记录 ID；不要传探索节点 ID。同批引用全部成功或全部失败，重复引用不覆盖已有说明。补绑会使已有报告标记待更新；不要为补包重新探测或重复创建漏洞。",
-		objSchema(map[string]any{"finding_id": strParam("独立漏洞记录 ID，从 list_task_findings / get_task_node_detail 的 finding_id 字段读取"), "traffic_refs": agent.HintTrafficSchema()}, "finding_id", "traffic_refs"),
+	return wrTool("bind_finding_traffic", "登録済みの脆弱性に、検証済みの実際の HTTP トラフィックを追加バインドします。finding_id には独立した脆弱性レコード ID を使用してください。探索ノード ID は渡さないでください。同一バッチの参照はすべて成功するかすべて失敗します。重複する参照は既存の説明を上書きしません。追加バインドにより既存のレポートは更新待ちになります。パケットの補完のために再探索したり、脆弱性を重複作成したりしないでください。",
+		objSchema(map[string]any{"finding_id": strParam("独立した脆弱性レコード ID。list_task_findings / get_task_node_detail の finding_id フィールドから読み取ります"), "traffic_refs": agent.HintTrafficSchema()}, "finding_id", "traffic_refs"),
 		func(ctx context.Context, raw json.RawMessage) (actool.Result, error) {
 			if !s.m.pg.GetBool(settingAgentTrafficBinding, false) {
 				return actool.Errorf("Agent によるトラフィック自動バインドはオフです。システム設定で有効にするか、画面から手動でバインドしてください。"), nil

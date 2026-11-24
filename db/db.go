@@ -215,7 +215,7 @@ var builtinAgents = []builtinAgent{
 		{"WorkerName", "worker の自己識別子（任意）", "worker-1", "runtime"},
 		{"Intranet", "イントラネット期か（フットホールドセッション/稼働トンネルあり）", "true", "runtime"},
 	}, false, nil},
-	// worker.intranet:フェーズ 4 のイントラネット期 worker プロンプト変種——独立 agent ではなく、worker
+	// worker.intranet:フェーズ 4 のイントラネット期 worker プロンプト変種。独立 agent ではなく、worker
 	// 本文の DB 上書きスロット（フットホールド/トンネルのあるタスクの描画時に優先して使う。agent.renderSystemVariant 参照）。
 	{"worker.intranet", "実行・イントラネット", "worker", "worker のイントラネット期プロンプト変種：タスクにフットホールドセッション/稼働トンネルがある場合に worker 本文の代わりに使う。", []promptVar{
 		{"ProxyAddr", "記録用プロキシアドレス（if の 2 文言を切り替え）", "127.0.0.1:8080", "runtime"},
@@ -639,7 +639,7 @@ const lateralHint = "横展開/パスワードスプレーは高ノイズな動�
 // フォースの動作は必ず guard の ask を通す。F13 と同パターン：pattern はすべて tool_input の
 // 正規表現、action=ask、builtin=true）。
 //
-// 判断の説明：hashcat は入れない——ローカルのパスワード解析ツールで、コマンドラインに対象ホストが
+// 判断の説明：hashcat は入れない。ローカルのパスワード解析ツールで、コマンドラインに対象ホストが
 // 同時に現れる場合だけ遮断すべきだが、「任意の hashcat 引数に IP/ドメインが含まれる」を正規表現で
 // 表すとローカル解析の場面を大量に誤検知する（辞書/マスクのパスにはドット付き数字がよく含まれる）。
 // 半端な遮断をするより、載せずにツールとヒント側で制約する。
@@ -670,7 +670,7 @@ var builtinLateralRules = []struct {
 }
 
 // builtinTunnelBinaryRules は「トンネルバイナリの直接使用」を遮断する（イントラネット期 3 の実戦の教訓）：worker が
-// tunnel_deploy を迂回して chisel/frp などでトンネルを張る——台帳もヘルス監視も自動回収もなく、
+// tunnel_deploy を迂回して chisel/frp などでトンネルを張る。台帳もヘルス監視も自動回収もなく、
 // 管理対象リソースの原則に反する（docs/architecture/intranet-pivot.md 4.3a）。プラットフォーム下限ルール、builtin=true。
 var builtinTunnelBinaryRules = []struct {
 	name    string
@@ -692,7 +692,7 @@ const tunnelBinaryHint = "トンネルバイナリの直接使用には台帳/�
 	"どうしても直接使用が必要な承認済みの場面では、1 回だけ手動で許可できます。"
 
 // builtinProtocolClientRules は「最初からプロトコルクライアントを自作する」ことを遮断する（ツール規律の guard による下支え）：
-// 红日3 の振り返りでは、worker が MySQL/SMB/TDS/Kerberos の生ソケットクライアントを自作し、誤った fact を生み出して
+// Red Sun 3 の振り返りでは、worker が MySQL/SMB/TDS/Kerberos の生ソケットクライアントを自作し、誤った fact を生み出して
 // プランニングを汚染した。導入済みツール（gogo/naabu/httpx/katana/impacket など）とプラットフォームツールを必ず先に使い、
 // 手書きは最後の妥協とする。action=ask で deny ではない：承認済みの（ツールでカバーしきれない）場面では 1 回だけ手動許可できる。
 var builtinProtocolClientRules = []struct {

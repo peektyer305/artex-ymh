@@ -14,7 +14,7 @@ import (
 )
 
 // TestLDPreloadLibELF: 内蔵 .so は正当な x86_64 ET_DYN で、RX セグメント内のコンストラクタを指す DT_INIT_ARRAY
-// を持ち、パススロット magic を含むこと——これが「ロード即証明」の構造的前提のすべて。
+// を持ち、パススロット magic を含むこと。これが「ロード即証明」の構造的前提のすべて。
 func TestLDPreloadLibELF(t *testing.T) {
 	blob := LDPreloadLib()
 	if len(blob) == 0 {
@@ -54,13 +54,13 @@ func TestLDPreloadLibELF(t *testing.T) {
 	if !bytes.Contains(blob, []byte(ldpreloadMagic)) {
 		t.Fatal("パススロット magic がない(patchLDPreloadPath が位置を特定できない)")
 	}
-	// コンストラクタの先頭バイトは mov eax,2(sys_open)——手書き機械語の最低限の自己検証。
+	// コンストラクタの先頭バイトは mov eax,2(sys_open)。手書き機械語の最低限の自己検証。
 	if blob[0x100] != 0xB8 || blob[0x101] != 0x02 {
 		t.Fatalf("コンストラクタ入口のバイトが異常: % x", blob[0x100:0x108])
 	}
 }
 
-// TestPatchLDPreloadPath: パススロットの書き換え——パスの書き込み、NUL 終端、残余のゼロ埋め、異常入力。
+// TestPatchLDPreloadPath: パススロットの書き換え。パスの書き込み、NUL 終端、残余のゼロ埋め、異常入力。
 func TestPatchLDPreloadPath(t *testing.T) {
 	blob := LDPreloadLib()
 	const mark = "/tmp/.artex_deadbeef.mark"

@@ -18,7 +18,7 @@ const Repo = "Autumn-27/artex"
 const latestURL = "https://api.github.com/repos/" + Repo + "/releases/latest"
 
 // allowedHosts はアップグレード経路がアクセスできるドメインを限定する。後述の checkRedirect と組み合わせ、
-// いずれかのリダイレクト先がリスト外のホストなら即座に失敗する——DNS ポイズニングや中間者攻撃で
+// いずれかのリダイレクト先がリスト外のホストなら即座に失敗する。DNS ポイズニングや中間者攻撃で
 // バイナリをすり替えられるのを防ぐ第一の関門で、第二は SHA256SUMS の照合。
 var allowedHosts = map[string]bool{
 	"api.github.com":                       true,

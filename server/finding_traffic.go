@@ -369,8 +369,8 @@ func (s *Server) getFindingTrafficBody(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) toolGetFindingTraffic() actool.CoreTool {
-	return roTool("get_finding_traffic", "读取漏洞已绑定的真实流量证据，不依赖捕获开关。finding_id 使用 report_finding JSON 返回的独立漏洞记录 ID（不是第一行的探索节点 ID）。先不传 binding_id 获取清单及 version；空清单是正常情况，TCP 等非 HTTP 漏洞或未采集时仍可依据文字/命令证据编写报告，不强制绑定。有绑定时按 binding_id、side(request/response)、offset 分段读取正文。写报告时将读取的 version 作为 evidence_version 传给 update_finding_report，后者 finding_id 仍使用探索节点 ID。",
-		objSchema(map[string]any{"finding_id": strParam("独立漏洞记录 ID"), "binding_id": strParam("清单里的绑定 ID，省略则返回清单"), "side": strParam("request 或 response，默认 response"), "offset": map[string]any{"type": "integer"}, "length": map[string]any{"type": "integer"}}, "finding_id"),
+	return roTool("get_finding_traffic", "脆弱性にバインド済みの実際のトラフィック証拠を読み取ります。キャプチャスイッチには依存しません。finding_id には report_finding の JSON が返す独立した脆弱性レコード ID を使用します(先頭行の探索ノード ID ではありません)。最初は binding_id を渡さずに一覧と version を取得します。空の一覧は正常で、TCP など非 HTTP の脆弱性や未キャプチャの場合も文字/コマンドの証拠に基づいてレポートを書けます。バインドは必須ではありません。バインドがある場合は binding_id、side(request/response)、offset で本文を区切って読み取ります。レポートを書く際は、読み取った version を evidence_version として update_finding_report に渡してください。後者の finding_id には引き続き探索ノード ID を使用します。",
+		objSchema(map[string]any{"finding_id": strParam("独立した脆弱性レコード ID"), "binding_id": strParam("一覧内のバインド ID。省略すると一覧を返します"), "side": strParam("request または response。デフォルトは response"), "offset": map[string]any{"type": "integer"}, "length": map[string]any{"type": "integer"}}, "finding_id"),
 		func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
 			var a struct {
 				FindingID      json.RawMessage `json:"finding_id"`

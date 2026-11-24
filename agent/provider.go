@@ -47,7 +47,7 @@ type Config struct {
 	ContextWindowK int
 	// ThinkingType は思考の「オン/オフ」フィールド(thinking.type)を独立に制御する：
 	//   "" = 送信しない（デフォルト。このフィールドに未対応のモデル向け）; "disabled" = 明示的にオフ;
-	//   "enabled" = オン。ReasoningEffort とは完全に分離——thinking フィールドを持たず、
+	//   "enabled" = オン。ReasoningEffort とは完全に分離。thinking フィールドを持たず、
 	//   強度パラメータだけで思考を起動できる API もあるため、両者は個別に設定できる。
 	ThinkingType string
 	// ReasoningEffort は思考の「強度」フィールドを独立に制御する：
@@ -98,7 +98,7 @@ type RetryConfig struct {
 	// マップする。デフォルトは 2 回、同じ指数バックオフ系列。
 	EmptyAttempts int
 	EmptyInterval time.Duration
-	// StreamAttempts/StreamInterval：同一 provider 内の安全ウィンドウ再試行——本プロジェクトが
+	// StreamAttempts/StreamInterval：同一 provider 内の安全ウィンドウ再試行。本プロジェクトが
 	// SDK の上に足した 1 層で、「まだ呼び出し元に何も出力していない」間だけ断流／過負荷／
 	// ストリーム内 429 を再送する。SDK からは見えず、server/task_llm.go が消費する。
 	// デフォルトは 2 回、0.5s 起点の指数バックオフ(上限 4s)。
@@ -498,7 +498,7 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 	// EscalateMaxTokens は false のまま：切り詰めで上限を上げて再試行せず、resume の空回りを避ける。
 	reply, err := agentcore.Run(ctx, agentcore.Options{
 		Provider:       prov,
-		SystemPrompt:   []string{"你是连接测试。直接输出两个字符 OK 即可，不要思考、不要解释、不要别的。"},
+		SystemPrompt:   []string{"あなたは接続テストです。2文字の「OK」だけを直接出力してください。思考せず、説明せず、その他は何も出力しないでください。"},
 		PermissionMode: acperm.ModeBypass,
 		MaxTurns:       1,
 		MaxTokens:      8192,
@@ -510,7 +510,7 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 	}
 	// err==nil だけでは不十分：リクエストは通ったのにモデルが 1 文字も返さないケースは実在する
 	// (思考が予算を使い切る、本文が安全ポリシーに飲まれる、互換層が content を落とす)。そうした
-	// 設定はチャットでは「無応答」なのに、テストは成功と報告する——まさに本項が解消したい落差。
+	// 設定はチャットでは「無応答」なのに、テストは成功と報告する。まさに本項が解消したい落差。
 	// 可視の本文がなければ一律で失敗と判定する。
 	reply = strings.TrimSpace(reply)
 	if reply == "" {

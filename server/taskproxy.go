@@ -1,4 +1,4 @@
-// taskproxy.go フェーズ 3b: worker のトラフィックをタスク単位で上流にバインドする——タスクごとに独立した traffic.Traffic
+// taskproxy.go フェーズ 3b: worker のトラフィックをタスク単位で上流にバインドする。タスクごとに独立した traffic.Traffic
 // (MITM) インスタンスを遅延生成し、上流 = そのタスクで現在 alive な socks トンネルの入口とする。トンネルがなければグローバル出口プロキシ
 // (globalProxy) または直接接続へフォールバックする。経路: worker Bash/WebFetch → タスク MITM（ローカルでは従来どおり記録し、
 // 証跡の連鎖は途切れない） → socks5 トンネル → イントラネットの対象（docs/architecture/intranet-pivot.md §4.3「トンネル消費」）。
@@ -105,7 +105,7 @@ func (m *taskProxyManager) resolveUpstream(ctx context.Context, taskID int64) (s
 // ForTask はタスクの worker が使うべきプロキシアドレスと CA を返す。初回呼び出しでそのタスクの MITM
 // インスタンスを遅延生成し（独立した CA ディレクトリで初回生成の競合を防ぎ、ポートプールから割り当ててポート監査台帳へ登録）、以降の呼び出しでは
 // ついでに上流を再計算する（イベント間隙の保険で、OnStateChange の Refresh と相補的）。インスタンス生成に失敗したら
-// ログだけ残して "","" を返す —— 呼び出し元はグローバルプロキシへフォールバックし、録画サブシステムが worker を止めることは決してない。
+// ログだけ残して "","" を返す。呼び出し元はグローバルプロキシへフォールバックし、録画サブシステムが worker を止めることは決してない。
 func (m *taskProxyManager) ForTask(ctx context.Context, taskID int64) (addr, caCert string) {
 	if taskID <= 0 {
 		return "", ""

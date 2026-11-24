@@ -19,23 +19,23 @@ import (
 )
 
 func TestChatMentionParsing(t *testing.T) {
-	refs, err := parseChatMentions("分析@[漏洞#12 同名] と @[接口#34 GET /api] @[漏洞#12 重複] user@example.com @漏洞")
+	refs, err := parseChatMentions("分析@[ファインディング#12 同名] と @[エンドポイント#34 GET /api] @[ファインディング#12 重複] user@example.com @ファインディング")
 	if err != nil || len(refs) != 2 || refs[0].Kind != "finding" || refs[1].ID != 34 {
 		t.Fatalf("refs=%+v err=%v", refs, err)
 	}
-	for _, msg := range []string{"@[漏洞#0]", "@[漏洞#999999999999999999999999]"} {
+	for _, msg := range []string{"@[ファインディング#0]", "@[ファインディング#999999999999999999999999]"} {
 		if _, err := parseChatMentions(msg); err == nil {
 			t.Fatalf("accepted %q", msg)
 		}
 	}
 	var msg strings.Builder
 	for i := 1; i <= 11; i++ {
-		fmt.Fprintf(&msg, "@[资产#%d] ", i)
+		fmt.Fprintf(&msg, "@[アセット#%d] ", i)
 	}
 	if _, err := parseChatMentions(msg.String()); err == nil {
 		t.Fatal("accepted more than 10 references")
 	}
-	if actual, err := composeChatMentionMessage(nil, "通常メッセージ user@example.com @漏洞"); err != nil || actual != "通常メッセージ user@example.com @漏洞" {
+	if actual, err := composeChatMentionMessage(nil, "通常メッセージ user@example.com @ファインディング"); err != nil || actual != "通常メッセージ user@example.com @ファインディング" {
 		t.Fatalf("plain chat changed: %s %v", actual, err)
 	}
 }
@@ -162,7 +162,7 @@ func TestChatMentionWorkerReceivesServerDetails(t *testing.T) {
 		s.sendWorkerMessage(w, r)
 		return w
 	}
-	if w := send("@[漏洞#9223372036854775807]"); w.Code != 400 {
+	if w := send("@[ファインディング#9223372036854775807]"); w.Code != 400 {
 		t.Fatalf("invalid ref accepted: %d %s", w.Code, w.Body)
 	}
 	node, _ := task.Store.GetNode(iid)
@@ -170,14 +170,14 @@ func TestChatMentionWorkerReceivesServerDetails(t *testing.T) {
 	if node.State != "paused" || len(items) != 0 {
 		t.Fatal("invalid reference started worker or persisted a turn")
 	}
-	message := fmt.Sprintf("次を確認してください @[漏洞#%d テスト]", fid)
+	message := fmt.Sprintf("次を確認してください @[ファインディング#%d テスト]", fid)
 	if w := send(message); w.Code != 200 {
 		t.Fatalf("send: %d %s", w.Code, w.Body)
 	}
 	select {
 	case req := <-requests:
 		blob, _ := json.Marshal(req.Messages)
-		if !strings.Contains(string(blob), "worker-hidden-proof") || !strings.Contains(string(blob), "用户引用的记录快照") {
+		if !strings.Contains(string(blob), "worker-hidden-proof") || !strings.Contains(string(blob), "ユーザーが引用したレコードのスナップショット") {
 			t.Fatalf("worker missing reference details: %s", blob)
 		}
 	case <-time.After(5 * time.Second):
@@ -213,7 +213,7 @@ func TestChatMentionBoundedJSON(t *testing.T) {
 		items[i] = long
 	}
 	v := boundChatMentionValue(map[string]any{"report": long, "scope": items}).(map[string]any)
-	if !strings.Contains(v["report"].(string), "已截断") || len(v["scope"].([]any)) != 101 {
+	if !strings.Contains(v["report"].(string), "省略") || len(v["scope"].([]any)) != 101 {
 		t.Fatal("missing truncation markers")
 	}
 	encoded, err := json.Marshal(v)
@@ -234,7 +234,7 @@ func TestChatMentionCatalogAndContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	var refs strings.Builder
-	fmt.Fprintf(&refs, "分析 @[漏洞#%d クライアントが偽造したタイトル] @[企业#%d 会社] ", fid, cid)
+	fmt.Fprintf(&refs, "分析 @[ファインディング#%d クライアントが偽造したタイトル] @[企業#%d 会社] ", fid, cid)
 	for _, kind := range []string{"root_domain", "subdomain", "ip", "app", "service", "endpoint"} {
 		var id int64
 		if err := pg.QueryRow(`INSERT INTO assets(type,company_id,domain,ip,app_name,url,method,extra)
@@ -255,7 +255,7 @@ func TestChatMentionCatalogAndContext(t *testing.T) {
 			t.Fatalf("search %s: %+v %v", kind, items, err)
 		}
 		if kind == "ip" {
-			if _, err := composeChatMentionMessage(pg, fmt.Sprintf("@[应用#%d]", id)); err == nil {
+			if _, err := composeChatMentionMessage(pg, fmt.Sprintf("@[アプリ#%d]", id)); err == nil {
 				t.Fatal("accepted mismatched type")
 			}
 			if data, err := loadChatMention(pg, chatMentionRef{"asset", id, "アセット"}); err != nil || data == nil {
@@ -275,7 +275,7 @@ func TestChatMentionCatalogAndContext(t *testing.T) {
 			t.Errorf("context missing %s", want)
 		}
 	}
-	if _, err := composeChatMentionMessage(pg, "@[漏洞#9223372036854775807]"); err == nil {
+	if _, err := composeChatMentionMessage(pg, "@[ファインディング#9223372036854775807]"); err == nil {
 		t.Fatal("accepted missing record")
 	}
 	for _, kind := range []string{"finding", "company", "asset", ""} {
@@ -304,7 +304,7 @@ func TestChatMentionConversationReceivesServerDetails(t *testing.T) {
 	s, fid := newRetestServer(t)
 	setRetestProvider(s, retestProvider{complete: func(_ context.Context, req llm.CompletionRequest) (llm.Message, string, llm.Usage, error) {
 		blob, _ := json.Marshal(req.Messages)
-		if !strings.Contains(string(blob), "original proof") || !strings.Contains(string(blob), "用户引用的记录快照") {
+		if !strings.Contains(string(blob), "original proof") || !strings.Contains(string(blob), "ユーザーが引用したレコードのスナップショット") {
 			t.Errorf("model did not receive resolved evidence: %s", blob)
 		}
 		return llm.Message{Role: llm.RoleAssistant, Content: []llm.ContentBlock{llm.TextBlock("参照を読み込みました")}}, "end_turn", llm.Usage{}, nil
@@ -314,7 +314,7 @@ func TestChatMentionConversationReceivesServerDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { waitRetestIdle(t, s); _, _ = s.m.pg.Exec(`DELETE FROM conversations WHERE id=$1`, c.ID) })
-	message := fmt.Sprintf("次を確認してください @[漏洞#%d サンプル]", fid)
+	message := fmt.Sprintf("次を確認してください @[ファインディング#%d サンプル]", fid)
 	body, _ := json.Marshal(map[string]any{"message": message})
 	w := retestRequest(s.pgSendConversationMessage, http.MethodPost, c.ID, string(body))
 	if w.Code != 202 {
@@ -340,7 +340,7 @@ func TestChatMentionConversationReceivesServerDetails(t *testing.T) {
 	if !foundUser || !foundResult {
 		t.Fatalf("turn incomplete: user=%v result=%v", foundUser, foundResult)
 	}
-	w = retestRequest(s.pgSendConversationMessage, http.MethodPost, c.ID, `{"message":"@[漏洞#9223372036854775807]"}`)
+	w = retestRequest(s.pgSendConversationMessage, http.MethodPost, c.ID, `{"message":"@[ファインディング#9223372036854775807]"}`)
 	if w.Code != 400 {
 		t.Fatalf("missing ref send: %d %s", w.Code, w.Body)
 	}

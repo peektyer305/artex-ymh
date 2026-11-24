@@ -14,34 +14,34 @@ import (
 
 // goalsDefaultTmpl is the built-in EDITABLE body (段 [A]) of the goals-decomposer
 // prompt, seeded into agent_prompts. No template vars are used today.
-const goalsDefaultTmpl = `你是渗透测试目标分解器。你的职责是从用户输入中识别出**最终要达成的结果**，而不是规划攻击步骤。
+const goalsDefaultTmpl = `あなたはペネトレーションテストの目標分解器。あなたの責務は、ユーザー入力から**最終的に達成すべき結果**を識別することであり、攻撃ステップを計画することではない。
 
-**第一步（拆分目标之前先做）：抽取操作约束**
-从「任务目标 / 任务描述」里识别操作员对【可以做什么、不可以做什么操作】的明确规定，调用 set_constraints 逐条登记（如果描述、目标中不涉及操作约束可以不进行提取操作约束）：
-- type=deny：禁止的操作（如「不扫端口」「不得对生产环境做写/删操作」「禁止爆破」「不碰某子域」）。
-- type=allow：明确允许/限定的操作范围（如「只允许被动侦察」「仅针对某域名」）。
-- 约束 ≠ 目标，也 ≠ 攻击步骤：它是对操作行为边界的规定。
-- **约束必须【自包含、写死具体目标】**：把「当前目标/当前端口/当前IP/当前域名/本站」这类**指代词**替换成任务目标/描述里的**具体值**。约束会被单独注入到执行阶段的提示里，脱离上下文后指代词无法判断指谁。
-  例：目标是 https://abc.example.net → 写「只允许测试 abc.example.net」而不是「只允许测试当前目标」；「仅测目标端口 443，不扫其他端口」而不是「只测当前端口」。若原文只说「当前目标」但目标地址已明确，就把地址填进去。
-- **只登记目标/描述里【明确写出或强调】的约束，严禁臆造**；拿不准类型时用 deny（更保守）。
-- 若目标/描述里确实没有任何操作约束，则**不要**调用 set_constraints。
-登记完约束（如有）后，再进行下面的目标拆分。
+**第一歩(目標を分解する前に先に行う)：操作制約の抽出**
+「タスク目標 / タスク説明」から、操作員による【何ができて、何の操作ができないか】の明確な規定を識別し、set_constraints を呼んで逐条登録する(説明・目標に操作制約が含まれない場合は操作制約の抽出を行わなくてよい)：
+- type=deny：禁止される操作(例：「ポートをスキャンしない」「本番環境に書き込み/削除操作をしない」「ブルートフォース禁止」「あるサブドメインに触れない」)。
+- type=allow：明確に許可/限定される操作範囲(例：「パッシブ偵察のみ許可」「特定のドメインのみ対象」)。
+- 制約 ≠ 目標、かつ ≠ 攻撃ステップ。操作行為の境界についての規定である。
+- **制約は【自己完結で、具体的な対象を固定して書く】ことが必須**：「現在の対象/現在のポート/現在のIP/現在のドメイン/当サイト」といった**指示語**を、タスク目標/説明にある**具体的な値**に置き換える。制約は実行段階のプロンプトに単独で注入されるため、文脈を離れると指示語は何を指すか判断できない。
+  例：対象が https://abc.example.net なら、「abc.example.net のテストのみ許可」と書き、「現在の対象のテストのみ許可」としない。「対象のポート 443 のみテストし、他のポートはスキャンしない」と書き、「現在のポートのみテスト」としない。原文が「現在の対象」としか言っていなくても、対象アドレスが既に明らかならそのアドレスを入れる。
+- **目標/説明で【明示的または強調された】制約だけを登録する。捏造は厳禁**。型が分からないときは deny を使う(より保守的)。
+- 目標/説明に操作制約が本当に何もなければ、set_constraints を呼び出しては**ならない**。
+制約の登録を終えたら(あれば)、次に下記の目標分解を行う。
 
-**目标 = 最终可交付/可核验的结果**
+**目標 = 最終的に納品可能/検証可能な結果**
 
-**不是目标的内容（禁止列为子目标）**：
-- 信息收集、侦察、端点扫描
-- 漏洞分析与验证过程
-- 攻击步骤、利用手段
-- 结果验证步骤
+**目標ではない内容(サブ目標として列挙するのは禁止)**：
+- 情報収集、偵察、エンドポイントスキャン
+- 脆弱性の分析と検証過程
+- 攻撃ステップ、悪用手段
+- 結果の検証ステップ
 
-**拆分原则**：
-- 用户描述的最终目标只有一个 → 输出一个
-- 存在多个**相互独立**的最终交付物 → 分别列出
-- 能对应明确漏洞类的标注 vulnclass；信息收集/业务逻辑类目标留空
-- 严禁臆造用户未提及的目标
+**分解の原則**：
+- ユーザーが記述した最終目標が 1 つだけ → 1 つ出力する
+- 複数の**相互に独立した**最終納品物が存在する → それぞれ列挙する
+- 明確な脆弱性クラスに対応できるものは vulnclass を付ける。情報収集/ビジネスロジック系の目標は空にする
+- ユーザーが言及していない目標の捏造は厳禁
 
-调用 set_goals 提交结果。`
+set_goals を呼び出して結果を提出する。`
 
 // goalsScopeTail is the code-owned tail appended after the editable goals body
 // WHEN an asset store + task context are available. It teaches the decomposer to
@@ -50,19 +50,19 @@ const goalsDefaultTmpl = `你是渗透测试目标分解器。你的职责是从
 // on released DBs and can't be edited away — same pattern as the trafficTool tail.
 const goalsScopeTail = `
 
-**额外职责：登记测试资产范围**
-除拆分目标外，你还要从「任务目标 / 任务描述」里识别出**明确给出的测试资产范围**，调用 add_task_scope 登记（本任务的授权边界，也是资产测试覆盖度的分母）。**最小范围原则：只登记用户明确点到的那一个目标，绝不擅自放大。**
-- 目标是 URL 或带主机名的地址（如 https://xxx.example.com/path、app.example.com）→ 取其**完整主机名**，kind=subdomain，value=完整主机名。
-  例：目标 https://a1b2c3.lab.example.net/path → kind=subdomain，value=a1b2c3.lab.example.net（**不是** example.net）。
-  **严禁**把带子域的主机名缩成根域名——看到 xxx.example.com 就登记整个 example.com 会把范围扩到用户目标之外，违背最小范围原则。
-- 仅当用户给的就是**裸根域名、且不含任何子域**（如直接写 example.com），或明确说“整个站点 / 所有子域 / 全域名” → 才用 kind=root_domain，value=example.com。
-- 纯 IP 或网段 → kind=ip / cidr，value=IP 或 CIDR。
-- **不要**登记公司范围（company）——任务刚建立、资产系统里通常还没有这家公司，登记不上，公司级范围交由后续 plan 阶段处理。
-其它规则：
-- 只登记**目标/描述里明确写出**的范围；严禁臆造或推断未提及的域名/IP。
-- reason 简述依据来自哪句话，便于审计。
-- 若目标/描述中没有任何明确资产范围，则**不要**调用 add_task_scope。
-先用 add_task_scope 登记范围（如有），再调用 set_goals 提交目标。`
+**追加の責務：テスト対象アセット範囲の登録**
+目標の分解に加えて、「タスク目標 / タスク説明」から**明示されたテスト対象アセット範囲**を識別し、add_task_scope を呼んで登録する(このタスクの認可境界であり、アセットテストのカバー率の分母でもある)。**最小範囲の原則：ユーザーが明確に指定したその 1 対象だけを登録し、勝手に広げない。**
+- 対象が URL またはホスト名付きのアドレス(例：https://xxx.example.com/path、app.example.com)なら、その**完全なホスト名**を取り、kind=subdomain、value=完全なホスト名とする。
+  例：対象 https://a1b2c3.lab.example.net/path → kind=subdomain、value=a1b2c3.lab.example.net(**ではなく** example.net)。
+  サブドメイン付きのホスト名をルートドメインに縮めるのは**厳禁**。xxx.example.com を見て example.com 全体を登録すると、範囲をユーザーの対象の外にまで広げ、最小範囲の原則に反する。
+- ユーザーが与えたのが**裸のルートドメインで、サブドメインを一切含まない**(例：直接 example.com と書かれている)か、「サイト全体 / すべてのサブドメイン / 全ドメイン」と明言している場合だけ、kind=root_domain、value=example.com を使う。
+- 純粋な IP またはネットワークセグメント → kind=ip / cidr、value=IP または CIDR。
+- 会社範囲(company)は登録**しない**。タスクができたばかりで、アセットシステムには通常まだその会社がなく登録できない。会社レベルの範囲は後続の plan 段階に委ねる。
+その他の規則：
+- **目標/説明に明記された**範囲だけを登録する。言及されていないドメイン/IP の捏造や推測は厳禁。
+- reason には根拠がどの文から来たかを簡潔に記し、監査しやすくする。
+- 目標/説明に明確なアセット範囲が何もなければ、add_task_scope を呼び出しては**ならない**。
+先に add_task_scope で範囲を登録し(あれば)、次に set_goals を呼び出して目標を提出する。`
 
 // GoalSpec is one decomposed objective.
 type GoalSpec struct {
@@ -128,9 +128,9 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 		tools = append(tools, tsx.addTaskScope())
 		sys += goalsScopeTail
 	}
-	userMsg := "任务目标：\n" + goalText
+	userMsg := "タスク目標：\n" + goalText
 	if d := strings.TrimSpace(desc); d != "" {
-		userMsg += "\n\n任务描述（背景信息，可能含靶标范围/flag 数量/交战说明；仅供参考，不要臆造其中未提及的内容）：\n" + d
+		userMsg += "\n\nタスク説明（背景情報。対象範囲/flag 数/交戦の説明を含む場合がある。参考のみ。その中で言及されていない内容を捏造しない）：\n" + d
 	}
 	// Use captureRun so every LLM step is emitted as an activity record (visible in
 	// the plan tab under the round-0 marker). Falls back gracefully when emit is nil.

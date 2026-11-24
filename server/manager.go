@@ -59,7 +59,7 @@ type Task struct {
 	SourceTaskIDs      []int64 `json:"source_task_ids,omitempty"`
 	CompanyIDs         []int64 `json:"company_ids,omitempty"`
 	Status             string  `json:"status"` // persisted lifecycle status (done/failed/timeout が終了状態；空/それ以外は実行状態から導出)
-	// タスク単位のタイムアウト(docs/任务级超时与收尾设计.md を参照)。DeadlineAt/FirstRunAt は unix 秒、0=未設定/未実行。
+	// タスク単位のタイムアウト(docs/タスクレベルタイムアウトと収束設計.md を参照)。DeadlineAt/FirstRunAt は unix 秒、0=未設定/未実行。
 	TimeoutSeconds       int                    `json:"timeout_seconds"`
 	PlanHeartbeatSeconds int                    `json:"plan_heartbeat_seconds"` // planner ハートビートの間隔(秒)
 	CoverageEnabled      bool                   `json:"coverage_enabled"`       // アセットカバレッジ機能のスイッチ(作成時に確定、デフォルト有効)
@@ -279,7 +279,7 @@ const (
 	settingLLMRecordsRetentionDays = "llm_records_retention_days"
 	// defaultLLMRecordsRetentionDays is the retention when the setting is unset.
 	defaultLLMRecordsRetentionDays = 30
-	// LLM ポーリング(フェイルオーバー)。デフォルト無効——有効にすると「グローバル有効設定」を使う agent は現在の設定が
+	// LLM ポーリング(フェイルオーバー)。デフォルト無効。有効にすると「グローバル有効設定」を使う agent は現在の設定が
 	// 使えない(残高不足/key 失効/レート制限/サービス障害)ときに自動で次の設定へ切り替える。
 	// settingLLMPoolBindFallback はポーリング有効時のみ意味を持つ:デフォルト無効、つまり agent/タスクが明示的に
 	// ある設定を紐付けたらそれだけを使い、失敗は失敗のまま;有効にすると紐付けた設定の失敗もポーリングチェーンに落ちる。
@@ -1018,7 +1018,7 @@ func (m *Manager) SetGlobalProxy(raw string) error {
 			return err
 		}
 	}
-	// トンネルを持たないタスクの MITM インスタンスはグローバルプロキシをフォールバック上流にする——グローバルプロキシが変われば一緒に切り替わる。
+	// トンネルを持たないタスクの MITM インスタンスはグローバルプロキシをフォールバック上流にする。グローバルプロキシが変われば一緒に切り替わる。
 	if m.taskProxy != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		m.taskProxy.RefreshAll(ctx)
@@ -1062,7 +1062,7 @@ func unixNanoOrZero(t *time.Time) int64 {
 
 // newTarpitConfig はバッチ 5 B3 tarpit 遮断を組み立てる:予算は settings のキー tarpit_fetch_budget を
 // 呼び出しのたびに読む(設定変更は即時反映;不正/<=0 は guard がデフォルト 40 に落とす);遮断時はコールバックで
-// hint ノードを探索グラフに書き込む——planner は毎ターンの graph overview で必ず hints を読む(停滞検出/P0 巡回
+// hint ノードを探索グラフに書き込む。planner は毎ターンの graph overview で必ず hints を読む(停滞検出/P0 巡回
 // の hint と同じチャネル)。その host 方向への割り当てを止めるよう促す。
 func newTarpitConfig(pg *pgdb.DB, store *pgdb.ExplorationStore) guard.TarpitConfig {
 	return guard.TarpitConfig{
@@ -1329,7 +1329,7 @@ func (m *Manager) ReplaceTaskLLMProfiles(id string, profileIDs []int64, activePr
 	}
 	m.mu.Unlock()
 	// 終了状態のタスクではクォータ起因のブロック意図を再オープンしない:既に worker が動いておらず、再オープンしても
-	// blocked から open に移すだけで——そこには実行する者もなく、「意図の再実行」の再実行条件も満たさず、
+	// blocked から open に移すだけで。そこには実行する者もなく、「意図の再実行」の再実行条件も満たさず、
 	// かえって死んだ状態になる。終了状態のタスクを続行したい場合は意図の再実行/ゴール追加を使う。その経路ならタスクを
 	// 実行状態へ再 admit する。
 	if pgdb.IsTerminal(pt.Status) {

@@ -11,7 +11,7 @@ export function cn(...inputs: ClassValue[]) {
 // ドロワーの外へ portal される。開いたままマスク/外側をクリックして閉じようとすると、この
 // pointerdown は Select と Sheet の両 DismissableLayer で同時に処理される。Select が先に閉じ、
 // discrete イベントで React が同期 flush するため、Sheet のハンドラの番には既に data-state は
-// closed になっている ——「その瞬間」に開いているかを判定するのは元々当てにならない（実測済み）。
+// closed になっている。「その瞬間」に開いているかを判定するのは元々当てにならない（実測済み）。
 //
 // 正しい方法：Radix の pointerdown 監視はバブル段階にある。そこで capture 段階（それより前）で
 // 「この時点でポップアップが開いているか」を記録し、onInteractOutside がその記録値で

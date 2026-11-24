@@ -466,7 +466,7 @@ func (s *ExplorationStore) CancelIntent(id int64) (IntentCleanup, error) {
 	}
 	defer tx.Rollback()
 
-	// 意図行をロックして存在を確認する(冪等：削除済みなら not found)。状態は検証しない——
+	// 意図行をロックして存在を確認する(冪等：削除済みなら not found)。状態は検証しない。
 	// 真の削除はいずれの状態でも成立し、running の worker は呼び出し側が先に止める。
 	if err := tx.QueryRow(`SELECT 1 FROM exploration_nodes
 		WHERE id=$1 AND exploration_id=$2 AND kind='intent' FOR UPDATE`, id, s.expID).Scan(new(int)); err != nil {

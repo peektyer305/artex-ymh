@@ -18,7 +18,7 @@ import (
 )
 
 // settingFindingVerifyMode は検証パイプラインのフェーズ別スイッチ: auto（デフォルト、外部ネットワーク段階では
-// 自動検証）/ off（イントラネット段階ではデフォルトで無効——イントラネットの誤検知は推論ミスが多く再実行の価値が低く、しかも再実行
+// 自動検証）/ off（イントラネット段階ではデフォルトで無効。イントラネットの誤検知は推論ミスが多く再実行の価値が低く、しかも再実行
 // = エクスプロイト動作の再トリガーで、EDR／監査／アカウントロックに当たる代償が質的に変わる。FIXPLAN-AND-EVALUATION.md
 // 2026-09-13 の段階別検証方針を参照）。今回は単一スイッチのみ。タスク段階による自動切替は後続タスク。
 // off のとき自動ディスパッチはスキップする（水位は通常どおり進み、再実行はしない）。手動の単件検証（POST checks）は影響を受けない。
@@ -163,7 +163,7 @@ func (s *Server) onFindingMerged(findingID int64) {
 
 // dispatchFindingVerify は scheduler の on_finding 自動ディスパッチフック: イベントは
 // node_id だけを持ち、FindingIDByNodeID で finding を逆引きする（ノードと finding は同一トランザクションで書かれ、この時点で
-// 可視になっている）。finding_verify_mode=off のときはスキップ——再実行はせず、漏れは手動入口で補う。
+// 可視になっている）。finding_verify_mode=off のときはスキップ。再実行はせず、漏れは手動入口で補う。
 func (s *Server) dispatchFindingVerify(e db.TaskEvent) {
 	mode, _, err := s.m.pg.GetSetting(settingFindingVerifyMode)
 	if err != nil {

@@ -5,14 +5,16 @@ import (
 	"strings"
 )
 
-// pivotMarker 是骨架行里"转向"条目的字段标记(9 类骨架统一为
-// "- 场景:...|判据:...|转向:..." 的蒸馏格式)。
-const pivotMarker = "转向:"
+// pivotMarker はスケルトン行の「方向転換:」エントリのフィールドマーカー(9 カテゴリの
+// スケルトンは「- 場面:...|判定基準:...|方向転換:...」という蒸留形式に統一)。
+const pivotMarker = "方向転換:"
 
-// PivotHints 从类别骨架中抽出"转向"类条目,拼成停滞干预消息里的类别化转向
-// 建议段:tags 优先(规整+合法性过滤,至多 MaxTagsPerIntent 个),空时回退
-// summary 关键词匹配(Match);每个命中类别取前 max 条"转向:"后的内容。
-// 无匹配类别、骨架缺失、或骨架里抽不到转向条目时返回 ""(调用方用通用措辞)。
+// PivotHints はカテゴリスケルトンから「方向転換:」エントリを抽出し、停滞介入メッセージ内の
+// カテゴリ別方向転換サジェストに組み立てる:tags を優先し(正規化+合法性フィルタ、最大
+// MaxTagsPerIntent 個)、空なら summary のキーワードマッチ(Match)へフォールバック。
+// ヒットした各カテゴリで「方向転換:」より後の内容を先頭 max 条まで取る。
+// マッチするカテゴリがない、スケルトンが欠落、またはスケルトンから「方向転換:」エントリを
+// 抽出できない場合は "" を返す(呼び出し側は汎用の表現を使う)。
 func PivotHints(tags []string, summary string, max int) string {
 	if max <= 0 {
 		return ""
@@ -36,7 +38,7 @@ func PivotHints(tags []string, summary string, max int) string {
 	for _, c := range cats {
 		sk, ok := Skeleton(c)
 		if !ok {
-			continue // 骨架缺失:静默跳过
+			continue // スケルトン欠落:静かにスキップ
 		}
 		n := 0
 		for _, line := range strings.Split(sk, "\n") {
@@ -58,12 +60,12 @@ func PivotHints(tags []string, summary string, max int) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	return "同类场景的可选转向路径(摘自反问决策链骨架,按本意图攻击面选取,逐条评估是否适用):\n- " +
+	return "同種シナリオで選べる方向転換パス(反問意思決定チェーンスケルトンから抜粋。本意図の攻撃面に応じて選び、適用可否を 1 条ずつ評価する):\n- " +
 		strings.Join(lines, "\n- ")
 }
 
-// PivotHintsForIntent 是 PivotHints 的意图 payload 入口(server/engine 接线用):
-// 从 payload 解出 chain_tags/summary 后走同一逻辑;payload 解析失败返回 ""。
+// PivotHintsForIntent は PivotHints の意図 payload エントリ(server/engine の接続用):
+// payload から chain_tags/summary を解いて同じロジックを通す。payload の解析に失敗したら "" を返す。
 func PivotHintsForIntent(payload json.RawMessage, max int) string {
 	var p struct {
 		Summary   string   `json:"summary"`
@@ -75,10 +77,10 @@ func PivotHintsForIntent(payload json.RawMessage, max int) string {
 	return PivotHints(p.ChainTags, p.Summary, max)
 }
 
-// RefsGuideForIntent 在意图命中类别时返回 L4 原文指引行(追加在 L3 骨架注入块
-// 之后):告诉 worker 完整反问决策链原文的可 Read 路径。类别解析与 ForIntent
-// 完全一致(同一 intentCats),匹配不中返回 ""(与骨架一样静默不注入)。
-// 文本静态、只随 chain_tags 变化,不破坏 prompt 缓存粒度。
+// RefsGuideForIntent は意図がカテゴリにヒットしたときに L4 原文ガイド行を返す(L3 スケルトン注入ブロックの
+// 後に追記):worker に完全な反問意思決定チェーン原文の Read 可能パスを伝える。カテゴリ解決は ForIntent と
+// 完全に一致(同じ intentCats)。マッチしなければ "" を返す(スケルトンと同様に静かに非注入)。
+// テキストは静的で chain_tags に応じてのみ変わり、prompt キャッシュの粒度を壊さない。
 func RefsGuideForIntent(payload json.RawMessage) string {
 	cats := intentCats(payload)
 	if len(cats) == 0 {
@@ -88,6 +90,6 @@ func RefsGuideForIntent(payload json.RawMessage) string {
 	for i, c := range cats {
 		paths[i] = "skills/chains-" + c + "/refs/"
 	}
-	return "\n【L4 原文指引】该领域的反问决策链原文在 " + strings.Join(paths, "、") +
-		"(精确篇目见对应 SKILL.md),卡住或需要完整判据时 Read 对应文件。"
+	return "\n【L4 原文ガイド】この領域の反問意思決定チェーン原文は " + strings.Join(paths, "、") +
+		"(正確な篇目は対応する SKILL.md を参照)。停滞したとき、または完全な判定基準が必要なときに該当ファイルを Read する。"
 }

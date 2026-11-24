@@ -84,7 +84,7 @@ func TestGenerateShellRandomizedNames(t *testing.T) {
 	}
 }
 
-// TestGenerateShellPHPObfuscated: 難読化モード——鍵の全体文字列が分割され、それでも正当な PHP である。
+// TestGenerateShellPHPObfuscated: 難読化モード。鍵の全体文字列が分割され、それでも正当な PHP である。
 func TestGenerateShellPHPObfuscated(t *testing.T) {
 	gen, err := GenerateShell("php", true, "")
 	if err != nil {

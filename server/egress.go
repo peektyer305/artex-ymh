@@ -2,7 +2,7 @@ package server
 
 // バッチ 5 B2(設計ドキュメント docs/architecture/honeypot-detection.md 二-B「自身保護」第 3 条):出口審査の
 // フィンガープリント組み立て。EgressGuard はプロセス単位のシングルトン(Manager.egress)で、各タスクの Guard は
-// taskFromPG / agentGuard で SetEgress を通じて同じものを参照する——そのためここでは「起動」時
+// taskFromPG / agentGuard で SetEgress を通じて同じものを参照する。そのためここでは「起動」時
 // と「LLM プロファイル変更」時(applyLLM が唯一の経路)に、この 1 つへフィンガープリントを登録/置換するだけで、すべての
 // タスク(既存を含む)に即時反映され、タスクごとの注入は不要。登録はハッシュのみを保持し(guard/egress.go 参照)、
 // 本ファイルは原文が唯一現れる場所で、ログにもディスクにも残さない。

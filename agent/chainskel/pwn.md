@@ -1,16 +1,16 @@
-# chains-pwn L3 决策骨架(场景→判据→转向;蒸馏自 chains 语料,完整 Q&A 见 skills/chains-pwn/refs/)
-- 场景:拿到未知二进制不知从何下手|判据:file 看架构/静态/strip,checksec 看 Canary/NX/PIE/RELRO,strings 找 system//bin/sh,五个开关即定利用骨架|转向:先定性(远程服务/交互/静态 musl)再逆向,别通读全程序
-- 场景:checksec 全绿无从下手|判据:防护全开=题目必给泄露原语,规划"先 leak 后打"两阶段|转向:先找 fmt/越界读/栈残留泄 canary+基址;2h 无 leak 无崩就转逻辑洞
-- 场景:定位栈溢出偏移|判据:cyclic 发入,崩溃后取栈顶 pattern 反查(64 位看 RSP 指向的返回地址,非 PC);ROP 落地崩查 movaps 需 16 字节对齐|转向:链首加 ret 对齐;静态看不清就喂 pattern 让崩点指路
-- 场景:有 Canary 溢出被 __stack_chk_fail 拦|判据:fork 型服务 canary 不变可逐字节爆破(≤8×256 次);有输出原语则泄原值填回,低字节恒 \x00 是识别特征|转向:非 fork 无泄露就不碰返回地址,改函数指针/GOT 绕开 canary 战场
-- 场景:NX 在位,shellcode 不执行|判据:最省事优先:现成 system("/bin/sh")→ret2text;有 PLT+字符串→ret2libc;再不行纯 ROP;短溢出优先单跳/one_gadget|转向:空间不够→leave;ret 栈迁移到 bss 或 read 二次读入扩容;缺 pop rdx→ret2csu/SROP
-- 场景:PIE 在位地址全随机|判据:泄任意已知偏移地址反推 base,页对齐低 12 位固定是识别特征;只泄到 libc 就把利用全建在 libc 上|转向:零泄露→partial overwrite 改低 1.5~2 字节(同页零爆破,跨页 1/16);无 oracle→ret2dlresolve
-- 场景:远程 libc 版本未知|判据:泄 2~3 个 libc 函数地址,取低 12 位去 libc-database 指纹匹配|转向:查不到→ret2dlresolve 免 libc;全失败→纯程序内 gadget/SROP 把 libc 依赖降到零
-- 场景:seccomp 禁 execve,shell 起不来|判据:先 seccomp-tools dump 拿规则表,放行 ORW 就走 open/read/write;open 禁换 openat,只放 32 位号用 retfq 切架构|转向:ORW 全卡→逐条找漏过滤项,再不行在 prctl 安装前劫持
-- 场景:菜单式增删改查疑似堆题|判据:add/delete + 循环 switch + malloc/free 即定性堆题;free 后指针置空与否判 UAF,edit 长度 vs 分配 size 判溢出/off-by-one|转向:静态编译/musl 别套 glibc 打法,当未知 allocator 逆向
-- 场景:堆题定 glibc 版本(决定全部手法)|判据:2.27 引入 tcache;2.29 加 double-free key 与 size/prev_size 校验;2.32 safe-linking(fd=pos>>12^target);2.34 删 hook|转向:版本判错 poison 必 abort,先 patchelf 换同版本 libc 本地跑通再打远程
-- 场景:堆题清点原语与 bin 行为|判据:tcache 每桶≤7,size<0x420 进 tcache、≤0x80 fastbin,第 8 次 free 进 unsorted(fd/bk 指 main_arena 泄 libc);判 bin 用 chunk_size 非请求 size|转向:无 show→塞满 tcache 造 unsorted leak;calloc 不走 tcache
-- 场景:safe-linking(2.32+)poisoning 后 abort|判据:fd 必须写 (chunk>>12)^目标 且目标 0x10 对齐,故先 leak heap 再 leak libc;next 为 NULL 时 fd 左移 12 反解 heap 页|转向:leak 不到 heap→tcache stashing/fastbin/largebin attack 换打法
-- 场景:hook 被删(2.34+)/Full RELRO 封死 GOT|判据:转退出前必走到的间接调用点:_IO_list_all/stdout vtable(FSOP/house of apple)、__exit_funcs、栈返回地址(经 environ 泄栈)|转向:vtable check 拦→用 _IO_wfile_jumps 等合法 vtable 或劫持 _wide_data
-- 场景:多弱原语编排成链|判据:铁律"信息→能力→执行",leak 永远优先;canary/ASLR 每进程变,leak→compute→write 必须压在同一次交互内|转向:组合不成链=缺关键原语,回去专挖未初始化打印(补 leak)或函数指针调用点(补执行),别死磕残缺原语集
-- 场景:反复失败/本地通远程不通|判据:同一 crash pattern 3 次或 gdb 状态与预期根本不符即链条有问题;远程不通按序排:libc 版本→栈对齐→recvuntil 同步→硬编码地址|转向:pivot 保留 leak 前半段只换后半目标;单链死磕超 2h 换维度
+# chains-pwn L3 意思決定チェーン(場面→判定基準→方向転換;chains コーパスから蒸留,完全な Q&A は skills/chains-pwn/refs/ を参照)
+- 場面:未知のバイナリを入手したがどこから手を付けるか分からない|判定基準:file でアーキテクチャ/静的/strip を確認、checksec で Canary/NX/PIE/RELRO を確認、strings で system//bin/sh を探す。五つのスイッチでエクスプロイトの骨格が定まる|方向転換:まず定性(リモートサービス/対話式/静的 musl)してからリバースエンジニアリング。全プログラムを通読しない
+- 場面:checksec が全て有効で手が出ない|判定基準:全保護が有効 = 問題は必ず漏えいプリミティブを与えている。「先に leak、後から打つ」の二段階を計画|方向転換:まず fmt/範囲外読み/スタック残留で canary+ベースアドレスを漏らす。2h 経っても leak もクラッシュも無ければロジックの脆弱性へ
+- 場面:スタックオーバーフローのオフセット特定|判定基準:cyclic を送り込み、クラッシュ後にスタックトップの pattern を逆引き(64 ビットは PC でなく RSP が指すリターンアドレスを見る)。ROP を落としてクラッシュしたら movaps の 16 バイトアライメントを調べる|方向転換:チェーン先頭に ret を足してアライメント。静的解析で分からなければ pattern を送ってクラッシュ箇所に道を指させる
+- 場面:Canary 付きのオーバーフローが __stack_chk_fail に止められる|判定基準:fork 型サービスは canary が不変のためバイト単位でブルートフォースできる(≤8×256 回)。出力プリミティブがあれば元の値を漏らして埋め戻す。下位バイトが常に \x00 なのが識別特徴|方向転換:非 fork で漏えいが無ければリターンアドレスには触れず、関数ポインタ/GOT を書き換えて canary の戦場を迂回
+- 場面:NX が有効で shellcode が実行されない|判定基準:最も手間の少ないものを優先。既製の system("/bin/sh")→ret2text。PLT+文字列があれば→ret2libc。それもダメなら純 ROP。短いオーバーフローは単一ジャンプ/one_gadget を優先|方向転換:スペースが足りなければ→leave;ret でスタックを bss に移すか read の二回目読み込みで拡張。pop rdx が無ければ→ret2csu/SROP
+- 場面:PIE が有効でアドレスが全てランダム|判定基準:既知オフセットの任意アドレスを漏らして base を逆算。ページアライメントで下位 12 ビットが固定なのが識別特徴。libc しか漏れなければエクスプロイトを全て libc の上に築く|方向転換:ゼロ漏えい→partial overwrite で下位 1.5~2 バイトを書き換え(同一ページならブルートフォース不要、ページ跨ぎなら 1/16)。オラクルが無ければ→ret2dlresolve
+- 場面:リモートの libc バージョンが不明|判定基準:libc 関数のアドレスを 2~3 個漏らし、下位 12 ビットを取って libc-database でフィンガープリント照合|方向転換:見つからなければ→ret2dlresolve で libc 不要に。全て失敗→プログラム内の gadget だけ/SROP で libc への依存をゼロに
+- 場面:seccomp が execve を禁止し shell が起動しない|判定基準:まず seccomp-tools dump でルール表を取得。ORW が許可されていれば open/read/write で進む。open が禁止なら openat に替え、32 ビットの番号だけ許可なら retfq でアーキテクチャを切り替える|方向転換:ORW が全て塞がれたら→ルールを逐条確認して漏れたフィルタ項目を探す。それもダメなら prctl のインストール前に乗っ取る
+- 場面:メニュー式 CRUD でヒープ問題が疑われる|判定基準:add/delete + ループ switch + malloc/free でヒープ問題と定性。free 後にポインタを NULL にするかで UAF を判断、edit の長さ vs 確保サイズでオーバーフロー/off-by-one を判断|方向転換:静的コンパイル/musl なら glibc の手法を当てはめず、未知の allocator としてリバースエンジニアリング
+- 場面:ヒープ問題で glibc バージョンを特定(全手法が決まる)|判定基準:2.27 で tcache 導入。2.29 で double-free key と size/prev_size 検証を追加。2.32 で safe-linking(fd=pos>>12^target)。2.34 で hook 削除|方向転換:バージョンを誤ると poison が必ず abort する。先に patchelf で同バージョンの libc に替えてローカルで通してからリモートを打つ
+- 場面:ヒープ問題でプリミティブと bin の挙動を棚卸し|判定基準:tcache はバケット毎に ≤7、size<0x420 で tcache に入り、≤0x80 で fastbin。8 回目の free で unsorted に入る(fd/bk が main_arena を指し libc を漏らす)。bin の判断はリクエスト size でなく chunk_size で行う|方向転換:show が無い→tcache を満杯にして unsorted から leak。calloc は tcache を通らない
+- 場面:safe-linking(2.32+)で poisoning 後に abort する|判定基準:fd には (chunk>>12)^対象 を書き、かつ対象は 0x10 アライメントが必要。ゆえにまず heap を leak してから libc を leak。next が NULL のとき fd を 12 左シフトして heap ページを逆算|方向転換:heap を leak できない→tcache stashing/fastbin/largebin attack に手法を替える
+- 場面:hook が削除(2.34+)/Full RELRO で GOT が封鎖|判定基準:終了前に必ず通る間接呼び出し箇所へ:_IO_list_all/stdout vtable(FSOP/house of apple)、__exit_funcs、スタックのリターンアドレス(environ 経由でスタックを漏らす)|方向転換:vtable check に塞がれたら→_IO_wfile_jumps などの正当な vtable を使うか _wide_data を乗っ取る
+- 場面:複数の弱いプリミティブを組み合わせてチェーンに仕立てる|判定基準:鉄則は「情報→能力→実行」で、leak が常に優先。canary/ASLR はプロセス毎に変わるため、leak→compute→write は同一インタラクション内に収めなければならない|方向転換:組合せがチェーンにならない = 重要プリミティブの欠如。戻って未初期化の出力(leak を補う)か関数ポインタの呼び出し箇所(実行を補う)を専ら掘る。欠けたプリミティブ集合に固執しない
+- 場面:失敗を繰り返す/ローカルは通るがリモートが通らない|判定基準:同一 crash pattern が 3 回、または gdb の状態が期待と根本的に食い違えばチェーンに問題がある。リモートが通らないなら順に切り分け:libc バージョン→スタックアライメント→recvuntil の同期→ハードコードされたアドレス|方向転換:pivot は前半の leak を保持し後半の対象だけを替える。単一チェーンに 2h 以上固執したら次元を変える

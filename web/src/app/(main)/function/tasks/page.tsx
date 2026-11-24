@@ -977,7 +977,7 @@ export default function TasksPage() {
                     <TaskRow
                       key={task.id}
                       task={task}
-                      // running のタスクだけ nowSec を使う。他の行は 0 を渡す —— props が変わらないので
+                      // running のタスクだけ nowSec を使う。他の行は 0 を渡す。props が変わらないので
                       // memo が毎秒 tick によるテーブル全体の再描画を止め、実行中の数行だけが時間を進める。
                       nowSec={task.status === "running" ? nowSec : 0}
                       onDelete={deleteTask}

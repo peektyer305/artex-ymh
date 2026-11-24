@@ -247,7 +247,7 @@ export default function SystemSettingsPage() {
       {/* grid ではなく段組み：Web 検索カードは他より数倍高く、高さも選択中のバックエンドで変化する
           （brave/tavily の key 入力は条件付きレンダリング）。grid だと最も高いカードで行全体が埋まり、
           横に大きな空白が残る。段組みなら内容の高さに応じて自動的に均等に埋まる。カード間隔は gap ではなく
-          mb で取る——段組みでは column-gap は列間隔のみで、行間隔は子要素側で指定する必要がある。 */}
+          mb で取る。段組みでは column-gap は列間隔のみで、行間隔は子要素側で指定する必要がある。*/}
       <div className="columns-1 gap-4 md:gap-6 lg:columns-2">
         <UpdateCard />
 
@@ -320,7 +320,7 @@ export default function SystemSettingsPage() {
               Agent の bash / WebFetch に直接注入して外部へ出します。Web 検索プロキシ、LLM プロキシとは独立しています。
               <br />
               <b>ヒント</b>：socks5 は<b>キャプチャがオフ</b>のとき、各コマンドラインツールの <code>ALL_PROXY</code> 対応に依存します（curl
-              は可、一部ツールは無視する場合あり）。 socks5 を主に使う場合はトラフィックキャプチャの有効化を推奨します——この経路は MITM
+              は可、一部ツールは無視する場合あり）。socks5 を主に使う場合はトラフィックキャプチャの有効化を推奨します。この経路は MITM
               自身が接続するため、ツールに意識させず安定して動作します。
             </CardDescription>
           </CardHeader>
@@ -449,7 +449,7 @@ export default function SystemSettingsPage() {
                 <p className="text-muted-foreground text-xs leading-relaxed">
                   このソースは<b>現在アクティブな LLM 設定</b>をそのまま再利用します。そのため
                   <b>DeepSeek 公式モデルのみ対応</b>し、その設定は<b>anthropic プロトコル必須</b>
-                  です——DeepSeek の OpenAI プロトコルのエンドポイントはサーバー側検索に対応していません。LLM 設定を切り替えるとこのソースは使えなくなる場合があります。
+                  です。DeepSeek の OpenAI プロトコルのエンドポイントはサーバー側検索に対応していません。LLM 設定を切り替えるとこのソースは使えなくなる場合があります。
                 </p>
                 <p className="text-muted-foreground text-xs leading-relaxed">
                   他のソースと異なり、検索は <b>DeepSeek のサーバー側で実行</b>されます。検索のたびにモデル呼び出しが 1 回増え（Token
@@ -488,7 +488,7 @@ export default function SystemSettingsPage() {
                 </div>
                 {braveNeedsKey && (
                   <p className="text-xs text-amber-500">
-                    Brave を選択しましたが Key が未設定です —— Key を保存するまで検索ツールは有効になりません。
+                    Brave を選択しましたが Key が未設定です。Key を保存するまで検索ツールは有効になりません。
                   </p>
                 )}
                 <p className="text-muted-foreground text-xs">
@@ -523,7 +523,7 @@ export default function SystemSettingsPage() {
                 </div>
                 {webSearch && backend === "tavily" && !tavilyKeySet && (
                   <p className="text-xs text-amber-500">
-                    Tavily を選択しましたが Key が未設定です —— Key を保存するまで検索ツールは有効になりません。
+                    Tavily を選択しましたが Key が未設定です。Key を保存するまで検索ツールは有効になりません。
                   </p>
                 )}
                 <p className="text-muted-foreground text-xs">https://tavily.com で登録して API Key を取得してください。</p>

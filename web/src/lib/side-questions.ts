@@ -42,7 +42,7 @@ async function request<T>(path: string, method = "GET", body?: unknown): Promise
 
 export const sideAPI = {
   // 履歴は正規化してから呼び出し側に渡す。items が配列でないと消費側の setState updater が例外を投げ、
-  // React はその例外を render 段階まで遅延して再スローする —— その時点で呼び出し側の catch は届かず、
+  // React はその例外を render 段階まで遅延して再スローする。その時点で呼び出し側の catch は届かず、
   // ページ全体がエラーバウンダリに引き渡されてしまう。
   history: async (parent: string, before = 0) => {
     const data = await request<Partial<SideHistory>>(`${parent}/side-questions?before=${before}`);

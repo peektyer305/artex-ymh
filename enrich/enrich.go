@@ -5,7 +5,7 @@
 // edges, and filling attrs.dns / attrs.http. DNS is ungated; HTTP probing is gated
 // by RoE (§5.2).
 //
-// 注意：本パッケージは現状未接続——agent/tools.go の SetEnrich にはリポジトリ全体で
+// 注意：本パッケージは現状未接続。agent/tools.go の SetEnrich にはリポジトリ全体で
 // 呼び出し点がなく、呼び出し側が接続するまで本パッケージは機能しない
 // （AUDIT-REPORT.md M-項 /「非同期補完（enrich）」を参照）。
 // 上記の RoE ゲートは設計上の意図であり、まだどの実行経路にも存在しない。

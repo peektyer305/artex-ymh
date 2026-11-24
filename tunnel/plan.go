@@ -4,7 +4,7 @@
 // auth のトレードオフ：auth token は crypto/rand の 16 バイトで、deploy_params とプラットフォーム側の
 // --authfile（0600）にのみ保存し、プラットフォームの server プロセスのコマンドラインには出さない（ps から見えない）。ターゲット側の client
 // には AUTH 環境変数で渡す（chisel client は --auth 未指定時に AUTH env を読む。https://github.com/jpillora/chisel README 参照）。ps cmdline には出ない；残る露出面は
-// ターゲット機の /proc/<pid>/environ が同一 uid から読めること——ターゲットは既にフットホールドなので許容し、ここに注記する。
+// ターゲット機の /proc/<pid>/environ が同一 uid から読めること。ターゲットは既にフットホールドなので許容し、ここに注記する。
 package tunnel
 
 import (
@@ -138,7 +138,7 @@ func (p *Plan) assemble(remoteSpec string) {
 	}
 	p.ClientArgs = []string{
 		"client",
-		"--keepalive", "10s", // chisel のオプションは server/remote より前に置く必要がある——後ろに置くと remote として解析される
+		"--keepalive", "10s", // chisel のオプションは server/remote より前に置く必要がある。後ろに置くと remote として解析される
 		// (実践の教訓：「Failed to decode remote '--keepalive': Missing ports」が報告され、クライアントが即終了する)
 		"http://" + p.PlatformAddr,
 		remoteSpec,
@@ -190,7 +190,7 @@ func PlanPortfwd(o *PlanOpts) (*Plan, error) {
 }
 
 // AuthfileContent は --authfile のファイル内容。chisel の authfile は JSON の users マッピング
-// {"user:pass": ["許可する remote アドレスのパターン"]}——生の user:pass テキストではない
+// {"user:pass": ["許可する remote アドレスのパターン"]}。生の user:pass テキストではない
 // （実践の教訓：v1.11 のサーバーは裸のテキストに Invalid JSON を返して即終了する）。
 func (p *Plan) AuthfileContent() string {
 	b, _ := json.Marshal(map[string][]string{
@@ -208,7 +208,7 @@ type RollbackStep struct {
 }
 
 // RollbackSteps は完全なロールバック手順を返す（純粋関数。順序が契約：ターゲット側が先でプラットフォーム側が後、
-// 台帳行は常に最後に削除する——再起動と監査の唯一の根拠だから）。実行時は失敗した層までで打ち切る。
+// 台帳行は常に最後に削除する。再起動と監査の唯一の根拠だから）。実行時は失敗した層までで打ち切る。
 func (p *Plan) RollbackSteps() []RollbackStep {
 	return []RollbackStep{
 		{Layer: "remote_process", Action: "kill", Detail: fmt.Sprintf("セッション経由でターゲット側の pid %d を kill（先に kill -0 を実行し、/proc/<pid>/cmdline に %s が含まれるか照合）", p.RemotePID, p.RemoteBin)},

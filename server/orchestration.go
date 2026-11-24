@@ -509,7 +509,7 @@ func (s *Server) seedOrchestrationTools() {
 	s.upgradeReporterTriggerMessage() // 既存 DB の補完マイグレーション：reporter に evidence_version を返させる(1 回のみ)
 	s.seedFindingTrafficTools()       // 任意のエビデンスパラメータと読み取り専用エビデンスツールを追加、ユーザー設定は維持
 	s.seedFindingWorkflowTools()
-	// 注：pentest のデフォルトツールバインドはマイグレーション不要 —— BuiltinToolSeeds が新規初期化時に
+	// 注：pentest のデフォルトツールバインドはマイグレーション不要。BuiltinToolSeeds が新規初期化時に
 	// list_assets/insert_assets/report_finding/list_findings/list_companies を
 	// pentest と一緒に seed 済み（旧 DB は無いため、マイグレーションは行わない）。
 }
@@ -569,7 +569,7 @@ func (s *Server) unbindGoalMetDefault() {
 	_ = s.m.pg.SetSetting(flag, "true")
 }
 
-// reseedGoalsPrompt は goals ゴール分解器のプロンプトを【現在のコード既定】へ更新する —— 既定本文に
+// reseedGoalsPrompt は goals ゴール分解器のプロンプトを【現在のコード既定】へ更新する。既定本文に
 // 「先に操作制約(set_constraints)を抽出してからゴールを分解する」ステップが増えたが、SeedPromptIfEmpty は初回挿入のみで、
 // 既存 DB の version 1 はこのステップを受け取れないため。ここではバージョン管理で【新しいバージョンを追加】して切り替える(ResetPromptToDefault)。
 // 旧バージョンは履歴に残るので、ユーザーがカスタマイズしていた場合はバージョン履歴から復元できる。settings flag でガード → 1 回だけ。
@@ -599,7 +599,7 @@ func (s *Server) reseedGoalsPrompt() {
 	log.Printf("[prompts] goals プロンプトに新しい既定バージョンを追加しました(操作制約の抽出ステップを追加、1 回のみ)")
 }
 
-// reseedMainAgentPrompt は mainagent プロンプトを【現在のコード既定】へ更新する —— 既定本文に「ゴールが全部
+// reseedMainAgentPrompt は mainagent プロンプトを【現在のコード既定】へ更新する。既定本文に「ゴールが全部
 // 達成された後に add_intent で意図を直接投入するとき、人に正式なゴールとして登録するか問い返す」誘導が増えたが、SeedPromptIfEmpty は
 // 初回挿入のみで、既存 DB のバージョンは受け取れない。バージョン管理で【新しいバージョンを追加】して切り替え(ResetPromptToDefault)、旧バージョンは
 // 履歴に残るので、ユーザーがカスタマイズしていた場合はバージョン履歴から復元できる。settings flag でガード → 1 回だけ。新規 DB では不要
@@ -629,7 +629,7 @@ func (s *Server) reseedMainAgentPrompt() {
 	log.Printf("[prompts] mainagent プロンプトに新しい既定バージョンを追加しました(ゴール達成後の目標登録の問い返しを追加、1 回のみ)")
 }
 
-// reseedPlannerPrompt は planner プロンプトを【現在のコード既定】へ更新する —— 既定本文を簡潔に再構成し、「抑制」を
+// reseedPlannerPrompt は planner プロンプトを【現在のコード既定】へ更新する。既定本文を簡潔に再構成し、「抑制」を
 // 重複排除のみに格下げ、「深さをカバレッジより優先」「ハードルール：ゴール未達成で実行中の意図が無ければ必ず産出する」を追加、否定結論の再確認に上限を設けた。
 // 既定に実質的な変更があるたびに下の flag(現在 v2)を bump し、既存 DB にもう一度適用する。SeedPromptIfEmpty は初回挿入のみで既存 DB のバージョンは受け取れないため、
 // バージョン管理で【新しいバージョンを追加】して切り替え(ResetPromptToDefault)、旧バージョンは履歴に残るので、ユーザーがカスタマイズしていた場合はバージョン履歴から
@@ -660,7 +660,7 @@ func (s *Server) reseedPlannerPrompt() {
 	log.Printf("[prompts] planner プロンプトに新しい既定バージョンを追加しました(簡潔化+抑制の重複排除化+深さ優先+否定再確認の上限、1 回のみ)")
 }
 
-// reseedWorkerPrompt は worker プロンプトを【現在のコード既定】へ更新する —— 既定本文の record_fact 段から「否定系の結論は
+// reseedWorkerPrompt は worker プロンプトを【現在のコード既定】へ更新する。既定本文の record_fact 段から「否定系の結論は
 // 観察+試探的な読み方で書く」という一文を削り、confidence(observed/inferred)と「この意図の手段を出し切ったか」を切り離した(これらは planner を誤らせやすい)。
 // あわせて facts 配列の分割を「互いに完全に独立で、統合できない」ごく少数の例外に絞り込んだ。flag を v3 に bump し、既存 DB にもう一度適用する。
 // SeedPromptIfEmpty は初回挿入のみで既存 DB のバージョンは受け取れないため、バージョン管理で【新しいバージョンを追加】して切り替える。旧バージョンは履歴に残り復元できる。
@@ -695,20 +695,20 @@ func (s *Server) reseedWorkerPrompt() {
 // 「自動バインドが有効なときだけ読む」と書くと、デフォルトが無効の設定では reporter が evidence_version を渡さず、
 // SetFindingReportVersionByNodeID が legacy の意味論どおり -1 を書き込み、脆弱性の詳細と Markdown エクスポートが
 // 以後ずっと「エビデンスが変更されました、レポートの更新待ち」のままになり、UI 上にそれを消せる入口が無くなる。
-const reporterToolCallMessage = "上面刚有一个漏洞被 report_finding 登记。请读取返回 JSON 的 finding_id（独立漏洞记录 ID）与 finding_node_id（探索节点 ID），" +
-	"先用 get_finding_traffic(finding_id) 读取当前证据清单及其 version（空清单是正常情况，照常写报告）；" +
-	"若运行指引启用自动绑定，在读取前先核实并关联本次漏洞的流量。节点详情使用 finding_node_id。" +
-	"最后调用 update_finding_report(finding_id=finding_node_id, report, evidence_version=实际读取版本) 保存，" +
-	"evidence_version 必须传，否则报告会被永久标记为待更新。不要混用两种编号。"
+const reporterToolCallMessage = "直前に report_finding で脆弱性が 1 件登録されました。返された JSON の finding_id(独立した脆弱性レコード ID)と finding_node_id(探索ノード ID)を読み取ってください。" +
+	"まず get_finding_traffic(finding_id) で現在の証拠一覧とその version を読み取ってください(空の一覧は正常です。そのままレポートを書いてください)。" +
+	"実行ガイドで自動バインドが有効な場合は、読み取り前に今回の脆弱性のトラフィックを検証して関連付けてください。ノード詳細には finding_node_id を使用します。" +
+	"最後に update_finding_report(finding_id=finding_node_id, report, evidence_version=実際に読み取った version) を呼び出して保存します。" +
+	"evidence_version は必ず渡してください。渡さないとレポートは永続的に更新待ちとマークされます。2 種類の番号を混在させないでください。"
 
 // 旧版のトリガーメッセージ(0.3.8 以前)。これと逐字一致するレコードだけが移行で上書きされ、ユーザーが変更したものはそのまま残る。
-const reporterToolCallMessageV1 = "上面刚有一个漏洞被 report_finding 登记。请从触发上下文里取出 finding_id" +
-	"（工具返回 \"finding recorded: <id>\" 里的数字）与任务 id，按你的职责撰写该漏洞的详细报告，" +
-	"最后调用 update_finding_report(finding_id, report) 保存。"
+const reporterToolCallMessageV1 = "直前に report_finding で脆弱性が 1 件登録されました。トリガーのコンテキストから finding_id" +
+	"(ツールが返す \"finding recorded: <id>\" の数字)とタスク id を取り出し、自分の役割に従ってその脆弱性の詳細なレポートを作成し、" +
+	"最後に update_finding_report(finding_id, report) を呼び出して保存してください。"
 
 // upgradeReporterTriggerMessage は、既存 DB でまだ既定文言のままの reporter トリガーメッセージを新バージョンへ更新する。
 // seedReporterAgent は reporter_agent_seed_v1 でガードされ、agent 新規作成時にしかトリガーを書かないため、
-// アップグレードしてきた DB は新しい文言を受け取れない —— ツール schema は seedFindingTrafficTools が
+// アップグレードしてきた DB は新しい文言を受け取れない。ツール schema は seedFindingTrafficTools が
 // evidence_version を補ったが、reporter にそれを使わせるものは何も無い。1 回のみで、未変更の文言だけを上書きする。
 func (s *Server) upgradeReporterTriggerMessage() {
 	const flag = "reporter_trigger_evidence_version_v1"
@@ -736,7 +736,7 @@ func (s *Server) upgradeReporterTriggerMessage() {
 
 // seedReporterAgent は「レポート作成」カスタム agent をプリセットする(builtin=false、UI で編集/削除可能)：
 // update_finding_report + タスク照会ツールをバインドし、「report_finding が呼ばれたら起動」する
-// トリガーを付ける —— 脆弱性が登録されるたびに起動して詳細レポートを書かせる。1 回のみ(settings flag でガード)：ユーザーが削除した後は再作成しない。
+// トリガーを付ける。脆弱性が登録されるたびに起動して詳細レポートを書かせる。1 回のみ(settings flag でガード)：ユーザーが削除した後は再作成しない。
 // 依存：orchestration ツールは本関数より上で SeedTool により登録済みのため、バインドできる。
 func (s *Server) seedReporterAgent() {
 	const flag = "reporter_agent_seed_v1"
@@ -746,7 +746,7 @@ func (s *Server) seedReporterAgent() {
 	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 成否にかかわらず 1 回だけ試行する
 
 	if exist, _ := s.m.pg.GetAgentByKey("reporter"); exist != nil {
-		return // key は既に使用済み(ユーザーが手動作成した)——上書きしない
+		return // key は既に使用済み(ユーザーが手動作成した)。上書きしない
 	}
 	a, err := s.m.pg.CreateAgent("reporter", "レポート作成",
 		"脆弱性の詳細レポート作成：脆弱性の発見時に自動で起動し、エビデンスと実行過程を取得して Markdown レポートを書いて書き戻す。")
@@ -757,7 +757,7 @@ func (s *Server) seedReporterAgent() {
 	if err := s.m.pg.SeedPromptIfEmpty(a.ID, agent.ReporterDefaultPrompt); err != nil {
 		log.Printf("[reporter] prompt の seed に失敗しました: %v", err)
 	}
-	// トリガーの実行戦略：parallel + none —— 1 脆弱性 1 レポート、複数の finding をそれぞれ並行して書く。
+	// トリガーの実行戦略：parallel + none。1 脆弱性 1 レポート、複数の finding をそれぞれ並行して書く。
 	// merge は必ず none：そうでないと(デフォルト all)finding の一斉発生が 1 回の実行にまとめられ、並行の意味がなくなる。
 	// maxParallel=5：同時に最大 5 つのレポートセッションとし、瞬間的に LLM 呼び出しが増えすぎるのを避ける。
 	if err := s.m.pg.SetAgentTriggerBehavior("reporter", "parallel", "none", 5); err != nil {

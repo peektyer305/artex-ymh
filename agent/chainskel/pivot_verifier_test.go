@@ -7,18 +7,18 @@ import (
 )
 
 func TestVerifierChecklistGeneralAlways(t *testing.T) {
-	for _, v := range []string{"", "某种没见过的洞", "weird-vuln"} {
+	for _, v := range []string{"", "見たことのない種類の脆弱性", "weird-vuln"} {
 		out := VerifierChecklist(v)
-		if !strings.Contains(out, "以下判据用于反证,逐条过") {
+		if !strings.Contains(out, "反証判定 checklist") {
 			t.Fatalf("vulnclass=%q 缺固定段头:\n%s", v, out)
 		}
-		for _, want := range []string{"通用判据", "200 ≠ 打通", "锚定预期特征", "阴性 ≠ 无洞"} {
+		for _, want := range []string{"共通判定基準", "200 ≠ 突破", "想定する特徴へアンカーする", "陰性 ≠ 脆弱性なし"} {
 			if !strings.Contains(out, want) {
 				t.Fatalf("vulnclass=%q 通用层缺 %q:\n%s", v, want, out)
 			}
 		}
-		if strings.Contains(out, "专项判据") {
-			t.Fatalf("vulnclass=%q 未命中类别不应有专项判据:\n%s", v, out)
+		if strings.Contains(out, "専用判定基準") {
+			t.Fatalf("vulnclass=%q 未ヒットのカテゴリに専用判定基準があってはならない:\n%s", v, out)
 		}
 	}
 }
@@ -27,117 +27,117 @@ func TestVerifierChecklistClasses(t *testing.T) {
 	cases := []struct {
 		vulnclass string
 		class     string
-		want      string // 专项判据里的锚点词
+		want      string // 専用判定基準里的锚点词
 	}{
-		{"SQL注入", "sqli", "真假分叉"},
-		{"sqli (time-based)", "sqli", "基线"},
-		{"XSS 反射型", "xss", "回显 ≠ 可执行"},
-		{"跨站脚本", "xss", "回显"},
-		{"SSRF", "ssrf", "源 IP"},
-		{"命令注入", "cmdi", "线性对应"},
-		{"远程命令执行(RCE)", "cmdi", "线性"},
-		{"文件上传", "upload", "落地+解析"},
-		{"越权访问", "auth-bypass", "双账号"},
-		{"IDOR", "auth-bypass", "双账号"},
-		{"敏感信息泄露", "info-leak", "真实性"},
+		{"SQL インジェクション", "sqli", "真偽の分岐"},
+		{"sqli (time-based)", "sqli", "ベースライン"},
+		{"XSS 反射型", "xss", "エコー ≠ 実行可能"},
+		{"クロスサイトスクリプティング", "xss", "エコー"},
+		{"SSRF", "ssrf", "送信元 IP"},
+		{"コマンドインジェクション", "cmdi", "線形に対応"},
+		{"リモートコマンド実行(RCE)", "cmdi", "線形"},
+		{"ファイルアップロード", "upload", "設置+解析"},
+		{"権限外アクセス", "auth-bypass", "2 アカウント"},
+		{"IDOR", "auth-bypass", "2 アカウント"},
+		{"機密情報の漏えい", "info-leak", "真実性"},
 	}
 	for _, c := range cases {
 		out := VerifierChecklist(c.vulnclass)
 		if !strings.Contains(out, "→ "+c.class) {
-			t.Fatalf("vulnclass=%q 应归一到 %s:\n%s", c.vulnclass, c.class, out)
+			t.Fatalf("vulnclass=%q は %s に帰一すべき:\n%s", c.vulnclass, c.class, out)
 		}
 		if !strings.Contains(out, c.want) {
-			t.Fatalf("vulnclass=%q 专项判据缺 %q:\n%s", c.vulnclass, c.want, out)
+			t.Fatalf("vulnclass=%q 専用判定基準缺 %q:\n%s", c.vulnclass, c.want, out)
 		}
-		if !strings.Contains(out, "通用判据") {
-			t.Fatalf("vulnclass=%q 通用层应永远在:\n%s", c.vulnclass, out)
+		if !strings.Contains(out, "共通判定基準") {
+			t.Fatalf("vulnclass=%q 共通判定基準は常に存在すべき:\n%s", c.vulnclass, out)
 		}
 	}
-	// 顺序敏感:命令注入不能被 sqli 的"注入"类锚点截胡。
-	if out := VerifierChecklist("命令注入"); !strings.Contains(out, "→ cmdi") {
-		t.Fatalf("命令注入应归一到 cmdi 而非 sqli:\n%s", out)
+	// 順序に敏感:コマンドインジェクションが sqli の「インジェクション」系アンカーに食われない。
+	if out := VerifierChecklist("コマンドインジェクション"); !strings.Contains(out, "→ cmdi") {
+		t.Fatalf("コマンドインジェクションは sqli ではなく cmdi に帰一すべき:\n%s", out)
 	}
 }
 
 func TestPivotHintsByTags(t *testing.T) {
 	out := PivotHints([]string{"web"}, "", 3)
 	if out == "" {
-		t.Fatal("web tag 应抽出转向条目")
+		t.Fatal("web tag は方向転換エントリを抽出すべき")
 	}
 	if !strings.Contains(out, "[web] ") {
-		t.Fatalf("转向条目应带类别标记:\n%s", out)
+		t.Fatalf("方向転換エントリはカテゴリマークを伴うべき:\n%s", out)
 	}
-	if !strings.HasPrefix(out, "同类场景的可选转向路径") {
-		t.Fatalf("缺引导行:\n%s", out)
+	if !strings.HasPrefix(out, "同種シナリオで選べる方向転換パス") {
+		t.Fatalf("ガイド行が欠けている:\n%s", out)
 	}
 	if total := strings.Count(out, "\n- ["); total != 3 {
-		t.Fatalf("max=3 应恰取 3 条, got %d:\n%s", total, out)
+		t.Fatalf("max=3 はちょうど 3 つ取るべき, got %d:\n%s", total, out)
 	}
-	// 内容应来自骨架"转向:"后的原文(web.md 首条)。
-	if !strings.Contains(out, "无分叉换时间盲/OOB") {
-		t.Fatalf("应抽出自骨架的转向原文:\n%s", out)
+	// 内容はスケルトンの「方向転換:」以降の原文(web.md の先頭)から来る。
+	if !strings.Contains(out, "分岐なしなら時間ベースブラインド/OOB") {
+		t.Fatalf("スケルトンの方向転換原文を抽出すべき:\n%s", out)
 	}
 }
 
 func TestPivotHintsMaxCap(t *testing.T) {
 	out := PivotHints([]string{"web"}, "", 1)
 	if total := strings.Count(out, "\n- ["); total != 1 {
-		t.Fatalf("max=1 应只取 1 条, got %d:\n%s", total, out)
+		t.Fatalf("max=1 は 1 つだけ取るべき, got %d:\n%s", total, out)
 	}
 	if PivotHints([]string{"web"}, "", 0) != "" {
-		t.Fatal("max<=0 应返回空")
+		t.Fatal("max<=0 は空を返すべき")
 	}
 }
 
 func TestPivotHintsFallbackSummary(t *testing.T) {
-	// tags 全非法 → 回退 summary 关键词匹配。
-	out := PivotHints([]string{"bogus"}, "内网隧道选型与横向", 3)
+	// tags が全て不正 → summary のキーワードマッチへフォールバック。
+	out := PivotHints([]string{"bogus"}, "内部ネットワークのトンネル選定と横展開", 3)
 	if !strings.Contains(out, "[pivot] ") {
-		t.Fatalf("非法 tag 应回退关键词匹配到 pivot:\n%s", out)
+		t.Fatalf("不正な tag はキーワードマッチへフォールバックして pivot に:\n%s", out)
 	}
 }
 
 func TestPivotHintsNoMatchDegrades(t *testing.T) {
-	if out := PivotHints(nil, "随便看看", 3); out != "" {
-		t.Fatalf("无匹配应返回空(调用方用通用措辞), got:\n%s", out)
+	if out := PivotHints(nil, "適当に見る", 3); out != "" {
+		t.Fatalf("マッチなしは空を返す(呼び出し側は汎用の文言を使う), got:\n%s", out)
 	}
 	if out := PivotHints(nil, "", 3); out != "" {
-		t.Fatal("空输入应返回空")
+		t.Fatal("空入力は空を返す")
 	}
 }
 
 func TestPivotHintsForIntent(t *testing.T) {
 	out := PivotHintsForIntent(payload(t, map[string]any{"summary": "x", "chain_tags": []string{"web"}}), 3)
 	if !strings.Contains(out, "[web] ") {
-		t.Fatalf("payload 入口应按 chain_tags 出 web 转向:\n%s", out)
+		t.Fatalf("payload エントリは chain_tags に従い web の方向転換を出すべき:\n%s", out)
 	}
 	if out := PivotHintsForIntent(json.RawMessage(`{bad json`), 3); out != "" {
-		t.Fatal("payload 解析失败应返回空")
+		t.Fatal("payload の解析失敗は空を返すべき")
 	}
 }
 
 func TestRefsGuideForIntent(t *testing.T) {
-	out := RefsGuideForIntent(payload(t, map[string]any{"summary": "打某站", "chain_tags": []string{"web"}}))
-	if !strings.Contains(out, "skills/chains-web/refs/") || !strings.Contains(out, "精确篇目见对应 SKILL.md") {
-		t.Fatalf("web tag 应给出 refs 指引:\n%s", out)
+	out := RefsGuideForIntent(payload(t, map[string]any{"summary": "あるサイトを攻撃", "chain_tags": []string{"web"}}))
+	if !strings.Contains(out, "skills/chains-web/refs/") || !strings.Contains(out, "正確な篇目は対応する SKILL.md を参照") {
+		t.Fatalf("web tag は refs ガイドを出すべき:\n%s", out)
 	}
-	// 双 tag:两个路径都在一行里。
+	// 2 tag:両方のパスが 1 行に入る。
 	out = RefsGuideForIntent(payload(t, map[string]any{"summary": "x", "chain_tags": []string{"web", "ad", "pivot"}}))
 	if !strings.Contains(out, "skills/chains-web/refs/") || !strings.Contains(out, "skills/chains-ad/refs/") {
-		t.Fatalf("前 2 个 tag 的路径都应在:\n%s", out)
+		t.Fatalf("先頭 2 つの tag のパスが両方あるべき:\n%s", out)
 	}
 	if strings.Contains(out, "chains-pivot") {
-		t.Fatal("第 3 个 tag 超上限不应出现")
+		t.Fatal("3 つ目の tag は上限超過で現れない")
 	}
-	// 无 tag 回退关键词;无命中静默。
-	out = RefsGuideForIntent(payload(t, map[string]any{"summary": "做 sql 注入测试"}))
+	// tag なしはキーワードへフォールバック。ヒットなしは静かに。
+	out = RefsGuideForIntent(payload(t, map[string]any{"summary": "sql インジェクションのテスト"}))
 	if !strings.Contains(out, "skills/chains-web/refs/") {
-		t.Fatalf("关键词回退应给出 web refs 指引:\n%s", out)
+		t.Fatalf("キーワードフォールバックは web の refs ガイドを出すべき:\n%s", out)
 	}
-	if out := RefsGuideForIntent(payload(t, map[string]any{"summary": "随便看看"})); out != "" {
-		t.Fatalf("匹配不中应静默不注入, got:\n%s", out)
+	if out := RefsGuideForIntent(payload(t, map[string]any{"summary": "適当に見る"})); out != "" {
+		t.Fatalf("マッチしなければ静かに非注入にすべき。got:\n%s", out)
 	}
 	if out := RefsGuideForIntent(json.RawMessage(`{bad json`)); out != "" {
-		t.Fatal("payload 解析失败应静默不注入")
+		t.Fatal("payload の解析失敗は静かに非注入にすべき")
 	}
 }

@@ -1,6 +1,6 @@
 // session.go はフットホールドセッションサブシステム（イントラネット侵攻フェーズ 1a,docs/architecture/intranet-pivot.md §4.2）を組み込む:
 // プロセス内 Registry + DB 復元 + 4 つの host ツール（register_session/session_exec/
-// session_read/session_write)。ツールはすべて通常のツール呼び出し——guard 承認を自動で通過し、
+// session_read/session_write)。ツールはすべて通常のツール呼び出し。guard 承認を自動で通過し、
 // activity に自動で記録される。これが外部チャネルに対する本質的な優位性。
 //
 // フットホールド戦略（foothold ladder):webshell を主チャネルとして優先。リバース/トンネルは後期に主チャネル経由で投入する。
@@ -76,7 +76,7 @@ func (s *Server) initSessions() {
 			sh, err = session.RestoreHTTPShell(rec.ID, sec)
 		case "reverse":
 			// フェーズ 5:reverse セッションは penelope プロセスのメモリ上にあり、MCP 接続パラメータは
-			// プラットフォームプロセスと共に失われるため復元不可——initReverse が一律に正直に dead を記録済みなので、ここでは黙ってスキップする。
+			// プラットフォームプロセスと共に失われるため復元不可。initReverse が一律に正直に dead を記録済みなので、ここでは黙ってスキップする。
 			continue
 		default:
 			log.Printf("[session] セッション %d の種類 %s は今回のリリースでは復元非対応、スキップ", rec.ID, rec.Kind)

@@ -47,7 +47,7 @@ func callTimeoutFromEnv() time.Duration {
 }
 
 // CallTimeoutError はウォールクロック到達後の正規化エラー（call_timeout 種別）。意味:本層が
-// その呼び出しをハングと判定したもので、再試行可能な一過性の失敗——llmpool はこれを伝送
+// その呼び出しをハングと判定したもので、再試行可能な一過性の失敗。llmpool はこれを伝送
 // レベルの一過性障害として扱いフェイルオーバーする（ソフトサーキットブレーカの計数対象で、
 // hard failure ではない）。Unwrap は context.DeadlineExceeded を返すため
 // errors.Is(err, context.DeadlineExceeded) が成立する。「呼び出し側の能動的な取り消し/
@@ -72,7 +72,7 @@ func (e *CallTimeoutError) Unwrap() error { return context.DeadlineExceeded }
 //
 //   - 呼び出し側 ctx が終了済み（ユーザー停止 / タスク単位の期限 / 上位のウォールクロック）:
 //     そのまま透過する。能動的な取り消しは決して正規化せず、フェイルオーバーもしない
-//     ——llmpool の既存の意味論であり、本層の存在によって壊してはならない。
+//    。llmpool の既存の意味論であり、本層の存在によって壊してはならない。
 //   - 呼び出し側 ctx は生存し、派生した callCtx が終了:本層のタイマーだけが callCtx を
 //     取り消す、つまりウォールクロック到達であり、*CallTimeoutError に正規化する。
 //   - 両方の ctx が生存:通常のエラー（SDK 内部の per-attempt タイムアウトを含む）を透過する。

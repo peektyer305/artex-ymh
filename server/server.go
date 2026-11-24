@@ -301,7 +301,7 @@ func (s *Server) restoreTaskRuntimes() {
 			s.engine.Pause(t.ID, agent.AbortPausedOnReload)
 		}
 		// タスク単位タイムアウト: 未終端で timeout を持つタスクごとに deadline コーディネータを起動し、planner/worker の
-		// loop とは独立させる——非アクティブなタスクも再起動後に期限到達で終了処理できる(期限超過なら即座に終了処理手順へ)。
+		// loop とは独立させる。非アクティブなタスクも再起動後に期限到達で終了処理できる(期限超過なら即座に終了処理手順へ)。
 		if !isTerminalStatus(lifecycle.Status) {
 			s.engine.startDeadlineCoordinator(s.ctx, t)
 		}
@@ -490,7 +490,7 @@ func (s *Server) applyLLM(cfg agent.Config) error {
 	s.llmDirect = prov
 	s.cfgMu.Unlock()
 	// LLM ポーリング(既定は無効): 有効化設定をフェイルオーバーチェーンに包み、現在の設定が使えないとき自動で次へ切り替える。
-	// 影響するのは「グローバル有効化設定を使う」経路のみ——agent 紐付け / タスク pin は providerForProfile を通り、
+	// 影響するのは「グローバル有効化設定を使う」経路のみ。agent 紐付け / タスク pin は providerForProfile を通り、
 	// 既定では引き続きその設定を専有する(poolForBinding 参照)。無効または代替なしなら元の provider を返し、挙動は変わらない。
 	if act, err := s.m.pg.ActiveProfile(); err == nil && act != nil {
 		prov = s.poolForActive(act.ID, prov, cfg)
@@ -960,7 +960,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/guard/auto-allow", s.guardAutoAllowSet)
 
 	// 管理下ファイル投入(F13): 管理 API は JWT の後ろ;ダウンロードパス /s/ は root mux(JWT の外、
-	// ターゲットマシンには token がない——安全性は 24 バイトのランダム token + token 単位のレート制限 + 一貫性 404 で担保)。
+	// ターゲットマシンには token がない。安全性は 24 バイトのランダム token + token 単位のレート制限 + 一貫性 404 で担保)。
 	mux.HandleFunc("POST /api/stage", s.stageCreate)
 	mux.HandleFunc("GET /api/stage", s.stageList)
 	mux.HandleFunc("DELETE /api/stage/{token}", s.stageDelete)
@@ -1576,7 +1576,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[task] タスク #%s «%s» を新規作成、ゴール: %s", t.ID, req.Description, req.Goal)
 	// 共有の作成後フロー(seed + シード意図 + バックグラウンドのゴール分解 + engine.Run)で、spawn_task と同じ区間を再利用する。
-	// launchTask は内部で非同期なので UI をブロックしない —— ゴール分解はバックグラウンドで可視的に進む。
+	// launchTask は内部で非同期なので UI をブロックしない。ゴール分解はバックグラウンドで可視的に進む。
 	s.launchTask(t, req.Description+" "+req.Goal, req.SeedFirstIntent != nil && *req.SeedFirstIntent)
 	writeJSON(w, 201, taskDTO(t, s.resolvedTaskStatus(t)))
 }
@@ -3436,7 +3436,7 @@ func (s *Server) testWebSearch(w http.ResponseWriter, r *http.Request) {
 	wall := 30 * time.Second
 	// deepseek の認証情報はフォームではなく現在の有効な LLM 設定から取る；さらに検索のたびに 1 回
 	// モデル推論を走らせるので、30s の共通上限では厳しい。ここだけ緩める。ここでは設定が使えるかを
-	// 先読みしない——このテストはユーザー自身が確認する手段であり、実際に通らないときの下のエラーは先読みより情報量が多い。
+	// 先読みしない。このテストはユーザー自身が確認する手段であり、実際に通らないときの下のエラーは先読みより情報量が多い。
 	probeQuery := "test"
 	if strings.TrimSpace(backend) == deepSeekWebSearchBackend {
 		cfg.DeepSeekBaseURL, cfg.DeepSeekAPIKey, cfg.DeepSeekModel = s.m.deepSeekSearchCreds()

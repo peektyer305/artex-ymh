@@ -5,7 +5,7 @@ import * as React from "react";
 import { getLocalStorageValue, setLocalStorageValue } from "@/lib/local-storage.client";
 
 // チャット入力欄の送信/改行キー。フロントのみの設定で、localStorage にだけ書き、DB にも
-// アカウント同期にも載らないため、ブラウザを変えたら再設定が必要。issue #39 参照——0.3.2 で
+// アカウント同期にも載らないため、ブラウザを変えたら再設定が必要。issue #39 参照。0.3.2 で
 // Ctrl+Enter 送信を Enter 送信に変えたので、ここで旧キーを選択肢として戻す。
 export type ChatSendMode = "enter" | "ctrl-enter";
 
@@ -55,7 +55,7 @@ export function setChatSendMode(mode: ChatSendMode) {
 
 // shouldSubmitOnKey は 1 回のキー入力で送信すべきかを判定する。
 // isComposing / keyCode 229 は中国語などの IME 変換中なので必ず通す。通さないと確定の Enter で誤送信する。
-// enter モードは Shift だけを除外し、0.3.2 の挙動と一字一句同じ——設定を変えないユーザーの操作感を保つ。
+// enter モードは Shift だけを除外し、0.3.2 の挙動と一字一句同じ。設定を変えないユーザーの操作感を保つ。
 // ctrl-enter モードは Ctrl と Cmd（macOS）の両方を受け付ける。
 export function shouldSubmitOnKey(e: React.KeyboardEvent, mode: ChatSendMode): boolean {
   if (e.key !== "Enter") return false;

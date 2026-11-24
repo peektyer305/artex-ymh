@@ -90,7 +90,7 @@ func (g *Guard) checkRoE(ctx context.Context, ev hook.Event, cmd string) (hook.R
 		return hook.Result{}, false // In または Unknown → 通過
 	}
 	if unknown {
-		// 一部のターゲットは登録範囲外、一部は適用できるルールがない —— 既存の違反は Out として扱えばよい。
+		// 一部のターゲットは登録範囲外、一部は適用できるルールがない。既存の違反は Out として扱えばよい。
 		log.Printf("[guard][roe] task %d 一部のターゲットに適用できる範囲ルールがありません: %v", taskID, hosts)
 	}
 	reason := roeMessage(out, cfg.Scope(taskID))

@@ -35,12 +35,12 @@ cd artex-ymh
 ./install.sh
 ```
 
-スクリプトは Docker を検出し、必要なら自動インストールします。**① すべて Docker** か **② ローカルでビルドして実行**（`config.json` を生成し、フロントエンドを内蔵した単一バイナリをビルド）を選択できます。インストール後は `http://localhost:8787` を開きます。
+スクリプトは Docker を検出し、必要なら自動インストールします。**① すべて Docker** か **② ローカルでビルドして実行**（`config.json` を生成し、フロントエンドを内蔵した単一バイナリをビルド）を選択できます。「すべて Docker」は公開済みのイメージを取得せず、リポジトリ内の `Dockerfile.source` から**ローカルでビルド**します。インストール後は `http://localhost:8787` を開きます。
 
 ### 方式 2: ソースから単一バイナリをビルド
 
 > 前提条件：Go ≥ 1.26、Node ≥ 20（フロントエンドのビルドにはメモリ 4G 以上を推奨）。
-> **旧ディストリビューションでの注意**:Node ≥ 18 の公式ビルドは glibc ≥ 2.28 を要求するため、Ubuntu 18.04（glibc 2.27）では動作しません——[unofficial-builds の glibc-217 ビルド](https://unofficial-builds.nodejs.org/download/release/)を使うか、より新しいシステムに移行してください。
+> **旧ディストリビューションでの注意**:Node ≥ 18 の公式ビルドは glibc ≥ 2.28 を要求するため、Ubuntu 18.04（glibc 2.27）では動作しません。[unofficial-builds の glibc-217 ビルド](https://unofficial-builds.nodejs.org/download/release/)を使うか、より新しいシステムに移行してください。
 > **中国国内のネットワーク**：GitHub のクローン、npm、Go モジュールにはプロキシ／ミラーが必要な場合があります。参考：`git config --global http.proxy socks5h://127.0.0.1:7890`、`npm config set registry https://registry.npmmirror.com`、`go env -w GOPROXY=https://goproxy.cn,direct`。
 
 ```bash
@@ -70,7 +70,7 @@ journalctl -u artex -f
 
 ### 方式 4: Docker
 
-リポジトリの `docker-compose.yml` は、**ソースから二次開発版のイメージをビルドする**ように設定済みです（`Dockerfile.source`：フロントエンドのビルド → Go のコンパイル → ツールのランタイムをすべて Docker 内で完結し、ホスト側に Go/Node は不要）：
+リポジトリの `docker-compose.yml` は、**ソースから二次開発版のイメージをビルドする**ように設定済みです（`Dockerfile.source`：フロントエンドのビルド → Go のコンパイル → ツールのランタイムをすべて Docker 内で完結し、ホスト側に Go/Node は不要）。レジストリからのイメージ取得（`docker compose pull`）は行いません。
 
 ```bash
 git clone https://github.com/r0th-m/artex-ymh.git
@@ -79,7 +79,7 @@ cp .env.example .env   # POSTGRES_PASSWORD を記入（# 文字は使わない�
 docker compose up -d --build
 ```
 
-⚠️ この compose のイメージを `autumn27/artex` に変更しないでください——それは**アップストリームのオリジナル**であり、二次開発のコードを含みません（2026-09 の実測で踏んだ落とし穴：アップストリームの compose をそのまま使ってデプロイすると、オリジナル版が入ります）。
+⚠️ この compose のイメージを `autumn27/artex` に変更しないでください。それは**アップストリームのオリジナル**であり、二次開発のコードを含みません（2026-09 の実測で踏んだ落とし穴：アップストリームの compose をそのまま使ってデプロイすると、オリジナル版が入ります）。
 ⚠️ ビルドには apt/npm/Go モジュールのソースへのアクセスが必要です。中国国内のマシンでは、Docker にプロキシ（`~/.docker/config.json` の proxies セクション）またはミラーサイトを先に設定してください。
 
 ---
@@ -104,7 +104,7 @@ docker compose up -d --build
 | peass / penelope | 権限昇格の列挙 / リバースシェルハンドラ |
 
 - **バージョン固定リスト**：`packaging/tools-manifest.json` にバージョン／プラットフォーム／sha256／相対パスを記録し、起動時に自己検査します（不一致は警告のみ、空欄は未固定を意味します）。
-- **デプロイ事前チェック**：インストール後／アップグレード後に `./artex doctor` を実行します——PG、LLM プロファイル、data の書き込み可否、トンネルツール、武器庫、ゲート、コールバックアドレスを検査し、FAIL 時は終了コード 1 になります。
+- **デプロイ事前チェック**：インストール後／アップグレード後に `./artex doctor` を実行します。PG、LLM プロファイル、data の書き込み可否、トンネルツール、武器庫、ゲート、コールバックアドレスを検査し、FAIL 時は終了コード 1 になります。
 - ツールは「ツール」ページでカスタムツールとして登録（`kind=shell`）した後、agent が呼び出せるようになります。
 
 ## アップグレード

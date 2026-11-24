@@ -1,329 +1,329 @@
-# AD内网 · Kerberos攻击:Kerberoast/AS-REP/委派
+# ADドメイン内 · Kerberos 攻撃:Kerberoast/AS-REP/委任
 
-### 落地一个域内shell,先决定走Kerberoast还是先做别的
-**Q1**: 我拿到一个普通域用户的凭据/会话,想快速把攻击面转成"离线爆破 hash"。第一步该做什么?
-**A1**: 先确认三件事——(1) 时钟与 DC 偏差是否 ≤5 分钟,(2) 手上凭据能否成功 kinit/请求 TGT,(3) LDAP 是否能读 servicePrincipalName 属性。三个都通过再谈 Kerberoast,否则先解决前置。
-**Q2**: 为什么不是直接扔 Rubeus/GetUserSPNs 一把梭?
-**A2**: 因为 Kerberoast 触发 4769 事件,盲扫所有 SPN 会给 SOC 送一份"完整攻击者画像"。要先离线过滤:排除机器账号(密码是 120 字符随机)、排除 krbtgt、优先服务账号(sAMAccountType=805306368 且 SPN 非空)。
-**Q3**: LDAP 查询被限速或返回极少字段怎么办?
-**A3**: 转向"匿名 SPN 枚举"备选路径——用已知的 TGT 直接 sname 猜测请求 TGS(某些老域允许对未知 SPN 返回 KDC_ERR_S_PRINCIPAL_UNKNOWN,可用作存在性 oracle),或改用 DNS SRV/SCP 记录反推服务。
-**Q4**: 这条路整个被墙(域启用了 FAST/Kerberos Armoring 或所有服务账号都用 AES256 且强密码)怎么办?
-**A4**: 果断【正交转向】—— 放弃 Roast,转:(a) AS-REP Roasting 找 DONT_REQ_PREAUTH 账号,(b) 委派链利用(非约束/约束/RBCD),(c) ADCS 证书模板滥用(ESC1/ESC8),(d) 密码喷洒到 OWA/SMB,离线爆破不是唯一变现方式。
-**Q5**: 我怎么知道现在的凭据"够用"到可以枚举?
-**A5**: 判据是能不能 `ldapsearch` 到自己所在 OU 的对象且 objectClass=user 的数量 >0,且能读到至少一个 servicePrincipalName 属性非空的对象。读不到就是被 ACL 限死了,得先横向拿另一枚 token。
+### ドメイン内シェルを着地したら、まず Kerberoast か別の手か
+**Q1**: 一般ドメインユーザーの認証情報/セッションを取得した。攻撃面を素早く「オフラインで hash をブルートフォース」へ転換したい。最初に何をすべきか?
+**A1**: まず三つを確認する。(1)クロックと DC のずれが 5 分以内か。(2)手持ちの認証情報で kinit/TGT リクエストが成功するか。(3)LDAP で servicePrincipalName 属性を読めるか。三つが通ってから Kerberoast を考える。そうでなければ先に前提を解決する。
+**Q2**: なぜ直接 Rubeus/GetUserSPNs を一括で投げないのか?
+**A2**: Kerberoast は 4769 イベントをトリガーし、全 SPN を盲スキャンすると SOC に「完全な攻撃者プロファイル」を渡すことになる。先にオフラインでフィルタする。マシンアカウント(パスワードは 120 文字乱数)を除外し、krbtgt を除外し、サービスアカウントを優先する(sAMAccountType=805306368 かつ SPN 非空)。
+**Q3**: LDAP 照会が制限された、または返すフィールドが極めて少ない場合は?
+**A3**: 「匿名 SPN 列挙」の代替経路へ転換する。既知の TGT で直接 sname を推測して TGS をリクエストする(一部の旧ドメインは未知 SPN に KDC_ERR_S_PRINCIPAL_UNKNOWN を返し、存在性 oracle に使える)。または DNS SRV/SCP レコードでサービスを逆引きする。
+**Q4**: この経路全体が遮られた(ドメインが FAST/Kerberos Armoring を有効化、または全サービスアカウントが AES256 かつ強パスワード)場合は?
+**A4**: ためらわず【直交転換】する。Roast を諦め、以下へ転換する。(a)AS-REP Roasting で DONT_REQ_PREAUTH アカウントを探す。(b)委任チェーン利用(非制約/制約/RBCD)。(c)ADCS 証明書テンプレート悪用(ESC1/ESC8)。(d)OWA/SMB へのパスワードスプレー。オフラインブルートフォースだけが唯一の換金方式ではない。
+**Q5**: 現在の認証情報が「列挙できるほど十分」かをどう知る?
+**A5**: 判定基準は、自分が属する OU のオブジェクトへ `ldapsearch` でき、objectClass=user の数が 0 より大きく、かつ servicePrincipalName 属性が非空のオブジェクトを少なくともひとつ読めるか。読めなければ ACL に制限されており、先に横展開で別のトークンを取る必要がある。
 
-### Kerberoast 拿到一堆 TGS,先爆哪个
-**Q1**: 手上 30+ 个 $krb5tgs$ hash,离线算力有限,选哪个先跑?
-**A1**: 排序策略:(1) 加密类型 etype=23 (RC4-HMAC) 优先,爆破速度是 AES 的数十倍;(2) 用户名带 svc/sql/backup/iis/web/mssql 等业务前缀的优先,业务账号密码复杂度普遍低于管理账号;(3) pwdLastSet 早于 3 年前的优先,老密码更可能是弱口令。
-**Q2**: 目标域强制 AES only,拿到的全是 etype=17/18,离线速度掉了两个数量级怎么办?
-**A2**: 缩字典而不是硬扛。用 OSINT + 目标域名 + 公司缩写生成小而精的规则字典(公司名+年份+!@#、部门缩写+123),别上 rockyou 全跑。同时并行开另一条线,不吊死在算力上。
-**Q3**: 全部跑完一个都没爆出来,是不是这条路死了?
-**A3**: 不一定,先检查三点:(a) hash 格式是否被工具错误截断(Rubeus/impacket 输出格式版本差异),(b) 是否漏了 msDS-AllowedToDelegateTo 上间接暴露的 SPN,(c) 是否有 gMSA 账号(msDS-ManagedPassword 可读则完全绕过爆破)。
-**Q4**: 确认都试过还是零结果,下一个方向?
-**A4**: 【转向】AS-REP + 委派 + ADCS 三选一。特别是如果枚举时看到有 msDS-AllowedToActOnBehalfOfOtherIdentity 或 TRUSTED_FOR_DELEGATION 标志,直接跳委派路线,ROI 比继续爆 hash 高得多。
-**Q5**: 爆出来一个是"低权限服务账号密码",怎么升级?
-**A5**: 不要停在这个账号本身。用它去请求它自己能访问的资源、看它在哪些机器的 local admin 组、看它有没有对高价值对象的 GenericWrite/WriteDACL,以及它是否是某个约束委派链的中间跳板。密码本身是钥匙,不是终点。
+### Kerberoast で大量の TGS を取得。どれを先に解くか
+**Q1**: 手元に 30 個以上の $krb5tgs$ hash がある。オフライン算力が限られる。どれを先に走らせる?
+**A1**: 順序戦略:(1)暗号種別 etype=23 (RC4-HMAC) を優先。解読速度は AES の数十倍。(2)ユーザー名に svc/sql/backup/iis/web/mssql などの業務プレフィックスを含むものを優先。業務アカウントのパスワード複雑度は管理アカウントより一般に低い。(3)pwdLastSet が 3 年前より古いものを優先。古いパスワードほど弱いパスワードの可能性が高い。
+**Q2**: 対象ドメインが AES only を強制し、etype=17/18 ばかり。オフライン速度が二桁落ちた場合は?
+**A2**: 辞書を縮めるのであって無理に走らせない。OSINT + 対象ドメイン名 + 会社略称で小さく精緻なルール辞書(会社名+年+!@#、部門略称+123)を生成し、rockyou 全走査はしない。同時にもう一本の線を並行で開き、算力に吊られない。
+**Q3**: 全部走らせてもひとつも解けなかった。この経路は死んだか?
+**A3**: 必ずしもそうではない。まず三点を確認する。(a)hash 形式がツールで誤って切り詰められていないか(Rubeus/impacket の出力形式のバージョン差)。(b)msDS-AllowedToDelegateTo 上に間接的に露出する SPN を見落としていないか。(c)gMSA アカウントがあるか(msDS-ManagedPassword を読めればブルートフォースを完全に迂回)。
+**Q4**: 全部試してゼロと確認した。次の方向は?
+**A4**: 【転換】AS-REP + 委任 + ADCS の三択。特に列挙時に msDS-AllowedToActOnBehalfOfOtherIdentity または TRUSTED_FOR_DELEGATION フラグを見たなら、直接委任経路へ飛ぶ。hash を解き続けるより ROI がはるかに高い。
+**Q5**: 「低権限サービスアカウントのパスワード」をひとつ解いた。どう昇格する?
+**A5**: このアカウント自体で止まらない。それで自分がアクセスできるリソースをリクエストし、どのマシンの local admin グループにいるか、高価値オブジェクトへの GenericWrite/WriteDACL を持つか、ある制約付き委任チェーンの途中の踏み台かを調べる。パスワード自体は鍵であって終点ではない。
 
-### AS-REP Roasting:没账号列表怎么起手
-**Q1**: 我完全没有任何域账号凭据,只知道域名和一个 DC IP,想 AS-REP Roasting,从哪儿要用户名?
-**A1**: 三条路并行:(1) 从 OSINT/公司官网/LinkedIn 收员工名单,按 firstname.lastname / f.lastname / flastname 三种模式生成候选;(2) SMB 空会话/RID 循环枚举(若 SMB 允许 null session);(3) Kerberos 用户名枚举——对 KDC 发 AS-REQ,存在返回 KDC_ERR_PREAUTH_REQUIRED,不存在返回 KDC_ERR_C_PRINCIPAL_UNKNOWN,可当 oracle。
-**Q2**: 用 Kerberos 枚举 5000 个用户名会不会触发告警?
-**A2**: 会。速率必须 ≤ 每秒 1~2 次,且分散源 IP;更好的做法是把候选名单先用 OSINT 精修到 ≤ 200 再打。默认 Rubeus 全速枚会瞬间点亮 SIEM。
-**Q3**: 枚举出一批存在的用户名,但对每个发 AS-REQ 都返回需要预认证,没人是 DONT_REQ_PREAUTH,怎么办?
-**A3**: 意料之中,通常只有个位数账号关了预认证(历史遗留服务账号常见)。如果一个都没有,判定 AS-REP 路线死,【转向】密码喷洒:用 2~3 个语义弱口令模板(组织名/缩写+年份+符号、季节+年份、"欢迎/初始"类词+数字)喷全员,别爆单点(会锁账号)。具体值按目标语境即时生成,不要硬编码。
-**Q4**: 拿到一个 $krb5asrep$ hash,离线爆破一直不出,是不是密码就是很强?
-**A4**: 未必。检查 (a) 是否加密类型是 AES(某些工具默认请求 RC4,可显式指定 etype=23 让 KDC 回 RC4 版本,前提是策略允许),(b) 用户名大小写与 realm 大写是否与 hash 里一致(有些爆破器对此敏感)。
-**Q5**: 这条路彻底死了,下一个正交方向?
-**A5**: 【转向】无凭据条件下,Kerberos 侧还剩:(1) 打印机 spooler bug + 非约束委派机器捕获 TGT,(2) NTLM 中继(PetitPotam / Coerce → LDAP/ADCS/SMB),(3) CVE 级(Zerologon/PrintNightmare/samAccountName),(4) 尝试匿名 LDAP。不要在 AS-REP 上死磕。
+### AS-REP Roasting:アカウントリストなしでどう始めるか
+**Q1**: ドメインアカウントの認証情報を一切持たず、ドメイン名と DC IP だけを知っている。AS-REP Roasting をしたい。ユーザー名はどこから?
+**A1**: 三経路を並行する。(1)OSINT/会社公式サイト/LinkedIn から社員名簿を収集し、firstname.lastname / f.lastname / flastname の三パターンで候補を生成。(2)SMB 空セッション/RID 循環列挙(SMB が null session を許可する場合)。(3)Kerberos ユーザー名列挙。KDC へ AS-REQ を送り、存在すれば KDC_ERR_PREAUTH_REQUIRED、存在しなければ KDC_ERR_C_PRINCIPAL_UNKNOWN を返すため、oracle として使える。
+**Q2**: Kerberos で 5000 ユーザー名を列挙するとアラートを誘発しないか?
+**A2**: 誘発する。速度は必ず毎秒 1〜2 回以下にし、発信元 IP を分散する。より良いのは、候補リストを先に OSINT で 200 以下に精緻化してから打つこと。デフォルトの Rubeus 全速列挙は一瞬で SIEM を点灯させる。
+**Q3**: 存在するユーザー名をひととおり列挙したが、全員へ AS-REQ を送っても事前認証が必要と返る。誰も DONT_REQ_PREAUTH でない場合は?
+**A3**: 想定内である。通常はごく少数のアカウントしか事前認証を無効化していない(歴史的遺留サービスアカウントに多い)。ひとつもなければ、AS-REP 経路は死と判定し、【転換】パスワードスプレーへ進む。2〜3 個の意味的弱いパスワードテンプレート(組織名/略称+年+記号、季節+年、「ようこそ/初期」類の語+数字)で全員をスプレーし、単点はブルートフォースしない(アカウントをロックする)。具体的な値は対象の文脈に即して生成し、ハードコードしない。
+**Q4**: $krb5asrep$ hash をひとつ取得した。オフライン解読がずっと出ない。パスワードが本当に強いのか?
+**A4**: 必ずしもそうではない。(a)暗号種別が AES でないか(一部ツールはデフォルトで RC4 をリクエストする。etype=23 を明示指定して KDC に RC4 版を返させられる。ポリシーが許可していれば)。(b)ユーザー名の大文字小文字と realm の大文字が hash 内と一致するか(一部の解読器はこれに敏感)。
+**Q5**: この経路が完全に死んだ。次の直交方向は?
+**A5**: 【転換】無認証情報条件下で、Kerberos 側にはまだ以下が残る。(1)プリンタ spooler bug + 非制約委任マシンで TGT を捕捉。(2)NTLM 中継(PetitPotam / Coerce → LDAP/ADCS/SMB)。(3)CVE 級(Zerologon/PrintNightmare/samAccountName)。(4)匿名 LDAP を試す。AS-REP で死闘しない。
 
-### 非约束委派:识别到了怎么变现
-**Q1**: LDAP 枚举发现某台服务器 userAccountControl 包含 TRUSTED_FOR_DELEGATION(非约束委派),下一步?
-**A1**: 目标不是"利用这台机器",而是"诱导一个高权限账号向它发起认证,让 TGT 落到它的 LSASS 里"。前提:我要有这台机器的本地管理员权限(能 dump 内存)或能以 SYSTEM 运行。所以第一步先解决"上这台机"的问题。
-**Q2**: 已经是这台机的 admin,怎么诱导 DC 或 DA 认证过来?
-**A2**: 经典是 Spooler bug(SpoolSample/PrinterBug)让目标机器账号回连;也可以 PetitPotam/DFSCoerce/ShadowCoerce 强制机器认证。触发后,在本机内存里等 TGT。
-**Q3**: 触发了但内存里没看到 TGT,只看到 TGS,怎么办?
-**A3**: 说明诱导对象是走 S4U 或已被约束委派限制,或是本机的 Kerberos SSPI 没缓存 TGT(只有 forwardable 的才会缓存)。检查 (a) 触发目标是否真的解析到本机,(b) 目标 SPN 是否指向本机,(c) 目标账号是否被标记为"敏感,不可委派"(Protected Users 组或 NOT_DELEGATED 标志)。
-**Q4**: 目标 DA 被拉入 Protected Users 或打了 NOT_DELEGATED 标志,拿不到可转发 TGT,怎么办?
-**A4**: 【转向】换目标——不是非要 DA。找同样有 DCSync 权限但不在 Protected Users 里的账号(Exchange、备份服务、老运维账号);或【正交转向】RBCD/ADCS ESC 路线。
-**Q5**: 我怎么区分"非约束委派机器"和"看起来像但其实是 RODC"?
-**A5**: RODC 也有类似标志但不能签发有用的 TGT。判据:(a) primaryGroupID 是否 521(RODC),(b) msDS-RevealOnDemandGroup / msDS-NeverRevealGroup 是否非空——是就是 RODC,别浪费时间。
+### 非制約委任:識別できた。どう換金するか
+**Q1**: LDAP 列挙で、あるサーバーの userAccountControl に TRUSTED_FOR_DELEGATION(非制約委任)が含まれるのを発見した。次は?
+**A1**: 目標は「このマシンを利用する」ことではなく「高権限アカウントにそれへ認証させ、TGT をその LSASS に落とす」こと。前提:このマシンのローカル管理者権限(メモリ dump 可能)か SYSTEM で実行できる必要がある。したがって第一歩は「このマシンへ上がる」問題を先に解決する。
+**Q2**: 既にこのマシンの admin だ。DC や DA に認証させ誘導するには?
+**A2**: 古典は Spooler bug(SpoolSample/PrinterBug)で対象マシンアカウントに逆接続させる。PetitPotam/DFSCoerce/ShadowCoerce でマシン認証を強制もできる。トリガー後、本機メモリで TGT を待つ。
+**Q3**: トリガーしたがメモリに TGT が見えず、TGS だけ見える場合は?
+**A3**: 誘導対象が S4U を経由したか、既に制約付き委任で制限されているか、本機の Kerberos SSPI が TGT をキャッシュしていない(forwardable のみキャッシュ)ことを示す。(a)トリガー対象が本当に本機へ解決するか。(b)対象 SPN が本機を指すか。(c)対象アカウントが「機微、委任不可」とマークされていないか(Protected Users グループまたは NOT_DELEGATED フラグ)を確認する。
+**Q4**: 対象 DA が Protected Users に加入、または NOT_DELEGATED フラグ付きで、転送可能 TGT を取れない場合は?
+**A4**: 【転換】対象を変える。必ずしも DA でなくてよい。DCSync 権限を持ち Protected Users にいないアカウント(Exchange、バックアップサービス、古い運用アカウント)を探す。または【直交転換】RBCD/ADCS ESC 経路へ。
+**Q5**: 「非制約委任マシン」と「似ているが実は RODC」をどう区別する?
+**A5**: RODC も似たフラグを持つが、有用な TGT を発行できない。判定基準:(a)primaryGroupID が 521(RODC)か。(b)msDS-RevealOnDemandGroup / msDS-NeverRevealGroup が非空か。そうなら RODC であり、時間を無駄にしない。
 
-### 约束委派 S4U:拿到低权服务账号后
-**Q1**: 我拿到一个服务账号的密码/hash,它的 msDS-AllowedToDelegateTo 指向 CIFS/DC01.domain,能干嘛?
-**A1**: 这就是【约束委派 + Protocol Transition】变现窗口。用 S4U2Self 以任意用户名(比如 Administrator)向自己申请票据,再 S4U2Proxy 换成对 CIFS/DC01 的 TGS。前提是该账号有 TRUSTED_TO_AUTH_FOR_DELEGATION(T2A4D)标志,否则 S4U2Self 拿不到 forwardable 票据。
-**Q2**: 没有 T2A4D 标志,S4U2Self 拿到的是 non-forwardable,S4U2Proxy 报 KRB_AP_ERR_BADMATCH,怎么办?
-**A2**: 用 CVE-2020-17049(Bronze Bit)——在 S4U2Proxy 请求里手动翻转 forwardable 位,补丁前的 KDC 会接受。域没打补丁就通,打了就走另一条路。
-**Q3**: 补丁打了,而且目标用户是 Protected Users,S4U2Self 直接被拒,怎么办?
-**A3**: 【转向】RBCD 或找委派链。委派可以级联:如果 A 能委派到 B 的 CIFS,而 B 上跑着的服务账号又能委派到 DC,就串起来。用 BloodHound 的 CanRDP/AllowedToDelegate 边找链。
-**Q4**: msDS-AllowedToDelegateTo 里的 SPN 是 http/xxx 而不是 cifs/xxx,能不能变文件访问?
-**A4**: 严格来说 SPN 类型不校验(客户端会按请求的 SPN 走),但 KDC 在打补丁版本上会校验 sname 匹配。可以尝试 sname substitution(Rubeus /altservice),把 http 换成 cifs/host/ldap,老版本 KDC 允许。
-**Q5**: 这条链完全走不通,下一个方向?
-**A5**: 【转向】从 SPN 反推——既然这个服务账号有委派权限,它自己也大概率是高价值资产的 owner,直接找它对哪些对象有 GenericWrite/WriteDACL,可能直接改别人的 msDS-AllowedToActOnBehalfOfOtherIdentity 做 RBCD。
+### 制約付き委任 S4U:低権限サービスアカウントを取得後
+**Q1**: サービスアカウントのパスワード/hash を取得した。その msDS-AllowedToDelegateTo が CIFS/DC01.domain を指す。何ができる?
+**A1**: これは【制約付き委任 + Protocol Transition】の換金窓である。S4U2Self で任意ユーザー名(例: Administrator)として自分へのチケットを申請し、S4U2Proxy で CIFS/DC01 への TGS に交換する。前提:そのアカウントが TRUSTED_TO_AUTH_FOR_DELEGATION(T2A4D)フラグを持つ。持たなければ S4U2Self は forwardable チケットを取れない。
+**Q2**: T2A4D フラグがなく、S4U2Self が non-forwardable を取り、S4U2Proxy が KRB_AP_ERR_BADMATCH を報告する場合は?
+**A2**: CVE-2020-17049(Bronze Bit)を使う。S4U2Proxy リクエストで forwardable ビットを手動で反転させると、パッチ前の KDC は受け入れる。ドメインが未パッチなら通る。パッチ済みなら別経路へ。
+**Q3**: パッチ済みで、対象ユーザーが Protected Users で S4U2Self が直接拒否される場合は?
+**A3**: 【転換】RBCD または委任チェーンを探す。委任は連鎖できる。A が B の CIFS へ委任でき、B 上で動くサービスアカウントが DC へ委任できれば、連結できる。BloodHound の CanRDP/AllowedToDelegate エッジでチェーンを探す。
+**Q4**: msDS-AllowedToDelegateTo 内の SPN が http/xxx で cifs/xxx でない。ファイルアクセスに変えられるか?
+**A4**: 厳密には SPN 種別は検証されない(クライアントはリクエストした SPN に従う)が、KDC はパッチ適用版では sname 一致を検証する。sname substitution(Rubeus /altservice)で http を cifs/host/ldap に変えられる。古いバージョンの KDC は許可する。
+**Q5**: このチェーンが完全に通らない。次の方向は?
+**A5**: 【転換】SPN から逆算する。このサービスアカウントが委任権限を持つなら、それ自体も高価値アセットの owner である可能性が高い。どのオブジェクトに GenericWrite/WriteDACL を持つかを直接探し、他者の msDS-AllowedToActOnBehalfOfOtherIdentity を直接変更して RBCD できるかもしれない。
 
-### 基于资源的约束委派 RBCD:什么时候是最优解
-**Q1**: 我拿到一个能对某台目标机器对象做 GenericWrite/GenericAll/WriteProperty 的账号,为什么优先考虑 RBCD?
-**A1**: 因为 RBCD 是"受害者侧"配置,不需要 DA 权限就能改。写入 msDS-AllowedToActOnBehalfOfOtherIdentity,让我可控的一个"带 SPN 的账号"能够以任意用户身份访问目标。
-**Q2**: 我没有"带 SPN 的账号",怎么造一个?
-**A2**: 默认域策略允许普通用户创建 10 个机器账号(ms-DS-MachineAccountQuota=10)。用 impacket 的 addcomputer.py 建一个机器账号,机器账号自带 SPN,直接可用。若 quota 被改成 0,就找一个已有的、我能改密码的服务账号顶上。
-**Q3**: MachineAccountQuota 已经是 0,而且我没有可控 SPN 账号,怎么办?
-**A3**: 检查我控制的账号自己身上是否有 SPN(可自己给自己加 SPN,需要 ValidatedWrite/servicePrincipalName 权限);再不行【转向】改用 shadow credentials(msDS-KeyCredentialLink)+ PKINIT,不依赖 RBCD 拿目标 hash。
-**Q4**: 写入 msDS-AllowedToActOnBehalfOfOtherIdentity 后 S4U 报错 KRB_AP_ERR_MODIFIED,怎么办?
-**A4**: 常见原因:(a) 目标机器缓存了旧的委派配置,需要等 KDC ticket 缓存过期或等 15 分钟,(b) 我用了错误的 KDC(应该指向目标域的 DC),(c) 时钟偏差。逐一排除,不要以为是路线错了。
-**Q5**: 目标是 DC,可以对 DC 做 RBCD 吗?
-**A5**: 技术上可以(如果我对 DC 对象有 write 权),但通常 DC 的 ACL 严守。如果真有,直接 S4U 到 DC 的 cifs/ldap,然后 DCSync 完事。这是"一击必杀"级别的机会,别浪费。
-**Q6**: 都不通怎么办?
-**A6**: 【正交转向】shadow credentials(利用 msDS-KeyCredentialLink)只需要对目标对象的 GenericWrite,直接换出 NT hash,比 RBCD 更干净、动静小。
+### リソースベース制約付き委任 RBCD:いつ最適解か
+**Q1**: ある対象マシンオブジェクトに GenericWrite/GenericAll/WriteProperty を行えるアカウントを取得した。なぜ RBCD を優先する?
+**A1**: RBCD は「被害者側」の設定であり、DA 権限なしで変更できる。msDS-AllowedToActOnBehalfOfOtherIdentity に書き込めば、自分が制御する「SPN 付きアカウント」が任意ユーザーとして対象へアクセスできる。
+**Q2**: 「SPN 付きアカウント」がない。どう作る?
+**A2**: デフォルトのドメインポリシーは一般ユーザーに 10 個のマシンアカウント作成を許可する(ms-DS-MachineAccountQuota=10)。impacket の addcomputer.py でマシンアカウントを作成すれば、マシンアカウントは自動的に SPN を持ち、直接使える。quota が 0 なら、既存の、自分がパスワード変更できるサービスアカウントで代用する。
+**Q3**: MachineAccountQuota が既に 0 で、制御できる SPN アカウントもない場合は?
+**A3**: 制御するアカウント自身が SPN を持つかを確認する(ValidatedWrite/servicePrincipalName 権限があれば自分で SPN を追加できる)。だめなら【転換】shadow credentials(msDS-KeyCredentialLink)+ PKINIT を使う。RBCD に依存せず対象の hash を取る。
+**Q4**: msDS-AllowedToActOnBehalfOfOtherIdentity 書き込み後、S4U が KRB_AP_ERR_MODIFIED を報告する場合は?
+**A4**: よくある原因:(a)対象マシンが古い委任設定をキャッシュしている。KDC チケットキャッシュ期限切れか 15 分待つ。(b)誤った KDC を使った(対象ドメインの DC を指すべき)。(c)クロックずれ。逐項排除する。経路が誤りだとは決めつけない。
+**Q5**: 対象が DC だ。DC へ RBCD できるか?
+**A5**: 技術的にはできる(DC オブジェクトに write 権限があれば)。ただし通常 DC の ACL は厳格に守られている。本当にあれば、直接 S4U で DC の cifs/ldap へ行き、DCSync で完了。これは「一撃必殺」級の機会で、無駄にしない。
+**Q6**: 全部通らない場合は?
+**A6**: 【直交転換】shadow credentials(msDS-KeyCredentialLink 利用)は対象オブジェクトへの GenericWrite だけでよく、直接 NT hash を交換できる。RBCD よりクリーンで動きが小さい。
 
-### Kerberos 时钟偏差被 KRB_AP_ERR_SKEW 拒
-**Q1**: 请求 TGT 时反复报 clock skew too great,我的攻击机跟 DC 差了 8 分钟,怎么办?
-**A1**: Kerberos 默认容忍 ±5 分钟。用 `rdate`/`ntpdate`/`net time \\dc` 同步到 DC 时间。别用公网 NTP,可能和目标域时间不一致(域可能故意偏移或走内网 NTP)。
-**Q2**: 我没权限改本机时钟(容器/沙箱),怎么办?
-**A2**: 用 faketime 之类的工具在进程级伪造时间,或修改工具让它在协议层用 DC 的时间戳(impacket 支持 -k 但仍依赖系统时间)。最省事的是把攻击机时间同步到 DC。
-**Q3**: 同步到 DC 之后还是报 skew,是不是被防御识别了?
-**A3**: 检查 (a) 时区,Kerberos 用 UTC 但工具可能带本地偏移;(b) 是否走了错误 KDC(比如打到了跨域的 DC);(c) DC 本身是否是虚拟机时间漂了(少见但存在)。
-**Q4**: 时钟修不了怎么办?
-**A4**: 【转向】走 NTLM 路线,NTLM 对时钟不敏感;或找一台已经在域里、时钟正确的中转机,把 Kerberos 交互放在那台上。
+### Kerberos クロックずれで KRB_AP_ERR_SKEW に拒否される
+**Q1**: TGT をリクエストすると clock skew too great が繰り返される。自分の攻撃機と DC が 8 分ずれている。どうする?
+**A1**: Kerberos はデフォルトで ±5 分を許容する。`rdate`/`ntpdate`/`net time \\dc` で DC 時刻へ同期する。公衆 NTP は使わない。対象ドメインと時刻がずれる可能性がある(ドメインが意図的にずらしている、または内網 NTP を使っている)。
+**Q2**: 本機のクロックを変更する権限がない(コンテナ/サンドボックス)場合は?
+**A2**: faketime のようなツールでプロセスレベルで時刻を偽造するか、ツールを変更してプロトコル層で DC のタイムスタンプを使う(impacket は -k をサポートするがやはりシステム時刻に依存)。最も省力なのは攻撃機の時刻を DC へ同期すること。
+**Q3**: DC へ同期してもまだ skew と出る。防御に識別されたか?
+**A3**: (a)タイムゾーン。Kerberos は UTC を使うがツールがローカルオフセットを付けることがある。(b)誤った KDC を打ったか(例: クロスドメインの DC)。(c)DC 自体が仮想マシンで時刻がドリフトしていないか(稀だが存在)。
+**Q4**: クロックを直せない場合は?
+**A4**: 【転換】NTLM 経路へ進む。NTLM はクロックに敏感でない。または既にドメイン内にあり、クロックが正しい中継機を探し、Kerberos 対話をその上で行う。
 
-### 拿到 TGT/TGS 后怎么落地用
-**Q1**: 手上有一个 .ccache 或 .kirbi 票据,想在 Linux 攻击机上用它跑 impacket,怎么做?
-**A1**: `export KRB5CCNAME=/path/to/ticket.ccache`,然后所有 impacket 脚本加 `-k -no-pass`,并且 `-dc-ip` 指定目标 DC,同时 /etc/hosts 里给目标机器和 DC 加上 FQDN 解析(Kerberos 严格按 SPN 走,IP 直连会失败)。
-**Q2**: kirbi 转 ccache 用什么工具?
-**A2**: impacket 的 ticketConverter.py,或 Rubeus 直接 /ptt 注入到当前会话。注意 kirbi 是小端存储的 ASN.1,不要手改。
-**Q3**: 注入了票据但 `klist` 显示为空,怎么办?
-**A3**: 检查 (a) KRB5CCNAME 是否指向对了(有的系统默认 /tmp/krb5cc_UID),(b) 权限位是否 600,(c) ccache 格式是否为 FILE:(有些系统默认 KEYRING:)。
-**Q4**: 目标 SMB 报 KDC_ERR_S_PRINCIPAL_UNKNOWN,票据没问题啊?
-**A4**: SPN 不匹配。请求票据时的 sname 必须和访问时的 SPN 一致(cifs/hostname.fqdn 而不是 cifs/IP)。改用 FQDN 且大小写与 SPN 注册一致。
-**Q5**: 走了半天都是协议层错,是不是根本环境不支持?
-**A5**: 【转向】放弃 Kerberos 落地,用 PtH/NTLM 落地。Kerberos 洁癖是自找的,如果场景允许 NTLM 就用 NTLM,别为了纯粹强撑。
+### TGT/TGS を取得後、どう着地して使うか
+**Q1**: 手元に .ccache または .kirbi チケットがある。Linux 攻撃機で impacket に使いたい。どうする?
+**A1**: `export KRB5CCNAME=/path/to/ticket.ccache` とし、全 impacket スクリプトに `-k -no-pass` を付け、`-dc-ip` で対象 DC を指定し、同時に /etc/hosts に対象マシンと DC の FQDN 解決を追加する(Kerberos は厳格に SPN に従い、IP 直結は失敗する)。
+**Q2**: kirbi を ccache へ変換するツールは?
+**A2**: impacket の ticketConverter.py、または Rubeus で直接 /ptt で現在のセッションへ注入。注意:kirbi はリトルエンディアン保存の ASN.1 で、手で改変しない。
+**Q3**: チケットを注入したが `klist` が空と表示する場合は?
+**A3**: (a)KRB5CCNAME が正しい場所を指すか(一部システムはデフォルト /tmp/krb5cc_UID)。(b)権限ビットが 600 か。(c)ccache 形式が FILE: か(一部システムはデフォルト KEYRING:)。
+**Q4**: 対象 SMB が KDC_ERR_S_PRINCIPAL_UNKNOWN を報告。チケットは正常のはず?
+**A4**: SPN 不一致。チケットリクエスト時の sname がアクセス時の SPN と一致しなければならない(cifs/hostname.fqdn であって cifs/IP ではない)。FQDN を使い、大文字小文字を SPN 登録と一致させる。
+**Q5**: ずっとプロトコル層エラーだ。環境がそもそも非対応なのか?
+**A5**: 【転換】Kerberos 着地を諦め、PtH/NTLM で着地する。Kerberos への潔癖は自ら招いたもの。場面が NTLM を許すなら NTLM を使う。純粋性のために強行しない。
 
-### Silver Ticket:拿到服务账号 hash 后的一步登天
-**Q1**: 我爆出一个 MSSQL 服务账号的 NT hash,可以直接干什么?
-**A1**: 伪造 Silver Ticket 直接访问该 SPN 对应的服务,绕过 KDC,不产生 4768/4769 事件(只有目标机上的 4624)。适合"低调、单点、深挖数据"的场景。
-**Q2**: 用 Silver Ticket 访问 CIFS 报错,是不是 hash 不对?
-**A2**: 检查 (a) 是不是这个账号真的注册了 cifs/ SPN(而不是 mssql/),Silver Ticket 是按 SPN 伪造的,SPN 不对就用不了;(b) 域 SID 是否正确;(c) 服务账号是否启用了 AES,若是要用 aes256 key 而不是 NT hash。
-**Q3**: 目标启用了 PAC 签名校验(KB5008380/CVE-2022-37967),Silver Ticket 还能用吗?
-**A3**: 补丁后 PAC 完整签名和扩展 KDC 签名需要 krbtgt key,单纯服务账号 hash 伪造的 Silver Ticket 会被拒。【转向】用真实 TGS(通过 overpass-the-hash 走正常 KDC 换)或换 Golden Ticket。
-**Q4**: 那这个 hash 还有什么用?
-**A4**: 至少能 overpass-the-hash 请求真 TGS,横向到该账号 local admin 的机器;也可能是解开一堆 GPP 密码或旧应用连字符串的钥匙。别把 hash 只当 Silver Ticket 材料。
+### Silver Ticket:サービスアカウント hash を取得後の一段階昇天
+**Q1**: MSSQL サービスアカウントの NT hash を解読した。直接何ができる?
+**A1**: Silver Ticket を偽造して、その SPN に対応するサービスへ直接アクセスする。KDC を迂回し、4768/4769 イベントを生まない(対象機上の 4624 のみ)。「低調・単点・データ深掘り」の場面に適する。
+**Q2**: Silver Ticket で CIFS へアクセスしてエラー。hash が誤りか?
+**A2**: (a)このアカウントが本当に cifs/ SPN を登録しているか(mssql/ ではなく)。Silver Ticket は SPN ごとに偽造する。SPN が違えば使えない。(b)ドメイン SID が正しいか。(c)サービスアカウントが AES を有効化しているか。有効なら NT hash ではなく aes256 key を使う。
+**Q3**: 対象が PAC 署名検証を有効化している(KB5008380/CVE-2022-37967)。Silver Ticket はまだ使える?
+**A3**: パッチ後、PAC 完全署名と拡張 KDC 署名には krbtgt key が必要で、単純なサービスアカウント hash で偽造した Silver Ticket は拒否される。【転換】本物の TGS(overpass-the-hash で正常な KDC を経由して交換)または Golden Ticket へ切り替える。
+**Q4**: ではこの hash はまだ何に使える?
+**A4**: 最低限 overpass-the-hash で本物の TGS をリクエストし、そのアカウントの local admin のマシンへ横展開できる。また、GPP パスワードや旧アプリ接続文字列を解く鍵かもしれない。hash を Silver Ticket 材料としてだけ見ない。
 
-### Golden Ticket 什么时候该造、什么时候别造
-**Q1**: 拿到 krbtgt hash 了,现在就造 Golden Ticket 全域漫游?
-**A1**: 先冷静。Golden Ticket 极其显眼(默认 10 年有效期、PAC 里的 group 全塞满、TGT 用不常见 etype),现代 EDR/SIEM 都有专门规则。造之前:(a) 确认目标域没有 PAC 校验补丁强制,(b) 有效期改成合理值(几小时到几天),(c) 加密类型和用户名与真实 KDC 输出一致。
-**Q2**: 造完用不了,报 KRB_AP_ERR_MODIFIED,怎么办?
-**A2**: 90% 是 domain SID 错、krbtgt 版本(kvno)错、或者 krbtgt 密码已经被轮换过一次(hash 已作废)。核对 SID 用 `whoami /user` 的域部分,kvno 用 mimikatz 从 DC 上读。
-**Q3**: 造 Golden Ticket 后不到 5 分钟就被踢,怎么办?
-**A3**: 说明有实时监控(可能是基于 4769 中 TGS 请求源为伪造 TGT 的判别)。【转向】少用 Golden 多用 Silver,或走 DCSync + Skeleton Key,或干脆用 krbtgt hash 静默做隐蔽性更好的 Diamond/Sapphire Ticket(伪造只改必要字段,PAC 从真 TGT 复制)。
-**Q4**: 什么情况下 Golden Ticket 是最优解?
-**A4**: 一次性任务(比赛/演练的"拿旗子"阶段)、跨域漫游需要伪造成任意用户、krbtgt 已经拿到但对方明天就要重启域的窗口期。常规红队实战更倾向 Silver + DCSync 组合,持久更隐蔽。
+### Golden Ticket をいつ作るべきか、いつ作らないべきか
+**Q1**: krbtgt hash を取得した。今すぐ Golden Ticket を作って全域漫遊する?
+**A1**: まず冷静になる。Golden Ticket は極めて目立つ(デフォルト 10 年有効期間、PAC 内の group を満載、TGT が稀な etype を使う)。現代の EDR/SIEM には専用ルールがある。作る前に:(a)対象ドメインが PAC 検証パッチを強制していないことを確認。(b)有効期間を合理的な値(数時間から数日)に変更。(c)暗号種別とユーザー名を本物の KDC 出力と一致させる。
+**Q2**: 作ったが使えない。KRB_AP_ERR_MODIFIED を報告する場合は?
+**A2**: 九割は domain SID の誤り、krbtgt バージョン(kvno)の誤り、または krbtgt パスワードが既に一度ローテーションされ hash が失効している。SID は `whoami /user` のドメイン部分で照合し、kvno は mimikatz で DC 上から読む。
+**Q3**: Golden Ticket を作って 5 分未満で蹴られた場合は?
+**A3**: リアルタイム監視がある(4769 内の TGS リクエスト源が偽造 TGT である判別に基づく可能性)。【転換】Golden を減らし Silver を増やすか、DCSync + Skeleton Key へ進むか、krbtgt hash を静かに使ってより隠密な Diamond/Sapphire Ticket(必要なフィールドだけを偽造し、PAC を本物の TGT からコピー)を作る。
+**Q4**: Golden Ticket が最適解になるのはどんな場面?
+**A4**: 一度きりのタスク(競技/演習の「旗取り」段階)、任意ユーザーになりすましたクロスドメイン漫遊、krbtgt を取得済みで相手が明日ドメインを再起動する窓期。通常のレッドチーム実戦では Silver + DCSync の組み合わせを好む。持続的でより隠密。
 
-### DCSync 权限判据
-**Q1**: BloodHound 告诉我某账号有 GetChanges + GetChangesAll,我要立刻 DCSync 吗?
-**A1**: 是,但先算成本收益。DCSync 会在 DC 上产生 4662 事件(带 DS-Replication-Get-Changes GUID),防御方规则很标准。要 DCSync 就要有从 DC 拉数据到攻击机的通道,通道能不能过防火墙先确认。
-**Q2**: 通道不通(DC 出口被封),怎么办?
-**A2**: 在域内一台机器上落 impacket-secretsdump,把 DIT 拉到中转机再取。或者只同步单个用户(secretsdump 支持 -just-dc-user krbtgt),减少数据量和特征。
-**Q3**: DCSync 报 DRSUAPI RPC access denied,权限明明有,怎么办?
-**A3**: 检查 (a) 是否同时需要 GetChangesInFilteredSet(域启用了 confidentiality bit 时读某些属性要求),(b) 是不是 RODC(RODC 不能给),(c) 是不是走错了 DC(应该走目标域的 rw DC)。
-**Q4**: 权限确认没有,能不能"曲线获得"?
-**A4**: 【转向】(a) 找一个对 Domain 对象有 WriteDACL 的账号,给自己加 DCSync 权限(动静大),(b) 直接从 DC 主机取 NTDS.dit + SYSTEM(需要机器 admin),(c) 走 shadow copy / ntdsutil。
+### DCSync 権限判定基準
+**Q1**: BloodHound が、あるアカウントが GetChanges + GetChangesAll を持つと教えた。即 DCSync すべきか?
+**A1**: するが、先にコスト収益を計算する。DCSync は DC 上に 4662 イベント(DS-Replication-Get-Changes GUID 付き)を生み、防御側のルールは非常に標準的。DCSync するなら DC から攻撃機へデータを引く経路が要る。経路がファイアウォールを通れるかを先に確認する。
+**Q2**: 経路が通らない(DC の出口が封鎖)場合は?
+**A2**: ドメイン内のマシンに impacket-secretsdump を落とし、DIT を中継機へ引いてから回収する。または単一ユーザーだけ同期する(secretsdump は -just-dc-user krbtgt をサポート)。データ量と特徴を減らす。
+**Q3**: DCSync が DRSUAPI RPC access denied を報告。権限は確かにあるのに?
+**A3**: (a)GetChangesInFilteredSet も同時に必要か(ドメインが confidentiality bit を有効にし、一部属性を読むときに要求)。(b)RODC か(RODC は与えられない)。(c)誤った DC を打ったか(対象ドメインの rw DC を打つべき)。
+**Q4**: 権限がないと確認した。どう「曲線取得」する?
+**A4**: 【転換】(a)Domain オブジェクトに WriteDACL を持つアカウントを探し、自分に DCSync 権限を追加する(動きが大きい)。(b)DC ホストから直接 NTDS.dit + SYSTEM を取る(マシン admin が必要)。(c)shadow copy / ntdsutil へ進む。
 
-### 委派+ADCS 联动:什么时候切换
-**Q1**: 我在做委派链,但发现域装了 ADCS 且有 Enterprise CA,要不要切?
-**A1**: 强烈建议评估。ADCS ESC1/ESC4/ESC8 有些能"任意用户变 DA"一步到位,委派链要两三跳。判据:(a) certutil 或 Certipy 枚举出可申请的模板,(b) 有 UPN 可自定义/ClientAuth EKU/低申请权限,选一个 ESC 打。
-**Q2**: 没有 ADCS 或模板都硬,继续委派对吗?
-**A2**: 对。别为了新奇技术强行切,委派链在 ADCS 缺席的域是最稳定的提权方式。
-**Q3**: 两条路都能走,选哪条?
-**A3**: 隐蔽性:ADCS 请求证书事件更少见于常规告警,但 4886/4887 会被专业防御捕获;委派链 4769 请求频繁,但淹没在正常流量里。要看目标域的日志成熟度。
-**Q4**: 走 ADCS 一半发现 CA 服务器不在线,怎么办?
-**A4**: 【转向】立刻切回委派或 shadow credentials(不依赖 CA,只需要 DC PKINIT)。不要在等一个服务修好这种事情上耗时间。
+### 委任+ADCS 連動:いつ切り替えるか
+**Q1**: 委任チェーンを進めているが、ドメインに ADCS があり Enterprise CA があると判明した。切り替えるべきか?
+**A1**: 強く評価を推奨する。ADCS ESC1/ESC4/ESC8 の一部は「任意ユーザーを一段階で DA に」できる。委任チェーンは二〜三ホップ要る。判定基準:(a)certutil または Certipy で申請可能なテンプレートを列挙。(b)UPN カスタマイズ可/ClientAuth EKU/低申請権限があれば、ESC をひとつ選んで打つ。
+**Q2**: ADCS がない、またはテンプレートが全部硬い。委任を続けるべきか?
+**A2**: 続ける。新奇な技術のために無理に切り替えない。委任チェーンは ADCS が不在のドメインで最も安定した権限昇格方式である。
+**Q3**: 両経路とも通る。どちらを選ぶ?
+**A3**: 隠密性:ADCS の証明書リクエストイベントは通常のアラートに少ないが、4886/4887 は専門防御に捕捉される。委任チェーンの 4769 リクエストは頻繁だが、正常トラフィックに埋もれる。対象ドメインのログ成熟度による。
+**Q4**: ADCS を進めて半分で CA サーバーがオフラインと判明した場合は?
+**A4**: 【転換】即座に委任または shadow credentials(CA 不要で DC PKINIT だけでよい)へ切り替える。サービスの修復を待つようなことに時間を費やさない。
 
-### 打印机 Spooler 强制认证被禁
-**Q1**: 我想用 SpoolSample 让 DC 回连一台非约束委派机器,但 spooler 服务被关了,怎么办?
-**A1**: 【正交转向】其他 coerce 技术:PetitPotam(EFSRPC)、DFSCoerce(NetrDfsAddStdRoot)、ShadowCoerce(FSRVP)、CheeseOunce(WebClient)。每种依赖不同服务和补丁版本,枚举 DC 开放的 named pipe / 服务后选。
-**Q2**: 所有 coerce 都试了没反应,是不是被 WebClient 类补丁堵了?
-**A2**: 检查 (a) DC 的补丁版本(KB 号),(b) SMB 签名是否强制(强制则 relay 也走不了),(c) 有没有装 EDR 主动阻断 EFSRPC。都堵死就【转向】不依赖 coerce 的路线:AS-REP、密码喷洒、ADCS。
-**Q3**: coerce 成功但没抓到 hash/ticket?
-**A3**: 检查监听端(ntlmrelayx / Responder / krbrelayx)配置是否正确、监听端口是否被防火墙拦、SMB 签名要求。抓不到就是链没闭环,不是 coerce 失败。
+### プリンタ Spooler 強制認証が無効化された
+**Q1**: SpoolSample で DC に非制約委任マシンへ逆接続させたいが、spooler サービスが無効化されている。どうする?
+**A1**: 【直交転換】他の coerce 技術。PetitPotam(EFSRPC)、DFSCoerce(NetrDfsAddStdRoot)、ShadowCoerce(FSRVP)、CheeseOunce(WebClient)。それぞれ依存するサービスとパッチバージョンが異なる。DC が開放する named pipe / サービスを列挙してから選ぶ。
+**Q2**: 全 coerce を試したが反応がない。WebClient 系パッチで塞がれたか?
+**A2**: (a)DC のパッチバージョン(KB 番号)。(b)SMB 署名が強制か(強制なら relay も通らない)。(c)EDR が EFSRPC を能動遮断していないか。全部塞がれば【転換】coerce 非依存の経路へ。AS-REP、パスワードスプレー、ADCS。
+**Q3**: coerce は成功したが hash/ticket を取得できない?
+**A3**: リスニング端(ntlmrelayx / Responder / krbrelayx)の設定が正しいか、リスニングポートがファイアウォールに遮られていないか、SMB 署名要求を確認する。取れないのはチェーンが閉じていないのであって、coerce の失敗ではない。
 
-### samAccountName Spoofing(CVE-2021-42287/42278)可用性判据
-**Q1**: 我有一个普通域用户,DC 没打 11 月 2021 之后的补丁,能一步到 DA 吗?
-**A1**: 有戏。前提:(a) MachineAccountQuota > 0 允许我建机器账号,(b) 我能改自己账号的 sAMAccountName 属性。noPac 攻击流程:建 fake 机器账号 → 改其名为 DC(去掉 $)→ 请求带 PAC 的 TGT 时 KDC 会把 PAC 里 sid 设为真 DC → S4U2Self 拿 DA 票据。
-**Q2**: 补丁打了(2021-11 之后)还能用吗?
-**A2**: 基本封死。别浪费时间,【转向】其他 CVE(Zerologon 也可能没打,先试)或 ADCS/委派。
-**Q3**: MachineAccountQuota=0 怎么办?
-**A3**: 找一个我能改 sAMAccountName 的已有账号(需要 WriteProperty),或者一个 kerberoast 出来的服务账号,套用同样的技巧。核心不是"创建机器账号",是"控制一个能被 KDC 当作机器的账号"。
-**Q4**: 建了机器账号但改名报错?
-**A4**: 检查 (a) 命名冲突(DC 主机名已存在),要用不冲突的过渡名,(b) sAMAccountName 属性是否被 GPO 限制修改,(c) 是否被 ACL 拒绝写入。
+### samAccountName Spoofing(CVE-2021-42287/42278)の利用可能性判定基準
+**Q1**: 一般ドメインユーザーを持ち、DC が 2021 年 11 月以降のパッチを当てていない。一段階で DA へ行けるか?
+**A1**: 見込みあり。前提:(a)MachineAccountQuota > 0 でマシンアカウントを作成できる。(b)自分のアカウントの sAMAccountName 属性を変更できる。noPac 攻撃フロー:fake マシンアカウント作成 → その名前を DC に変更($ を外す)→ PAC 付き TGT をリクエストすると KDC が PAC 内の sid を本物の DC に設定 → S4U2Self で DA チケットを取得。
+**Q2**: パッチ済み(2021-11 以降)でも使えるか?
+**A2**: ほぼ封鎖。時間を無駄にせず、【転換】他の CVE(Zerologon も未パッチかもしれない。先に試す)または ADCS/委任へ。
+**Q3**: MachineAccountQuota=0 の場合は?
+**A3**: sAMAccountName を変更できる既存アカウント(WriteProperty が必要)か、Kerberoast で得たサービスアカウントを探し、同じテクニックを適用する。核心は「マシンアカウントの作成」ではなく「KDC にマシンとして扱われるアカウントの制御」である。
+**Q4**: マシンアカウントを作ったが改名でエラー?
+**A4**: (a)命名衝突(DC ホスト名が既存)。衝突しない過渡名を使う。(b)sAMAccountName 属性が GPO で変更制限されていないか。(c)ACL に書き込み拒否されていないか。
 
-### 密码喷洒和 Kerberos 结合:先 SMB 还是先 Kerberos
-**Q1**: 想密码喷洒但担心 SMB 触发账号锁定策略,能走 Kerberos 吗?
-**A1**: 可以,而且推荐。用 Kerberos AS-REQ 做喷洒(kerbrute passwordspray),协议层少一两级,产生 4771 而不是 4625,但 badPwdCount 仍会累加。
-**Q2**: 那锁定风险呢?
-**A2**: 仍然有,badPwdCount 达到阈值同样锁账号。策略:每轮尝试 <= (lockout threshold - 2),两轮之间等 observation window 过去(默认 30 分钟)。速度慢是必要的代价。
-**Q3**: 域没有明确锁定策略(阈值 0)怎么办?
-**A3**: 起飞。但仍要控制并发,4771 洪峰依然会告警。合理速率是每分钟 <=10 次,分散源。
-**Q4**: 喷了一轮全 preauth failed,连一个都没成?
-**A4**: 检查 (a) 用户名格式是否要 UPN(user@REALM)而不是 sAMAccountName,(b) 是不是把机器账号一起喷了(全部失败),(c) realm 大小写。整体零命中往往是格式而不是密码错。
+### パスワードスプレーと Kerberos の組み合わせ:まず SMB か Kerberos か
+**Q1**: パスワードスプレーをしたいが、SMB がアカウントロックポリシーを誘発するのが心配だ。Kerberos でできるか?
+**A1**: できる。推奨もする。Kerberos AS-REQ でスプレーする(kerbrute passwordspray)。プロトコル層が一〜二段少なく、4771 を生む(4625 ではない)。ただし badPwdCount はやはり累積する。
+**Q2**: ではロックリスクは?
+**A2**: やはりある。badPwdCount が閾値に達すればアカウントをロックする。戦略:各ラウンドの試行回数 <= (lockout threshold - 2) とし、ラウンド間に observation window が過ぎるのを待つ(デフォルト 30 分)。速度が遅いのは必要な代償。
+**Q3**: ドメインに明確なロックポリシーがない(閾値 0)場合は?
+**A3**: 飛べる。ただし並行数を制御する。4771 の洪峰はやはりアラートする。合理速度は毎分 10 回以下、発信元を分散。
+**Q4**: 一ラウンドスプレーして全 preauth failed、ひとつも成功しない?
+**A4**: (a)ユーザー名形式が UPN(user@REALM)であるべきか、sAMAccountName ではないか。(b)マシンアカウントも一緒にスプレーしていないか(全部失敗)。(c)realm の大文字小文字。全体ゼロヒットはしばしば形式の問題であってパスワードの問題ではない。
 
-### 拿到 gMSA 密码的路径
-**Q1**: LDAP 枚举到 gMSA 账号(msDS-ManagedServiceAccount),它比普通服务账号有什么不同?
-**A1**: 密码由 KDC 每 30 天自动轮换,复杂度极高(240 字节),Kerberoast 基本无望离线爆破。但 msDS-ManagedPassword 属性可被特定 group(PrincipalsAllowedToRetrieveManagedPassword)读取,直接拿明文 blob。
-**Q2**: 我不在 PrincipalsAllowedToRetrieveManagedPassword 里,怎么办?
-**A2**: 找一个是的账号,或找一个对 gMSA 对象有 WriteProperty 权的账号把自己加进去。gMSAdumper 工具能读 blob 并转 NT hash。
-**Q3**: 读到 blob 但 gMSAdumper 报错,怎么办?
-**A3**: 检查 (a) LDAP over SSL 是否连通(msDS-ManagedPassword 是 confidential attribute,必须 LDAPS),(b) 时钟偏差,(c) 是否读的是 currentPassword 段(blob 结构有 current/previous/query interval)。
-**Q4**: 完全不能读怎么办?
-**A4**: 【转向】gMSA 通常挂在某台机器上跑服务,拿下那台机器的 SYSTEM 权限后,机器自己就能读 blob。绕过 ACL 的方式是"到用得着这个 gMSA 的机器上去"。
+### gMSA パスワードの取得経路
+**Q1**: LDAP 列挙で gMSA アカウント(msDS-ManagedServiceAccount)を見つけた。通常のサービスアカウントと何が違う?
+**A1**: パスワードは KDC が 30 日ごとに自動ローテーションし、複雑度が極めて高い(240 バイト)。Kerberoast はオフライン解読がほぼ絶望。ただし msDS-ManagedPassword 属性は特定グループ(PrincipalsAllowedToRetrieveManagedPassword)が読め、平文 blob を直接取得できる。
+**Q2**: PrincipalsAllowedToRetrieveManagedPassword にいない場合は?
+**A2**: その中にいるアカウントを探すか、gMSA オブジェクトに WriteProperty 権限を持つアカウントを探して自分を追加する。gMSAdumper ツールが blob を読み NT hash へ変換できる。
+**Q3**: blob を読んだが gMSAdumper がエラー。どうする?
+**A3**: (a)LDAP over SSL が通るか(msDS-ManagedPassword は confidential attribute で LDAPS 必須)。(b)クロックずれ。(c)currentPassword セグメントを読んでいるか(blob 構造に current/previous/query interval がある)。
+**Q4**: 完全に読めない場合は?
+**A4**: 【転換】gMSA は通常、あるマシン上でサービスを動かす。そのマシンの SYSTEM 権限を取れば、マシン自身が blob を読める。ACL を迂回する方式は「この gMSA を使うマシンへ行く」こと。
 
-### 跨域/跨林信任下的 Kerberos 攻击
-**Q1**: 我拿下 sub.corp.local,目标是 corp.local(父域),Kerberos 路径怎么走?
-**A1**: 经典路径是伪造带 SID History 的 Golden Ticket。前提:拿到子域 krbtgt hash,伪造 TGT 时把 --sids 加上父域的 Enterprise Admins SID(S-1-5-21-...-519)。补丁前 KDC 不校验 SID Filtering。
-**Q2**: 父域启用了 SID Filtering(quarantine)怎么办?
-**A2**: 【转向】(a) 用子域 DA 到父域找信任账号(TDO,trust key)拿 trust ticket 然后 forge inter-realm TGT,(b) 走 unconstrained 委派诱导父域 DA 回连,(c) 走 ADCS 若父域 CA 信任子域用户。
-**Q3**: 林信任(不是域信任)呢?
-**A3**: 林内父子域信任默认双向可传递,SID History 通;林间信任默认 SID Filtering 开,难度陡增。林间要走 unconstrained 委派 + coerce,或者利用配置错误的 TGT delegation trust 属性。
-**Q4**: 都不通,横向到目标林还有必要吗?
-**A4**: 有,但可能不走 Kerberos。查看两林间是否有共享的 Web/SSO/Federation(ADFS/Azure AD Connect),那些是 Kerberos 之外的横向通道。
+### クロスドメイン/クロスフォレスト信頼下の Kerberos 攻撃
+**Q1**: sub.corp.local を取った。目標は corp.local(親ドメイン)。Kerberos 経路はどう進む?
+**A1**: 古典経路は SID History 付き Golden Ticket の偽造。前提:子ドメイン krbtgt hash を取得し、TGT 偽造時に --sids に親ドメインの Enterprise Admins SID(S-1-5-21-...-519)を加える。パッチ前は KDC が SID Filtering を検証しない。
+**Q2**: 親ドメインが SID Filtering(quarantine)を有効化している場合は?
+**A2**: 【転換】(a)子ドメイン DA で親ドメインへ信頼アカウント(TDO、trust key)を探して trust ticket を取り、inter-realm TGT を forge。(b)非制約委任で親ドメイン DA に逆接続させる。(c)親ドメイン CA が子ドメインユーザーを信頼するなら ADCS へ。
+**Q3**: フォレスト信頼(ドメイン信頼でない)は?
+**A3**: フォレスト内親子ドメイン信頼はデフォルト双方向・推移的で、SID History が通る。フォレスト間信頼はデフォルト SID Filtering が有効で、難度が急上昇。フォレスト間は非制約委任 + coerce、または設定誤りの TGT delegation trust 属性を利用する。
+**Q4**: 全部通らない。対象フォレストへ横展開する必要はまだあるか?
+**A4**: あるが、Kerberos を経由しない可能性がある。両フォレスト間に共有の Web/SSO/Federation(ADFS/Azure AD Connect)があるかを確認する。それらは Kerberos 以外の横展開経路である。
 
-### Kerberos 请求走代理:走 SOCKS 还是 impacket -k
-**Q1**: 我在 C2 里,只能走 SOCKS 到内网,impacket -k 能行吗?
-**A1**: 能,但坑多。Kerberos 严格依赖 DNS 和时间。SOCKS 必须支持 TCP(某些 proxychains 版本对 UDP 支持有限,Kerberos AS-REQ 走 UDP 88 会失败),用 proxychains-ng 且强制 TCP 88(KDC 大部分都支持 TCP fallback)。
-**Q2**: TCP 88 走通了但 DNS 走不通怎么办?
-**A2**: 手动 /etc/hosts 加 FQDN,并在环境变量或 krb5.conf 里指定 KDC 地址,绕过 DNS SRV 查找。
-**Q3**: 代理带宽小,DCSync 拉全域很慢怎么办?
-**A3**: 只 dump 关键账号(krbtgt、DA 组成员),用 secretsdump 的 -just-dc-user。别一把梭全域。
-**Q4**: 代理不稳一段就断,Kerberos 交互总失败?
-**A4**: 【转向】把 Kerberos 那步放到内网中转机,C2 只发命令。远程执行拿到的 hash/票据落到中转机磁盘,再单文件回传,减少往返。
+### Kerberos リクエストをプロキシ経由で: SOCKS か impacket -k か
+**Q1**: C2 内にいて、SOCKS でしか内網へ行けない。impacket -k は使えるか?
+**A1**: 使えるが落とし穴が多い。Kerberos は厳格に DNS と時刻に依存する。SOCKS は TCP をサポートしなければならない(一部の proxychains 版は UDP サポートが限定的で、Kerberos AS-REQ は UDP 88 を使うと失敗する)。proxychains-ng を使い、TCP 88 を強制する(KDC の大部分は TCP fallback をサポート)。
+**Q2**: TCP 88 は通ったが DNS が通らない場合は?
+**A2**: 手動で /etc/hosts に FQDN を追加し、環境変数または krb5.conf で KDC アドレスを指定して、DNS SRV ルックアップを迂回する。
+**Q3**: プロキシ帯域が小さく、DCSync で全域を引くのが遅い場合は?
+**A3**: 重要アカウント(krbtgt、DA グループメンバー)だけ dump し、secretsdump の -just-dc-user を使う。全域を一括で引かない。
+**Q4**: プロキシが不安定で断続的に切れる。Kerberos 対話がいつも失敗する?
+**A4**: 【転換】Kerberos の段を内網中継機へ置き、C2 はコマンド送信だけにする。リモート実行で得た hash/チケットを中継機のディスクへ落とし、その後単一ファイルで回送する。往復を減らす。
 
-### Kerberoast 输出 hash 格式不识别
-**Q1**: Rubeus 输出的 $krb5tgs$23$ 格式 hashcat 不认,怎么办?
-**A1**: 版本问题。检查 hashcat 版本(-m 13100)和 hash 首行格式,某些 Rubeus 版本有字段顺序或校验和位置的输出差异。可以用 impacket 的 GetUserSPNs.py 再抓一次比对。
-**Q2**: hash 格式对但 hashcat 说 no hashes loaded?
-**A2**: 常见:文件编码是 UTF-16(Rubeus 输出到 Windows console 可能带 BOM)。用 dos2unix / iconv 转 UTF-8 无 BOM。
-**Q3**: 一切都对但爆破没结果?
-**A3**: 换 john,某些 etype=18 的 hash john 支持更好;或确认 hash 里的 realm、user 大小写与真实一致。
-**Q4**: 都换了还爆不出?
-**A4**: 说明这个账号密码真的复杂或已经用 gMSA,该收工换目标了,别在算力上耗光时间。
+### Kerberoast 出力の hash 形式が認識されない
+**Q1**: Rubeus が出力する $krb5tgs$23$ 形式を hashcat が認識しない。どうする?
+**A1**: バージョン問題。hashcat のバージョン(-m 13100)と hash の先頭形式を確認する。一部の Rubeus 版はフィールド順序やチェックサム位置に出力差がある。impacket の GetUserSPNs.py で再度取得して比較できる。
+**Q2**: hash 形式は合っているが hashcat が no hashes loaded と言う?
+**A2**: よくあるのはファイルエンコーディングが UTF-16(Rubeus が Windows コンソールへ出力し BOM が付きうる)。dos2unix / iconv で UTF-8 の BOM なしへ変換する。
+**Q3**: 全部合っているが解読結果が出ない?
+**A3**: john に切り替える。一部の etype=18 の hash は john の方が対応が良い。または hash 内の realm、user の大文字小文字が本物と一致するか確認する。
+**Q4**: 全部切り替えても解けない?
+**A4**: このアカウントのパスワードが本当に複雑か、既に gMSA を使っていることを示す。作業を終えて対象を変えるべき。算力で時間を消費しない。
 
-### 在没有 mimikatz 的机器上抽 TGT
-**Q1**: 目标机装了 EDR,mimikatz 立刻死,怎么抽内存里的 TGT?
-**A1**: 【转向】不用 mimikatz:(a) Rubeus 的 monitor / triage / dump 从 LSA 抽,但也会被 EDR 拦,(b) 走 comsvcs.dll MiniDump procdump lsass.exe 拿 dmp 回本地解析,(c) 用 nanodump/dumpert 之类的 syscall 直调工具,(d) 硬盘取 registry hive(SAM/SECURITY),里面没有 TGT 但有账号 hash。
-**Q2**: LSASS 被 PPL 保护 dump 不了怎么办?
-**A2**: (a) 加载 mimidrv 驱动绕(需要 admin,动静大),(b) 找 signed driver LOL(自带漏洞驱动 BYOVD),(c) 直接放弃 dump,走 shadow credentials 或 delegation 从协议层拿票据。
-**Q3**: 都不行怎么办?
-**A3**: 【正交】从密码入手而不是从票据。键盘记录、浏览器凭据、DPAPI、SCCM 客户端配置文件里的明文密码,这些不经过 LSASS。
+### mimikatz のないマシンで TGT を抜く
+**Q1**: 対象マシンに EDR があり、mimikatz が即死。メモリ内の TGT をどう抜く?
+**A1**: 【転換】mimikatz を使わない。(a)Rubeus の monitor / triage / dump で LSA から抜く(ただし EDR に遮られうる)。(b)comsvcs.dll MiniDump で procdump lsass.exe の dmp を取り、ローカルで解析。(c)nanodump/dumpert のような syscall 直呼びツール。(d)ディスクから registry hive(SAM/SECURITY)を取る。TGT はないがアカウント hash はある。
+**Q2**: LSASS が PPL 保護で dump できない場合は?
+**A2**: (a)mimidrv ドライバをロードして迂回(admin が必要、動きが大きい)。(b)signed driver の LOL(既知の脆弱ドライバ BYOVD)を探す。(c)直接 dump を諦め、shadow credentials や delegation でプロトコル層からチケットを取る。
+**Q3**: 全部だめな場合は?
+**A3**: 【直交】パスワードから入るのであってチケットからではない。キーロガー、ブラウザ認証情報、DPAPI、SCCM クライアント設定ファイルの平文パスワード。これらは LSASS を経由しない。
 
-### 只有机器账号 hash 能做什么
-**Q1**: 拿到 MACHINE$ 的 NT hash(不是普通用户),能做什么?
-**A1**: 机器账号也能请求自己的 TGT。可以:(a) 伪装成机器身份访问它有权访问的资源,(b) 如果这台机是 DC,直接 DCSync,(c) 如果这台机被配置了 RBCD/委派链,继续利用。
-**Q2**: 机器账号密码随机 120 字符怎么用 hash?
-**A2**: hash 就够了,不需要明文。overpass-the-hash 用 hash 请求 TGT,或直接 pass-the-hash 走 SMB(机器账号在自己机器上就是 SYSTEM 等价)。
-**Q3**: 机器 hash 一段时间后失效,怎么办?
-**A3**: 机器账号默认每 30 天轮换密码。要保鲜:(a) 提取后立刻用,(b) 或者禁用轮换(改 GPO 或注册表 DisablePasswordChange,动静大),(c) 更好的做法是拿到 hash 立刻做持久化(建 shadow credential、加 RBCD),不依赖 hash 本身。
-**Q4**: 机器账号 hash 不能横向到其他机器怎么办?
-**A4**: 意料之中,机器账号默认只对自己有权。它的价值在"用它做 S4U/RBCD 的中间桥",而不是直接横向。
+### マシンアカウント hash だけで何ができるか
+**Q1**: MACHINE$ の NT hash(一般ユーザーでない)を取得した。何ができる?
+**A1**: マシンアカウントも自分の TGT をリクエストできる。(a)マシン身元になりすまして、それがアクセス権を持つリソースへアクセス。(b)このマシンが DC なら直接 DCSync。(c)このマシンが RBCD/委任チェーンに設定されていれば利用を続ける。
+**Q2**: マシンアカウントのパスワードはランダム 120 文字。hash をどう使う?
+**A2**: hash があれば十分で、平文は不要。overpass-the-hash で hash から TGT をリクエストするか、直接 pass-the-hash で SMB へ行く(マシンアカウントは自分のマシン上では SYSTEM 相当)。
+**Q3**: マシン hash が時間経過で失効する。どうする?
+**A3**: マシンアカウントはデフォルト 30 日ごとにパスワードをローテーションする。鮮度を保つには:(a)抽出後即使用。(b)ローテーションを無効化(GPO またはレジストリ DisablePasswordChange を変更。動きが大きい)。(c)より良いのは、hash を取得したら即永続化(shadow credential 作成、RBCD 追加)し、hash 自体に依存しないこと。
+**Q4**: マシンアカウント hash で他マシンへ横展開できない場合は?
+**A4**: 想定内である。マシンアカウントはデフォルトで自分にしか権限がない。その価値は「S4U/RBCD の中間ブリッジとして使う」ことであって、直接横展開ではない。
 
-### shadow credentials(msDS-KeyCredentialLink)什么时候用
-**Q1**: 我对某账号有 GenericWrite,拿 hash 用 targetedKerberoast 还是 shadow credentials?
-**A1**: shadow credentials 更强:直接给对方账号加一个我控制的公钥,然后 PKINIT 换出 NT hash 和 TGT,不用等对方登录、不用爆破。前提:域装了 ADCS 或 DC 是 2016+ 支持 PKINIT。
-**Q2**: 域没装 ADCS 呢?
-**A2**: 只要 DC 支持 PKINIT 就行,不一定需要 ADCS(DC 有自签证书用于 KDC 认证)。用 pywhisker/certipy 添加 msDS-KeyCredentialLink,然后 gettgtpkinit.py 换 TGT + PAC_REQUESTOR 拿 NT hash。
-**Q3**: PKINIT 请求报错 KDC_ERR_CLIENT_NOT_TRUSTED?
-**A3**: 检查 (a) 我添加的 keyCredential 结构是否正确(DeviceID/KeyMaterial),(b) DC 时间,(c) DC 是否禁用了 PKINIT(极少见)。或直接换个可写目标试。
-**Q4**: 目标账号 msDS-KeyCredentialLink 已经有值,我覆盖会不会打破正常登录?
-**A4**: 它是多值属性,追加不会覆盖。但操作后要清理,红队讲究可回滚。
+### shadow credentials(msDS-KeyCredentialLink)をいつ使うか
+**Q1**: あるアカウントに GenericWrite がある。hash を取るのに targetedKerberoast か shadow credentials か?
+**A1**: shadow credentials の方が強い。相手アカウントに自分の制御する公開鍵を直接追加し、PKINIT で NT hash と TGT を交換する。相手のログオンを待たず、ブルートフォースも不要。前提:ドメインに ADCS があるか、DC が 2016+ で PKINIT をサポート。
+**Q2**: ドメインに ADCS がない場合は?
+**A2**: DC が PKINIT をサポートすればよい。ADCS は必ずしも要らない(DC は KDC 認証用の自己署名証明書を持つ)。pywhisker/certipy で msDS-KeyCredentialLink を追加し、gettgtpkinit.py で TGT + PAC_REQUESTOR から NT hash を取る。
+**Q3**: PKINIT リクエストが KDC_ERR_CLIENT_NOT_TRUSTED を報告?
+**A3**: (a)自分が追加した keyCredential 構造が正しいか(DeviceID/KeyMaterial)。(b)DC 時刻。(c)DC が PKINIT を無効化していないか(極めて稀)。または書き込み可能な別対象を直接試す。
+**Q4**: 対象アカウントの msDS-KeyCredentialLink に既に値がある。上書きすると正常ログオンを壊さないか?
+**A4**: 多値属性であり、追記は上書きしない。ただし操作後に清掃する。レッドチームはロールバック可能性を重んじる。
 
-### 服务账号密码策略推断
-**Q1**: 打了半天服务账号都密码复杂,是不是策略强?
-**A1**: 检查域密码策略(net accounts /domain 或 LDAP 读 pwdProperties)。同时看细粒度密码策略(PSO)是否针对服务账号 OU 单独放宽。有时候域整体强,但历史遗留服务账号 OU 有个 4 位数字策略。
-**Q2**: PSO 我没权限读,怎么推?
-**A2**: 从爆出来的 pattern 反推——如果爆出的都是 8 位,策略最小很可能就是 8;都带大小写数字,复杂度启用;都不带特殊字符,可能没启用符号要求。样本积累有用。
-**Q3**: 完全爆不出来怎么办?
-**A3**: 【转向】看谁能改这些账号的密码——如果我控制了一个对服务账号有 ForceChangePassword 权限的账号,直接改而不是爆。BloodHound 有专门的边。
+### サービスアカウントのパスワードポリシー推測
+**Q1**: 長く打ってもサービスアカウントのパスワードが複雑だ。ポリシーが強いのか?
+**A1**: ドメインパスワードポリシーを確認する(net accounts /domain または LDAP で pwdProperties を読む)。同時に細粒度パスワードポリシー(PSO)がサービスアカウント OU を個別に緩めていないかを見る。ドメイン全体が強くても、歴史的遺留のサービスアカウント OU に 4 桁数字ポリシーがあることがある。
+**Q2**: PSO を読む権限がない。どう推測する?
+**A2**: 解けた pattern から逆算する。解けたのが全部 8 桁ならポリシー最小は 8 の可能性が高い。全部大文字小文字数字付きなら複雑度有効。全部特殊記号なしなら記号要件が未有効の可能性。サンプル蓄積は有用。
+**Q3**: 完全に解けない場合は?
+**A3**: 【転換】誰がこれらのアカウントのパスワードを変更できるかを見る。サービスアカウントに ForceChangePassword 権限を持つアカウントを制御していれば、解くのではなく直接変更する。BloodHound に専用エッジがある。
 
-### Kerberos over HTTPS(Kerberos KDC Proxy)可用吗
-**Q1**: 外网只暴露 443,能不能通过 KDC Proxy 从公网做 Kerberos?
-**A1**: 可以,如果目标域启用了 KKDCP(Kerberos Key Distribution Center Proxy Protocol,MS-KKDCP)。判据:是否有 /KdcProxy 端点开放(HTTPS POST)。
-**Q2**: 端点开但请求被拒?
-**A2**: KKDCP 严格要求 realm 匹配和证书验证。有时目标只给自家 VPN 客户端用,IP 白名单。
-**Q3**: KKDCP 不可用,还想外网打 Kerberos?
-**A3**: 【转向】ADFS/Azure AD 混合身份的路线,或者干脆先建 VPN/tunnel 到内网再打。别硬撑。
+### Kerberos over HTTPS(Kerberos KDC Proxy)は使えるか
+**Q1**: 外網は 443 しか露出していない。KDC Proxy で公網から Kerberos できるか?
+**A1**: できる。対象ドメインが KKDCP(Kerberos Key Distribution Center Proxy Protocol、MS-KKDCP)を有効化していれば。判定基準:/KdcProxy エンドポイントが開放されているか(HTTPS POST)。
+**Q2**: エンドポイントは開いているがリクエストが拒否される?
+**A2**: KKDCP は realm 一致と証明書検証を厳格に要求する。対象が自社 VPN クライアント専用で、IP ホワイトリストの場合がある。
+**Q3**: KKDCP が使えない。外網から Kerberos を打ちたい場合は?
+**A3**: 【転換】ADFS/Azure AD ハイブリッド身元の経路、または先に VPN/tunnel を張って内網へ入ってから打つ。無理に続けない。
 
-### 打完 Kerberos 攻击后的清理
-**Q1**: 用 ptt 注入了票据,做完事怎么清?
-**A1**: `klist purge`(Windows)或 `kdestroy` / rm ccache 文件(Linux)。别留在磁盘,内存注入的重启即失。
-**Q2**: DC 上 4768/4769/4771 日志已经产生了,能清吗?
-**A2**: 通常不能——要清 DC 事件日志需要 DA 权限且动静巨大,清 log 本身是极强告警信号。红队策略是"节奏藏进正常流量",而不是清 log。
-**Q3**: 我伪造的 Golden Ticket 用完,krbtgt 是否需要重置来"清除痕迹"?
-**A3**: 不该我做。红队不做防御方的活儿。但要意识到:一次 krbtgt 泄露,防御方需要连续重置 krbtgt 两次(kvno+2)才能真正清除。我如果做过持久化利用这一点,还有窗口。
+### Kerberos 攻撃を打ち終えた後の清掃
+**Q1**: ptt でチケットを注入した。作業後どう消す?
+**A1**: `klist purge`(Windows)または `kdestroy` / rm ccache ファイル(Linux)。ディスクに残さない。メモリ注入は再起動で消える。
+**Q2**: DC 上の 4768/4769/4771 ログは既に生成された。消せるか?
+**A2**: 通常できない。DC イベントログを消すには DA 権限が必要で、動きが巨大。ログ消去自体が極めて強いアラートシグナルである。レッドチームの戦略は「テンポを正常トラフィックに隠す」ことであってログ消去ではない。
+**Q3**: 偽造した Golden Ticket を使い終えた。痕跡を消すために krbtgt をリセットすべきか?
+**A3**: 自分がやるべきではない。レッドチームは防御側の仕事をしない。ただし認識すべき:krbtgt が一度漏えいすると、防御側は krbtgt を連続二回リセット(kvno+2)して初めて完全に消せる。自分が永続化でこれを利用したなら、まだ窓がある。
 
-### Kerberos 攻击遇到 EDR 内联 hook 全灭
-**Q1**: Rubeus 在 EDR 面前秒死,ticket 都请求不了,怎么办?
-**A1**: 转协议层实现:impacket 从 Linux 攻击机走 SOCKS 到内网,不在 Windows 上跑任何 Rubeus/mimikatz。所有 Kerberos 交互从代理另一端完成。
-**Q2**: SOCKS 不通,一定要在 Windows 上做怎么办?
-**A2**: (a) Rubeus 源码级修改字符串+编译,(b) 用 execute-assembly through C2 内存加载,(c) 换 SharpKatz/其它冷门实现,(d) 自己写小工具只做需要的那一步(比如只做 S4U)。
-**Q3**: 上述都被杀怎么办?
-**A3**: 【正交转向】不做 Kerberos。改走 LDAP 攻击(GenericWrite ACL abuse 只需要 LDAP,不碰 KDC),或 ADCS 走 HTTPS,或 SMB 走 relay。Kerberos 不是唯一维度。
+### Kerberos 攻撃が EDR のインライン hook で全滅
+**Q1**: Rubeus が EDR の前で即死し、チケットすらリクエストできない。どうする?
+**A1**: プロトコル層実装へ転換する。impacket を Linux 攻撃機から SOCKS で内網へ走らせ、Windows 上で Rubeus/mimikatz を一切実行しない。全 Kerberos 対話をプロキシの反対側で完結させる。
+**Q2**: SOCKS が通らない。どうしても Windows 上でやる場合は?
+**A2**: (a)Rubeus のソースレベルで文字列変更+コンパイル。(b)C2 経由の execute-assembly でメモリロード。(c)SharpKatz/他冷門実装へ切り替え。(d)必要な一歩だけを行う自前の小ツールを書く(例: S4U だけ)。
+**Q3**: 上記全部が殺される場合は?
+**A3**: 【直交転換】Kerberos をやらない。LDAP 攻撃(GenericWrite ACL abuse は LDAP だけでよく、KDC に触れない)、または ADCS で HTTPS、または SMB で relay へ。Kerberos は唯一の次元ではない。
 
-### 委派链规划:BloodHound 边怎么读
-**Q1**: BloodHound 图里,AllowedToDelegate/AllowedToAct/AddAllowedToAct/ForceChangePassword/HasSPN 怎么组合最优?
-**A1**: 目标是从"我"到"目标"的最短路径。路径评分:每条边有"代价"(需要几个操作)。ForceChangePassword = 1 步(改密码,但影响业务),AllowedToDelegate = 1 步(直接 S4U),AddAllowedToAct = 2 步(改 RBCD + S4U)。选代价小且业务影响小的。
-**Q2**: BloodHound 数据老了(3 天前),现在还准吗?
-**A2**: ACL 变化频繁,组成员变化更频繁。关键跳点重新枚(用 SharpHound -c Session,DACL)确认。别信旧图直接打。
-**Q3**: BloodHound 找不到路径,是真没有还是数据不全?
-**A3**: 大概率数据不全。SharpHound 默认不采某些边(ACL 深度、GPO 链)。用 -c All 重采,或手动 LDAP 查 nTSecurityDescriptor 补齐。
+### 委任チェーン計画:BloodHound のエッジをどう読むか
+**Q1**: BloodHound 図で、AllowedToDelegate/AllowedToAct/AddAllowedToAct/ForceChangePassword/HasSPN をどう組み合わせるのが最適?
+**A1**: 目標は「自分」から「対象」への最短経路。経路スコアリング:各エッジに「コスト」(要る操作数)がある。ForceChangePassword = 1 手(パスワード変更。ただし業務に影響)、AllowedToDelegate = 1 手(直接 S4U)、AddAllowedToAct = 2 手(RBCD 変更 + S4U)。コストが小さく業務影響の小さいものを選ぶ。
+**Q2**: BloodHound データが古い(3 日前)。今も正確か?
+**A2**: ACL 変化は頻繁で、グループメンバー変化はさらに頻繁。重要な飛び点は再列挙する(SharpHound -c Session,DACL で確認)。旧図を直接信じて打たない。
+**Q3**: BloodHound が経路を見つけない。本当にないのかデータ不全か?
+**A3**: 高確率でデータ不全。SharpHound はデフォルトで一部エッジ(ACL 深度、GPO チェーン)を採取しない。-c All で再採取するか、手動 LDAP で nTSecurityDescriptor を照会して補完する。
 
-### Kerberos etype 降级:强制 RC4
-**Q1**: 目标账号支持 AES,但我想强制 KDC 用 RC4 加密返回,能做到吗?
-**A1**: 客户端在 AS-REQ/TGS-REQ 里指定 etype 顺序,KDC 会选客户端支持且账号支持的第一个。所以在请求里只声明 etype=23,如果账号的 msDS-SupportedEncryptionTypes 允许 RC4,KDC 会给 RC4 加密的 hash。
-**Q2**: 账号被强制 AES only(msDS-SupportedEncryptionTypes 只有 aes)怎么办?
-**A2**: 打不了 RC4 降级,只能爆 AES,或【转向】其他账号。
-**Q3**: 域策略"配置不为使用 Kerberos RC4"启用了怎么办?
-**A3**: KDC 会拒绝 RC4 请求。判据是 KDC_ERR_ETYPE_NOSUPP。这种域一般防御成熟度较高,考虑整体切路线。
+### Kerberos etype 降格:RC4 を強制する
+**Q1**: 対象アカウントが AES をサポートするが、KDC に RC4 暗号で返させたい。できるか?
+**A1**: クライアントは AS-REQ/TGS-REQ で etype 順序を指定し、KDC はクライアントがサポートし、アカウントもサポートする最初のものを選ぶ。したがってリクエストで etype=23 だけを宣言すれば、アカウントの msDS-SupportedEncryptionTypes が RC4 を許可する限り、KDC は RC4 暗号の hash を返す。
+**Q2**: アカウントが AES only を強制(msDS-SupportedEncryptionTypes が aes のみ)の場合は?
+**A2**: RC4 降格はできない。AES を解くか、【転換】他のアカウントへ。
+**Q3**: ドメインポリシー「Kerberos RC4 を使用しない構成」が有効化されている場合は?
+**A3**: KDC は RC4 リクエストを拒否する。判定基準は KDC_ERR_ETYPE_NOSUPP。この種のドメインは防御成熟度が高いことが多い。全体の経路切り替えを検討する。
 
-### 攻击 RODC 反噬风险
-**Q1**: 我识别到一台 RODC,可以直接 dump 它拿域内所有用户 hash 吗?
-**A1**: 不能。RODC 只缓存 msDS-RevealedList 里的账号(通常是本站点的少量用户),不缓存 DA。dump RODC 只能拿到部分账号。
-**Q2**: 那 RODC 有什么用?
-**A2**: (a) RODC 上有 KRBTGT_XXXXX 账号(带编号),这个 hash 可以造"部分域"的 Golden Ticket,签的 TGT 只能被 RODC 认可,不能被 rw DC 认可——除非配合已知漏洞绕过校验,(b) 从 RODC 看 msDS-Reveal-OnDemand-Group 反推被暴露的敏感账号。
-**Q3**: 打 RODC 出手轻还是重?
-**A3**: 轻。RODC 通常在分支办公室,监控没有总部严。但它的 hash 泄露不能直接漫游全域,不要期望过高。
+### RODC 攻撃の反噬リスク
+**Q1**: RODC を識別した。直接 dump してドメイン内全ユーザー hash を取れるか?
+**A1**: できない。RODC は msDS-RevealedList 内のアカウント(通常は当該サイトの少数ユーザー)だけをキャッシュし、DA をキャッシュしない。RODC を dump しても一部アカウントしか取れない。
+**Q2**: では RODC は何に使える?
+**A2**: (a)RODC 上に KRBTGT_XXXXX アカウント(番号付き)があり、この hash で「部分ドメイン」の Golden Ticket を作れる。署名した TGT は RODC にしか認められず、rw DC には認められない。ただし既知の脆弱性で検証を迂回する場合を除く。(b)RODC から msDS-Reveal-OnDemand-Group を見て、露出した機微アカウントを逆算する。
+**Q3**: RODC を打つ手は軽いか重いか?
+**A3**: 軽い。RODC は通常支社にあり、監視が本社ほど厳しくない。ただしその hash 漏えいは全域漫遊に直接つながらない。過度に期待しない。
 
-### 委派链遇到 Kerberos Armoring(FAST)
-**Q1**: 域启用了 Kerberos Armoring / Compound Identity,委派攻击是不是全废?
-**A1**: 未废但难度大增。FAST 会把 AS-REQ 用一个 armor TGT 包一层,预认证部分不再有 offline crackable material,AS-REP Roasting 直接死。但 Kerberoast(TGS-REP)仍可能可用,S4U 也仍可用。
-**Q2**: 判据是什么?
-**A2**: GPO 里"KDC 支持声明,复合身份验证和 Kerberos Armoring"设置为"始终提供声明"或"失败未装甲的身份验证请求"。可用 klist 或抓包看 AS-REQ 是否带 armor field。
-**Q3**: 有 FAST 但我还想做 AS-REP 类操作,怎么办?
-**A3**: 【转向】走密码喷洒(4771 仍会产生但没有可爆 blob)或走完全绕过 Kerberos 的路径(NTLM relay 到 LDAP/HTTP/ADCS)。
+### 委任チェーンが Kerberos Armoring(FAST)に遭遇
+**Q1**: ドメインが Kerberos Armoring / Compound Identity を有効化している。委任攻撃は全滅か?
+**A1**: 全滅ではないが難度が大幅に上がる。FAST は AS-REQ を armor TGT で包み、事前認証部分にオフライン解読可能な素材がなくなり、AS-REP Roasting は直接死ぬ。ただし Kerberoast(TGS-REP)はまだ使える可能性があり、S4U もまだ使える。
+**Q2**: 判定基準は何か?
+**A2**: GPO で「KDC サポートのクレーム、複合身元検証と Kerberos Armoring」が「常にクレームを提供」または「装甲されていない認証リクエストを失敗させる」に設定されているか。klist またはパケット取得で AS-REQ に armor フィールドがあるかを見る。
+**Q3**: FAST があるが AS-REP 系の操作をしたい場合は?
+**A3**: 【転換】パスワードスプレー(4771 は生じるが解読可能な blob はない)または Kerberos を完全に迂回する経路(NTLM relay で LDAP/HTTP/ADCS へ)。
 
-### 一个"看似有 SPN"的账号请求 TGS 失败
-**Q1**: LDAP 显示某账号有 SPN,但我请求它的 TGS 报 KDC_ERR_S_PRINCIPAL_UNKNOWN,怎么办?
-**A1**: 可能 (a) SPN 注册在这个账号但 servicePrincipalName 属性数据脏(重复/大小写异常),(b) 账号被 disabled 但 SPN 没清,KDC 会拒,(c) SPN 里的主机名 DNS 不解析。
-**Q2**: 都排查完还是失败?
-**A2**: 换用 UPN 请求(sname 用 sAMAccountName@REALM 而不是 SPN),或用 Rubeus 的 targetedKerberoast 直接给账号临时加 SPN 后请求(需要写权限)。
-**Q3**: 想给自己加 SPN 但被拒?
-**A3**: 检查 ValidatedWrite/SPN 相关的写权,或看是否有 SPN duplicate 检查。有时候域强制"SPN 全局唯一",随便加会失败。
+### 「SPN があるように見える」アカウントの TGS リクエストが失敗する
+**Q1**: LDAP があるアカウントに SPN があると示すが、その TGS をリクエストすると KDC_ERR_S_PRINCIPAL_UNKNOWN を報告する。どうする?
+**A1**: 可能性:(a)SPN がこのアカウントに登録されているが servicePrincipalName 属性のデータが汚れている(重複/大文字小文字異常)。(b)アカウントが disabled だが SPN が消えておらず、KDC が拒否。(c)SPN 内のホスト名が DNS 解決しない。
+**Q2**: 全部排查しても失敗する?
+**A2**: UPN リクエストに切り替える(sname を SPN ではなく sAMAccountName@REALM にする)、または Rubeus の targetedKerberoast でアカウントに一時的に SPN を追加してからリクエストする(書き込み権限が必要)。
+**Q3**: 自分に SPN を追加したいが拒否される?
+**A3**: ValidatedWrite/SPN 関連の書き込み権限を確認するか、SPN duplicate チェックがあるかを見る。一部のドメインは「SPN 全域一意」を強制し、適当な追加が失敗する。
 
-### 遇到 Protected Users 组的高价值目标
-**Q1**: 我发现 DA 组成员都在 Protected Users 组,还能打吗?
-**A1**: Protected Users 组员有多重限制:不能被委派、不能用 RC4、TGT 只有 4 小时、不能被 NTLM 认证、DPAPI 不能 offline 解。委派路线基本封死。
-**Q2**: 那我怎么办?
-**A2**: 【转向】(a) 找不在 Protected Users 但有 DCSync 权限的账号,(b) 走机器账号 + RBCD(机器账号通常不在 Protected Users),(c) 走 ADCS ESC(证书认证不受 Protected Users 影响),(d) 直接落地在 DC 上抓 lsass。
-**Q3**: 判据先确认吗?
-**A3**: 是,LDAP 查 memberOf=CN=Protected Users,不要凭猜。有时候 Protected Users 组存在但没被使用(空组)。
+### Protected Users グループの高価値対象に遭遇
+**Q1**: DA グループメンバーが全員 Protected Users グループにいる。まだ打てるか?
+**A1**: Protected Users メンバーには多重制限がある。委任不可、RC4 不可、TGT は 4 時間のみ、NTLM 認証不可、DPAPI をオフライン解読不可。委任経路はほぼ封鎖。
+**Q2**: ではどうする?
+**A2**: 【転換】(a)Protected Users にいないが DCSync 権限を持つアカウントを探す。(b)マシンアカウント + RBCD へ進む(マシンアカウントは通常 Protected Users にいない)。(c)ADCS ESC へ進む(証明書認証は Protected Users の影響を受けない)。(d)直接 DC 上へ着地して lsass を取る。
+**Q3**: 判定基準を先に確認するか?
+**A3**: する。LDAP で memberOf=CN=Protected Users を照会する。推測に頼らない。Protected Users グループが存在しても使われていない(空グループ)ことがある。
 
-### 手上 hash 一堆但不知道哪台机能上
-**Q1**: 爆出 10 个账号 hash,不知道哪个能 local admin 到哪台机,怎么办?
-**A1**: 用 crackmapexec / netexec 批量:hash + 一份主机名列表,并发探测 SMB。返回 Pwn3d! 的就是 local admin。不要用密码明文,直接 pass-the-hash。
-**Q2**: 全部返回 STATUS_ACCESS_DENIED,是不是 hash 没用?
-**A2**: 未必。检查 (a) 是否是域账号但 UAC 远程限制阻挡(需要 --local-auth 关闭或走 named pipe),(b) SMB signing 是否强制(不影响 pth 但影响 relay),(c) 目标是否加入了不同的域/工作组。
-**Q3**: 都没 local admin,hash 还有用吗?
-**A3**: 有。用它们请求 TGT(overpass-the-hash),然后走 Kerberos 请求各种服务的 TGS,可能这些账号有对某个应用服务、SQL、SharePoint 的访问权,业务侧变现。
+### 手元に hash が山ほどあるが、どのマシンに入れるか分からない
+**Q1**: 10 アカウントの hash を解いた。どのアカウントがどのマシンに local admin か分からない。どうする?
+**A1**: crackmapexec / netexec で一括。hash + ホスト名リストで SMB を並行探索する。Pwn3d! が返ったものが local admin。平文パスワードは使わず、直接 pass-the-hash。
+**Q2**: 全部 STATUS_ACCESS_DENIED を返す。hash が無用か?
+**A2**: 必ずしもそうではない。(a)ドメインアカウントだが UAC リモート制限が遮っていないか(--local-auth を閉じるか named pipe 経由が必要)。(b)SMB signing が強制か(それは pth に影響しないが relay に影響)。(c)対象が別ドメイン/ワークグループに加入していないか。
+**Q3**: 全部 local admin がない。hash はまだ使える?
+**A3**: 使える。それらで TGT をリクエスト(overpass-the-hash)し、Kerberos で各種サービスの TGS をリクエストする。これらのアカウントが特定のアプリサービス、SQL、SharePoint へのアクセス権を持つかもしれない。業務側で換金する。
 
-### 时间预算:Kerberos 路线什么时候该放弃
-**Q1**: 已经在 Kerberoast/AS-REP/委派上花了 6 小时,一无所获,应该继续还是转?
-**A1**: 判据:(a) 是不是每一步都遇到"防御生效"的信号(FAST/AES only/Protected Users)——是则整体防御成熟,转;(b) 是不是只是"运气差没爆出弱口令"——是则可能再花 2 小时值,但设硬上限。
-**Q2**: 转向哪里最省时间?
-**A2**: 优先级:ADCS ESC 枚举(15 分钟出结果) > BloodHound ACL 路径(30 分钟出结果) > NTLM relay + coerce(1 小时) > Web 面到 Windows Auth 应用。别死磕单一维度。
-**Q3**: 什么时候是"真死"的信号?
-**A3**: 域完全 Tier 化、有 PAW、Protected Users 全员、AES only、FAST 强制、ADCS 无 ESC、无可 coerce 服务、EDR 内联 hook 全 lsass 保护——出现 4 项以上,考虑换目标而非换手法。
+### 時間予算:Kerberos 経路をいつ諦めるか
+**Q1**: Kerberoast/AS-REP/委任に既に 6 時間費やした。成果なし。続けるか転換するか?
+**A1**: 判定基準:(a)各ステップで「防御が効いている」シグナル(FAST/AES only/Protected Users)に遭遇しているか。そうなら防御が成熟しており、転換。(b)単に「運が悪く弱いパスワードを解けていない」だけか。そうならさらに 2 時間の価値がある可能性があるが、ハード上限を設ける。
+**Q2**: どこへ転換するのが最も時間節約か?
+**A2**: 優先順位:ADCS ESC 列挙(15 分で結果) > BloodHound ACL 経路(30 分で結果) > NTLM relay + coerce(1 時間) > Web 面から Windows Auth アプリ。単一次元に死闘しない。
+**Q3**: いつが「本当に死んだ」シグナルか?
+**A3**: ドメインが完全 Tier 化、PAW あり、Protected Users 全員、AES only、FAST 強制、ADCS に ESC なし、coerce 可能なサービスなし、EDR がインライン hook で全 lsass 保護。四項目以上現れたら、手法を変えるより対象を変えることを検討する。

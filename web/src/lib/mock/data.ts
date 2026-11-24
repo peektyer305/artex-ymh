@@ -801,7 +801,7 @@ export const findings: Finding[] = [
     status: "confirmed",
     report:
       "## 脆弱性の概要\n\n外部の Fastjson RCE で DMZ にフットホールドを築き、さらに sudo 権限昇格、デュアル NIC の突破、Jenkins の未認証 RCE でドメインアカウント `svc_deploy` を取得。このアカウントは **Domain Admins** に属し、最終的に DC **DC01** を完全に制御した。\n\n## 影響\n\n- ドメイン管理者権限を取得し、ドメイン全体のホストとアカウントを制御できる\n- `secretsdump` でドメイン全体の NTLM ハッシュ（`krbtgt` を含む）をエクスポートし、ゴールデンチケットで長期間潜伏できる\n- 内部ターゲット達成\n\n## 再現手順\n\n1. `svc_deploy` でログインしてハッシュをエクスポート：\n\n```\npsexec.py acme/svc_deploy@10.10.10.10\nsecretsdump.py acme/svc_deploy@10.10.10.10\n```\n\n2. DC01 の SYSTEM 権限を取得し、ドメイン内の全ハッシュをエクスポート\n\n## 修正の推奨\n\n- サービスアカウントの権限を絞り、Domain Admins から外し、階層管理（tiering）を徹底する\n- `krbtgt` を 2 回連続でリセットし、サービスアカウントの強力なパスワードをローテーションする\n- DMZ→内部ネットワークの境界分離と前述の RCE/権限昇格の連鎖を修正する\n",
-    summary: "DC01 を掌握（Domain Admin）—— 内部ターゲット達成",
+    summary: "DC01 を掌握（Domain Admin）。内部ターゲット達成",
     evidence:
       "svc_deploy は Domain Admins に属し、psexec.py で DC01 にログインして SYSTEM を取得。secretsdump でドメイン全体の NTLM ハッシュ（krbtgt を含む）をエクスポートし、ターゲットの制御を完了。",
     intent_id: "i13",
@@ -1185,7 +1185,7 @@ export const explorationGraph: { nodes: TaskNode[]; edges: Edge[] } = {
     {
       id: "fiDC",
       type: "finding",
-      payload: P({ summary: "DC01 を掌握（Domain Admin）—— 内部ターゲット達成" }),
+      payload: P({ summary: "DC01 を掌握（Domain Admin）。内部ターゲット達成" }),
       priority: 0,
       state: "confirmed",
       origin: "work#13",
@@ -1294,7 +1294,7 @@ export const frontier: TaskNode[] = explorationGraph.nodes.filter(
 // intent_id が一致するアクティビティの流れ。planner=worker "planner"、メイン agent=worker "mainagent"。
 // 各 worker セッションは完全なツール実行チェーンを含む（tool_use → tool_result → …→ result）。
 export const activity: Activity[] = [
-  // planner —— 毎ラウンドの完全な意思決定チェーン：状況を読む → worker の産出を突き合わせる → ゴールを判定 → add_intent で方向を割り当てる
+  // planner。毎ラウンドの完全な意思決定チェーン：状況を読む → worker の産出を突き合わせる → ゴールを判定 → add_intent で方向を割り当てる
   // ── 第 0 ラウンド · ゴール分解と最初の意図（2026-07-24 09:12）──
   { seq: 1000, worker: "planner", ts: T("2026-07-24T09:12:10Z"), kind: "round", summary: "第 0 ラウンド · ゴール分解" },
   {
@@ -1303,7 +1303,7 @@ export const activity: Activity[] = [
     ts: T("2026-07-24T09:12:25Z"),
     kind: "thinking",
     summary:
-      "graph_overview：goals はゴール層が分解済み——g1「acme.com の管理画面へのアクセス権を取得」、g2「ユーザー機密データの読み取り」はいずれも open。facts=0、recent_facts は空（グラフはほぼ空白で、まだ worker の産出はない）。スコープ内の資産はルートドメイン acme.com + 1 つの C セグメントのみ。攻撃面の初期判断：www / admin / api / shop / vpn の 5 つの入口。グラフに fact がないので、【ごく軽量な読み取り専用の探査】で初期意図を具体化するだけにし、plan で作業を完了させることは絶対にしない。",
+      "graph_overview：goals はゴール層が分解済み。g1「acme.com の管理画面へのアクセス権を取得」、g2「ユーザー機密データの読み取り」はいずれも open。facts=0、recent_facts は空（グラフはほぼ空白で、まだ worker の産出はない）。スコープ内の資産はルートドメイン acme.com + 1 つの C セグメントのみ。攻撃面の初期判断：www / admin / api / shop / vpn の 5 つの入口。グラフに fact がないので、【ごく軽量な読み取り専用の探査】で初期意図を具体化するだけにし、plan で作業を完了させることは絶対にしない。",
   },
   {
     seq: 1002,
@@ -1364,7 +1364,7 @@ export const activity: Activity[] = [
     ts: T("2026-07-25T14:12:15Z"),
     kind: "thinking",
     summary:
-      "recent_facts と突き合わせ：workG が faGit「.git をダウンロード可能、git-dumper でバックエンドのソースを復元」と faCreds「config.php に sa/Acme@2021 がハードコード（内部ネットワークで汎用の疑い）」を返した。work#6 の指紋は fa3「shop が Fastjson 1.2.24 に一致（既知のデシリアライズ RCE あり）」を返した。2 つの【本質的な新しい仕組み】：① ハードコードされた DB パスワードが内部ネットワーク全体で再利用される可能性；② Fastjson には確立した RCE の手順がある。これは既存の認証/インジェクション路線とは【本質的に異なる】入口を開く——shop から直接 RCE で DMZ に突破する。まず faGit の詳細を取得して産物を確認する。",
+      "recent_facts と突き合わせ：workG が faGit「.git をダウンロード可能、git-dumper でバックエンドのソースを復元」と faCreds「config.php に sa/Acme@2021 がハードコード（内部ネットワークで汎用の疑い）」を返した。work#6 の指紋は fa3「shop が Fastjson 1.2.24 に一致（既知のデシリアライズ RCE あり）」を返した。2 つの【本質的な新しい仕組み】：① ハードコードされた DB パスワードが内部ネットワーク全体で再利用される可能性；② Fastjson には確立した RCE の手順がある。これは既存の認証/インジェクション路線とは【本質的に異なる】入口を開く。shop から直接 RCE で DMZ に突破する。まず faGit の詳細を取得して産物を確認する。",
   },
   {
     seq: 1102,
@@ -1373,7 +1373,7 @@ export const activity: Activity[] = [
     kind: "tool_use",
     tool: "node_detail",
     tool_use_id: "p1-nd",
-    summary: "node_detail(faGit) —— workG のソース復元の産物を確認",
+    summary: "node_detail(faGit)。workG のソース復元の産物を確認",
     detail: "add_intent の前に worker が何を復元したかを見て、指紋からの推測で方向を決めるのを避ける。",
   },
   {
@@ -1385,7 +1385,7 @@ export const activity: Activity[] = [
     tool_use_id: "p1-nd",
     summary:
       "faGit のエビデンス：git-dumper で config.php / db.php / order_api.php を復元。config.php 内 $db=['host'=>'10.10.10.5','user'=>'sa','pass'=>'Acme@2021']",
-    detail: "ハードコードされた接続先は内部ネットワークの 10.10.10.5(FS01) で、faCreds の「内部ネットワークで汎用」という推測を裏づける——RCE 確立後、この認証情報は再利用する価値がある。",
+    detail: "ハードコードされた接続先は内部ネットワークの 10.10.10.5(FS01) で、faCreds の「内部ネットワークで汎用」という推測を裏づける。RCE 確立後、この認証情報は再利用する価値がある。",
   },
   {
     seq: 1104,
@@ -1439,7 +1439,7 @@ export const activity: Activity[] = [
     kind: "tool_use",
     tool: "node_detail",
     tool_use_id: "p2-nd",
-    summary: "node_detail(fa6) —— デュアル NIC と内部ネットワーク到達性を確認",
+    summary: "node_detail(fa6)。デュアル NIC と内部ネットワーク到達性を確認",
   },
   {
     seq: 1203,
@@ -1459,7 +1459,7 @@ export const activity: Activity[] = [
     tool_use_id: "p2-pg",
     summary: "prove_goal(g3, evidence=fa6)",
     detail:
-      "reason：i7 の RCE で DMZ のフットホールドを取得(fa4)、fa5 で root へ権限昇格、fa6 で 2 枚目 NIC が内部ネットワークに直結し DC01 へ ping が通ることを証明——『外部から DMZ を突破し内部ネットワークのフットホールドを確立』の受け入れ条件を達成。",
+      "reason：i7 の RCE で DMZ のフットホールドを取得(fa4)、fa5 で root へ権限昇格、fa6 で 2 枚目 NIC が内部ネットワークに直結し DC01 へ ping が通ることを証明。『外部から DMZ を突破し内部ネットワークのフットホールドを確立』の受け入れ条件を達成。",
   },
   {
     seq: 1205,
@@ -1496,7 +1496,7 @@ export const activity: Activity[] = [
     ts: T("2026-07-25T20:26:20Z"),
     kind: "text",
     summary:
-      "g3 達成。攻撃面は外部から内部ネットワークへ移った。g4「内部ネットワークを横断し、内部ターゲットの DC01 を掌握」を登録してもらい、i9（ホスト探索）+ i10/i11/i12 の 3 つの並行横断を割り当てた。認証情報の再利用は faCreds に直接結びつける——外部のソース漏えいで得たパスワードを内部ネットワークの横断に使う。",
+      "g3 達成。攻撃面は外部から内部ネットワークへ移った。g4「内部ネットワークを横断し、内部ターゲットの DC01 を掌握」を登録してもらい、i9（ホスト探索）+ i10/i11/i12 の 3 つの並行横断を割り当てた。認証情報の再利用は faCreds に直接結びつける。外部のソース漏えいで得たパスワードを内部ネットワークの横断に使う。",
   },
 
   // ── 第 3 ラウンド · ターゲット達成の振り返り（2026-07-26 00:25）──
@@ -1516,7 +1516,7 @@ export const activity: Activity[] = [
     kind: "tool_use",
     tool: "list_findings",
     tool_use_id: "p3-lf",
-    summary: "list_findings —— DC01 陥落の確認エビデンスを照合",
+    summary: "list_findings。DC01 陥落の確認エビデンスを照合",
   },
   {
     seq: 1303,
@@ -1554,7 +1554,7 @@ export const activity: Activity[] = [
     ts: T("2026-07-26T00:26:10Z"),
     kind: "text",
     summary:
-      "g4 を完了し、外部と内部ネットワークの経路が完全につながった（外部 RCE → DMZ → 内部ネットワーク → DC）。未カバーの方向を一つずつ照合：g2「ユーザー機密データの読み取り」はあと一歩だが、既存の i3（管理画面のユーザー API）+ i5（API IDOR）がこの方向をカバーしており、いずれも running。今ラウンドに【本質的に異なる未カバーの新方向】はない——抑制の原則に従い新しい意図は 0、i3/i5 の産出を待つ。",
+      "g4 を完了し、外部と内部ネットワークの経路が完全につながった（外部 RCE → DMZ → 内部ネットワーク → DC）。未カバーの方向を一つずつ照合：g2「ユーザー機密データの読み取り」はあと一歩だが、既存の i3（管理画面のユーザー API）+ i5（API IDOR）がこの方向をカバーしており、いずれも running。今ラウンドに【本質的に異なる未カバーの新方向】はない。抑制の原則に従い新しい意図は 0、i3/i5 の産出を待つ。",
   },
 
   // ── 第 4 ラウンド · 管理画面を達成、g2 へ収束（2026-07-26 03:55）──
@@ -1571,7 +1571,7 @@ export const activity: Activity[] = [
     ts: T("2026-07-26T03:55:14Z"),
     kind: "thinking",
     summary:
-      "recent_facts と突き合わせ：work#2 が faCreds の Acme@2021 で admin 管理画面に一致（i2 done）し、管理画面の権限を取得——g1 の受け入れを達成。まず prove_goal で確定する。その後【定量的な受け入れ確認】を行う：g2「ユーザー機密データの読み取り」は現在 i3/i5 が API 面に触れただけで、まだ一括データを実際に取得しておらず、実測では未達なので、【禁止】prove_goal とし、代わりに優先度を上げてデータ取得の意図を補う。",
+      "recent_facts と突き合わせ：work#2 が faCreds の Acme@2021 で admin 管理画面に一致（i2 done）し、管理画面の権限を取得。g1 の受け入れを達成。まず prove_goal で確定する。その後【定量的な受け入れ確認】を行う：g2「ユーザー機密データの読み取り」は現在 i3/i5 が API 面に触れただけで、まだ一括データを実際に取得しておらず、実測では未達なので、【禁止】prove_goal とし、代わりに優先度を上げてデータ取得の意図を補う。",
   },
   {
     seq: 1402,
@@ -1599,7 +1599,7 @@ export const activity: Activity[] = [
     ts: T("2026-07-26T03:55:40Z"),
     kind: "thinking",
     summary:
-      "g2 の定量的な確認：ゴールの要求『ユーザー機密データの読み取り』= 一括のユーザーレコードを実際に取得すること。graph_overview の findings にはまだ『ユーザーデータのエクスポート成功』の項目がなく、i3/i5 はいずれも running でデータ取得の結果を返していない——実測では未達。『管理画面には入ったし概ね達成』で早々に met にすることは厳禁。意図を追加して差分を補う。",
+      "g2 の定量的な確認：ゴールの要求『ユーザー機密データの読み取り』= 一括のユーザーレコードを実際に取得すること。graph_overview の findings にはまだ『ユーザーデータのエクスポート成功』の項目がなく、i3/i5 はいずれも running でデータ取得の結果を返していない。実測では未達。『管理画面には入ったし概ね達成』で早々に met にすることは厳禁。意図を追加して差分を補う。",
   },
   {
     seq: 1405,
@@ -1627,7 +1627,7 @@ export const activity: Activity[] = [
     ts: T("2026-07-26T03:55:58Z"),
     kind: "text",
     summary:
-      "g1 達成（4/4 のうち met は 3 つ：g1/g3/g4）。g2 は定量的な受け入れを厳守——管理画面に入っただけでは不可で、一括のユーザーデータを取得して初めて確定する。i3/i5 は priority 9 に上げ、データ取得の意図として詳細化済み。worker の返答を待てばタスク全体を完了できる。",
+      "g1 達成（4/4 のうち met は 3 つ：g1/g3/g4）。g2 は定量的な受け入れを厳守。管理画面に入っただけでは不可で、一括のユーザーデータを取得して初めて確定する。i3/i5 は priority 9 に上げ、データ取得の意図として詳細化済み。worker の返答を待てばタスク全体を完了できる。",
   },
 
   // work#1 · i1 サブドメイン列挙とポートスキャン（done）
@@ -2094,7 +2094,7 @@ export const activity: Activity[] = [
     tool: "bash",
     tool_use_id: "tg3",
     summary: "$db_user='sa'; $db_pass='Acme@2021'; $db_host='10.10.10.30';",
-    detail: "DB パスワードがハードコードされ、host も内部 IP を指す——内部ネットワークで汎用の認証情報として記録。",
+    detail: "DB パスワードがハードコードされ、host も内部 IP を指す。内部ネットワークで汎用の認証情報として記録。",
   },
   {
     seq: 317,
@@ -2159,7 +2159,7 @@ export const activity: Activity[] = [
     tool: "bash",
     tool_use_id: "t6b",
     summary: "エラースタックに com.alibaba.fastjson.JSONException（1.2.24）を含む",
-    detail: "Fastjson 1.2.24 を確認——JdbcRowSetImpl の JNDI インジェクション RCE に該当。",
+    detail: "Fastjson 1.2.24 を確認。JdbcRowSetImpl の JNDI インジェクション RCE に該当。",
   },
   {
     seq: 325,
@@ -2245,7 +2245,7 @@ export const activity: Activity[] = [
     tool: "bash",
     tool_use_id: "t7c",
     summary: "uid=33(www-data) gid=33 groups=33\n10.0.20.15 10.10.10.15",
-    detail: "www-data@dmz-web01 で、2 枚目 NIC は 10.10.10.x——DMZ に入り、内部ネットワークに隣接している。",
+    detail: "www-data@dmz-web01 で、2 枚目 NIC は 10.10.10.x。DMZ に入り、内部ネットワークに隣接している。",
   },
   {
     seq: 337,
@@ -2298,7 +2298,7 @@ export const activity: Activity[] = [
     tool: "bash",
     tool_use_id: "t8a",
     summary: "User www-data may run: (ALL) NOPASSWD: /usr/bin/python3",
-    detail: "sudo の許可リストに python3 がありパスワード不要——直接権限昇格できる。",
+    detail: "sudo の許可リストに python3 がありパスワード不要。直接権限昇格できる。",
   },
   {
     seq: 343,
@@ -2602,7 +2602,7 @@ export const activity: Activity[] = [
     intent_id: "i13",
     ts: T("2026-07-25T23:52:00Z"),
     kind: "thinking",
-    summary: "svc_deploy は Jenkins の認証情報ストア由来。まずグループのメンバー資格を確認する——Domain Admins なら直接 psexec で DC01 に入れる。",
+    summary: "svc_deploy は Jenkins の認証情報ストア由来。まずグループのメンバー資格を確認する。Domain Admins なら直接 psexec で DC01 に入れる。",
   },
   {
     seq: 391,
@@ -2737,7 +2737,7 @@ export const activity: Activity[] = [
     ts: T("2026-07-25T21:22:08Z"),
     kind: "text",
     summary:
-      "そう、/script が未認証でそのまま Groovy RCE。worker が Jenkins を優先するようヒントを注入済み——掌握後はドメイン認証情報をエクスポートでき、Kerberoasting と組み合わせて DC を攻められる。",
+      "そう、/script が未認証でそのまま Groovy RCE。worker が Jenkins を優先するようヒントを注入済み。掌握後はドメイン認証情報をエクスポートでき、Kerberoasting と組み合わせて DC を攻められる。",
   },
   { seq: 404, worker: "mainagent", ts: T("2026-07-26T00:22:00Z"), kind: "user", summary: "DC01 は掌握できた？まとめて。" },
   {
@@ -3603,7 +3603,7 @@ export const conversationMessages: Record<number, Activity[]> = {
       ts: T("2026-07-26T03:40:05Z"),
       kind: "text",
       summary:
-        "成功 —— admin/admin123 でそのままコンソールにログインできた。高危険度のファインディングとして記録し、「管理画面へのアクセス権を取得」のゴール達成を証明。次はユーザーデータの読み取り（ゴール②）へ移る。",
+        "成功。admin/admin123 でそのままコンソールにログインできた。高危険度のファインディングとして記録し、「管理画面へのアクセス権を取得」のゴール達成を証明。次はユーザーデータの読み取り（ゴール②）へ移る。",
     },
   ],
   2: [
@@ -3723,7 +3723,7 @@ export const conversationMessages: Record<number, Activity[]> = {
       ts: T("2026-07-25T21:05:20Z"),
       kind: "text",
       summary:
-        "いける —— Script Console が未認証で、そのまま Groovy RCE。worker がこの 1 台を優先するようヒントを注入済み。掌握後は認証情報ストアに注目。ドメインアカウントがあるかもしれない。",
+        "いける。Script Console が未認証で、そのまま Groovy RCE。worker がこの 1 台を優先するようヒントを注入済み。掌握後は認証情報ストアに注目。ドメインアカウントがあるかもしれない。",
     },
     {
       seq: 8,

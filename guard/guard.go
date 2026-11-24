@@ -79,7 +79,7 @@ func (g *Guard) preToolUse(ctx context.Context, ev hook.Event) hook.Result {
 		cmd = in.Text
 	}
 	// バッチ 5 B2 出口審査:送信内容にプラットフォームの機密フィンガープリント（LLM key/jwt.key/gate パス/
-	// PG パスワード/callback_addr）が含まれれば deny。他のあらゆるチェックより先に評価する（下の allow 監査も含む——
+	// PG パスワード/callback_addr）が含まれれば deny。他のあらゆるチェックより先に評価する（下の allow 監査も含む。
 	// 命中時はコマンド原文自体に秘密が含まれ得るため、保存できない）。この種の deny はインターセプトルールを
 	// 通さず、一括許可の対象にもならない。監査には kind のみを記録し、フィンガープリント/原文は残さない。
 	if res, stop := g.checkEgress(ev, cmd); stop {
@@ -135,7 +135,7 @@ func (g *Guard) checkEgress(ev hook.Event, cmd string) (hook.Result, bool) {
 			// 監査/ログには kind のみを記録する:コマンド原文自体に機密が含まれ得るため保存しない。
 			// block の文言にもヒット内容を含めず、モデルへフィンガープリントをエコーしない。
 			log.Printf("[guard][egress] プラットフォームの機密フィンガープリント(%s)に命中しました。%s の外部送信をブロックしました", kind, ev.ToolName)
-			return g.block(ev.ToolName, systemBlockMessage("操作包含平台敏感信息，禁止外发"), ""), true
+			return g.block(ev.ToolName, systemBlockMessage("操作にプラットフォームの機密情報が含まれており、外部送信を禁止します"), ""), true
 		}
 	}
 	return hook.Result{}, false

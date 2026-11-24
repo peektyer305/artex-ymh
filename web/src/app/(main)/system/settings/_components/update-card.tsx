@@ -141,7 +141,7 @@ export function UpdateCard() {
         "更新するとプログラムが再起動し、実行中のタスクは中断されます。\n" +
         (info.mode === "docker"
           ? "\n注意：コンテナ内の更新はプログラム本体のみを差し替え、イメージ内の playwright / nmap などのツールチェーンは更新しません。" +
-            "新バージョンが新しいツールに依存する場合は docker compose pull を使用してください。"
+            "新バージョンが新しいツールに依存する場合は docker compose build を使用してください。"
           : ""),
     );
     if (!ok) return;
@@ -285,7 +285,7 @@ export function UpdateCard() {
             Docker での更新はプログラム本体のみを差し替え、イメージ内の playwright / nmap などのツールチェーンは更新しません。また
             <span className="font-mono"> docker compose up -d </span>
             でコンテナを再作成するとイメージ同梱のバージョンに戻ります。イメージごとアップグレードする場合は
-            <span className="font-mono"> docker compose pull artex &amp;&amp; docker compose up -d artex</span>
+            <span className="font-mono"> docker compose build artex &amp;&amp; docker compose up -d artex</span>
             を実行してください。
           </p>
         )}

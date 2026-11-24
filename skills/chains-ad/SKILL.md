@@ -1,40 +1,40 @@
 ---
 name: chains-ad
-description: AD 域渗透反问决策链原文索引(内网测绘/Kerberos/委派/ADCS/凭据薅取/口令喷洒/DCSync/免认证 CVE/直捣域控 vs 横向)。拿到域内立足点、要选攻击路径或转向时查阅。
+description: AD ドメインペネトレーションの反問意思決定チェーン原文インデックス(内部ネットワーク偵察/Kerberos/委任/ADCS/認証情報収集/パスワードスプレー/DCSync/認証不要 CVE/ドメインコントローラ直行 vs 横展開)。ドメイン内の足場を取得し、攻撃経路の選択や方向転換が必要なときに参照する。
 ---
 
-# chains-ad · AD 域渗透反问决策链(L4 原文索引)
+# chains-ad · AD ドメインペネトレーション反問意思決定チェーン(L4 原文インデックス)
 
-## 何时使用
+## いつ使うか
 
-- 刚在域内主机拿到 shell,要定第一轮收集顺序(ad-recon)
-- 手上有域凭据,要走 Kerberoast/AS-REP/委派/ADCS 选路(ad-kerberos、ad-constrained-delegation、ad-adcs)
-- 要薅本机/凭据库(mimikatz/SAM/票据)或做口令喷洒(ad-cred-harvest、ad-password-spray)
-- 纠结"直捣域控还是先横向薅凭据"(ad-direct-vs-lateral)
-- 遇到 Zerologon 类免认证洞,要评估适用条件与风险(ad-noauth-cve)
-- 已到收尾阶段,要 DCSync/拿 flag(ad-dcsync-flag);链路受限要调操作节奏(ad-tunnel-friendly)
+- ドメイン内ホストでシェルを取得したばかりで、最初の収集順序を決めたい(ad-recon)
+- ドメイン認証情報を手にして、Kerberoast/AS-REP/委任/ADCS の経路選択を進めたい(ad-kerberos、ad-constrained-delegation、ad-adcs)
+- 本機/認証情報ストア(mimikatz/SAM/チケット)を収集したい、またはパスワードスプレーを行いたい(ad-cred-harvest、ad-password-spray)
+- 「ドメインコントローラへ直行するか、先に横展開で認証情報を収集するか」で迷っている(ad-direct-vs-lateral)
+- Zerologon のような認証不要の脆弱性に遭遇し、適用条件とリスクを評価したい(ad-noauth-cve)
+- 仕上げの段階に入り、DCSync/flag 取得を行いたい(ad-dcsync-flag)。回線が制限されているため操作のテンポを調整したい(ad-tunnel-friendly)
 
-## 铁律
+## 鉄則
 
-- 内网侦察先做零主动流量的本机自省(whoami/ipconfig/netstat/arp),被动信息答完"域名、DC 在哪、网段、有无域凭据"四问再考虑主动扫(refs/ad-recon.md)
-- 优先"查域"而非"扫网":net view /domain、SRV 记录定位 DC,域本身就是建好的资产库(refs/ad-recon.md)
-- Kerberoast 前先离线过滤 SPN(排除机器账号/krbtgt,优先服务账号),盲扫 = 给 SOC 送完整攻击画像(refs/ad-kerberos.md)
-- 凭据开打前先验证三前提:时钟偏差 ≤5 分钟、能 kinit、能读 LDAP SPN(refs/ad-kerberos.md)
-- 离线爆破不是唯一变现:Roast 被墙果断转 AS-REP/委派链/ADCS/口令喷洒(refs/ad-kerberos.md)
+- 内部ネットワーク偵察では、まずゼロ・アクティブ・トラフィックの本機セルフチェック(whoami/ipconfig/netstat/arp)を行い、パッシブ情報で「ドメイン名、DC の場所、ネットワークセグメント、ドメイン認証情報の有無」の四つの問いに答えてから、能動スキャンを検討する(refs/ad-recon.md)
+- 「ドメインを調べる」ことを「ネットワークをスキャンする」より優先する。net view /domain、SRV レコードで DC を特定する。ドメインそれ自体が既に構築済みのアセット台帳である(refs/ad-recon.md)
+- Kerberoast の前に SPN をオフラインでフィルタリングする(マシンアカウント/krbtgt を除外し、サービスアカウントを優先する)。盲目的なスキャンは SOC に完全な攻撃プロファイルを送ることになる(refs/ad-kerberos.md)
+- 認証情報で攻撃を始める前に、三つの前提を検証する。クロックずれが 5 分以内であること、kinit ができること、LDAP の SPN を読み取れること(refs/ad-kerberos.md)
+- オフラインのブルートフォースだけが唯一の換金手段ではない。Roast が遮断されたら、ためらわず AS-REP/委任チェーン/ADCS/パスワードスプレーに切り替える(refs/ad-kerberos.md)
 
-## refs/ 原文清单
+## refs/ 原文リスト
 
-- `refs/ad-adcs.md` — ADCS ESC 证书攻击选路
-- `refs/ad-constrained-delegation.md` — 委派滥用:约束/非约束/RBCD 打到域管
-- `refs/ad-cred-harvest.md` — 凭据薅取:mimikatz/SAM/票据
-- `refs/ad-dcsync-flag.md` — DCSync 与拿 flag 收尾
-- `refs/ad-direct-vs-lateral.md` — 直捣域控 vs 横向薅凭据的转向决策
-- `refs/ad-kerberos.md` — Kerberos 攻击:Kerberoast/AS-REP/委派
-- `refs/ad-noauth-cve.md` — Zerologon/免认证漏洞的适用与风险
-- `refs/ad-password-spray.md` — 弱口令/口令喷洒/复用的节奏
-- `refs/ad-recon.md` — 内网测绘与主机分类排序
-- `refs/ad-tunnel-friendly.md` — 受限链路下的操作节奏与请求往返开销权衡
+- `refs/ad-adcs.md` — ADCS ESC 証明書攻撃の経路選択
+- `refs/ad-constrained-delegation.md` — 委任の悪用:制約付き/非制約/RBCD でドメイン管理者へ到達
+- `refs/ad-cred-harvest.md` — 認証情報収集:mimikatz/SAM/チケット
+- `refs/ad-dcsync-flag.md` — DCSync と flag 取得による仕上げ
+- `refs/ad-direct-vs-lateral.md` — ドメインコントローラ直行 vs 横展開での認証情報収集の方向転換判断
+- `refs/ad-kerberos.md` — Kerberos 攻撃:Kerberoast/AS-REP/委任
+- `refs/ad-noauth-cve.md` — Zerologon/認証不要脆弱性の適用とリスク
+- `refs/ad-password-spray.md` — 弱いパスワード/パスワードスプレー/再利用のテンポ
+- `refs/ad-recon.md` — 内部ネットワーク偵察とホスト分類・優先順位付け
+- `refs/ad-tunnel-friendly.md` — 制約のある回線での操作テンポとリクエスト往復コストのトレードオフ
 
-## 用法
+## 使い方
 
-先用本索引定位篇目与场景节(`### 场景句`),再 Read 对应文件;回答/决策时优先遵循其中的判据与转向规则。worker 无 Glob/Grep,按上面的精确相对路径直接 Read。
+まずこのインデックスで篇目と場面節(`### 場面句`)を特定し、その上で対応するファイルを Read する。回答・意思決定の際は、その中の判定基準と方向転換ルールを優先して従う。worker には Glob/Grep がないため、上記の正確な相対パスで直接 Read する。

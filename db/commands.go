@@ -221,7 +221,7 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 
 // llmRawBodyCap は 1 件の raw_request / raw_response の保存上限(1 MiB)。生のリクエスト/レスポンスは
 // 完全な tool schemas を含み大きさが無制限になる。上限を超えた部分は切り詰めて行内にマーカーを追加し、読み出し側(GetLLMRecord)は
-// そのまま返せば互換になる——詳細ページでマーカーを見れば全量でないと分かる。
+// そのまま返せば互換になる。詳細ページでマーカーを見れば全量でないと分かる。
 const llmRawBodyCap = 1 << 20
 
 // capLLMRawBody truncates s to llmRawBodyCap bytes, appending an inline marker

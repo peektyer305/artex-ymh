@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// testPaths は隔離されたアップグレードディレクトリを作る。ResolvePaths() は直接使えない——テスト
+// testPaths は隔離されたアップグレードディレクトリを作る。ResolvePaths() は直接使えない。テスト
 // バイナリ自身を指してしまい、実行すると go test の実行ファイルが改名されてしまう。
 func testPaths(t *testing.T) Paths {
 	t.Helper()

@@ -153,7 +153,7 @@ export function useSideQuestions(parent: string | null) {
         });
       })
       .catch(() => {
-        // ticket 再取得の失敗（token 失効直後など）——ポーリング継続中のため致命的ではない。
+        // ticket 再取得の失敗（token 失効直後など）。ポーリング継続中のため致命的ではない。
       });
     return () => {
       cancelled = true;

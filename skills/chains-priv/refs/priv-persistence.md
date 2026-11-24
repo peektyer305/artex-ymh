@@ -1,437 +1,437 @@
-# 提权立足点 · 持久化与稳定性取舍
+# 権限昇格と足場 · 永続化と安定性の取捨選択
 
-### 拿到低权 shell 先立足还是先冲提权
-**Q1**: 反弹 shell 刚回来、身份是普通用户或服务账号,手很痒想直接跑提权 exp,该不该?
-**A1**: 不该。第一步永远是【固定立足点 + 快照式枚举】。理由:一次失败的提权(尤其内核 exp)可能崩会话、可能触发 EDR,把唯一入口烧掉。先把 whoami/id/hostname/出网方向/EDR 存在性/可写目录搞清楚,再动手。
-**Q2**: "立足点固定"的最低达标标准是什么?
-**A2**: 判据:主动 kill 当前 shell,30 秒内能从另一条独立路径回到同等身份。手段可以是:用户级自启回连、独立 web 后门、复用凭据从另一服务重进。做不到这个,就是单点故障,不该继续冒险。
-**Q3**: 目标根本不出网怎么固定?
-**A3**: 把"锚"从"我连出去"翻成"内网中转"。转向:找一台已控且和它双向可达的机器做跳板,回连指内网跳板;或本机起仅内网可达的监听让跳板拉。稳定性从"依赖出网"改为"依赖已掌控的内网拓扑"。
-**Q4**: 提权前的信息收集要做到什么程度?
-**A4**: 一次性把所有提权判据抓齐(内核版本、SUID、sudo -l、cron、可写服务、capability、明文凭据痕迹),结果落到操作端。避免"提权失败 shell 断了、还得重新一遍枚举"。
-**Q5**: 什么时候可以打破"先立足"、直接冲提权?
-**A5**: 当持久化本身需要更高权限(写系统服务、改 /etc)时。折中:先做纯用户态兜底(用户 crontab、bashrc、用户级 systemd),再去追系统级。
-**Q6**: 什么信号说明该放弃本机、把它当纯跳板?
-**A6**: 机器价值低(DMZ 边缘、无凭据、无纵深)且提权面很干净时不要恋战。立足点价值 = 权限 × 可达性,权限提不动就榨可达性。
+### 低権限 shell を得て先に足を固めるか、先に権限昇格に突っ込むか
+**Q1**: リバース shell が戻ってきて、身元が一般ユーザーかサービスアカウント。手がむずむずして直接権限昇格 exp を走らせたい。やるべきか?
+**A1**: やらない。最初の一歩は常に【足場の固定 + スナップショット式の列挙】である。理由:一度の失敗した権限昇格(特にカーネル exp)はセッションを崩し、EDR をトリガーし、唯一の入口を焼く可能性がある。先に whoami/id/hostname/外向き方向/EDR の有無/書き込み可能ディレクトリを把握してから動く。
+**Q2**: 「足場の固定」の最低合格基準は何か?
+**A2**: 判定基準:現在の shell を能動的に kill し、30 秒以内に別の独立経路から同等の身元に戻れること。手段は:ユーザー級の自動起動折り返し、独立した web バックドア、認証情報を再利用して別のサービスから再進入。これができなければ単点障害であり、冒険を続けるべきでない。
+**Q3**: 対象が全く外向きできない場合、どう固定するか?
+**A3**: 「錨」を「私が外へ接続する」から「内部ネットワーク中継」に変える。方向転換:既に制御し、かつ相互到達できるマシンを 1 台見つけて踏み台にし、折り返しを内部ネットワークの踏み台に向ける。または本機に内部ネットワークだけが到達できるリスナーを起動して踏み台に引かせる。安定性を「外向き依存」から「制御済みの内部トポロジ依存」に変える。
+**Q4**: 権限昇格前の情報収集はどの程度まで行うか?
+**A4**: 全権限昇格判定基準を一度に取り切る(カーネルバージョン、SUID、sudo -l、cron、書き込み可能サービス、capability、平文認証情報の痕跡)。結果は操作端に落とす。「権限昇格が失敗して shell が切れ、また列挙をやり直す」事態を避ける。
+**Q5**: いつ「先に足場」を破って直接権限昇格に突っ込めるか?
+**A5**: 永続化自体がより高い権限を必要とするとき(システムサービスを書く、/etc を変える)。折衷:先に純ユーザーモードの底支え(ユーザー crontab、bashrc、ユーザー級 systemd)をしてから、システム級を追う。
+**Q6**: 本機を諦めて純粋な踏み台にするべきシグナルは何か?
+**A6**: マシン価値が低く(DMZ エッジ、認証情報なし、縦深なし)、権限昇格面が非常にきれいなときは未練を残さない。足場の価値 = 権限 × 到達性であり、権限が動かせなければ到達性を絞り出す。
 
-### 枚举顺序:低风险高收益优先
-**Q1**: 内核、SUID、sudo、cron、凭据、capability 一堆判据,按什么顺序收集?
-**A1**: 【零风险可能秒杀】的先看:sudo -l、SUID/SGID 异常、可写的 root cron/systemd unit、bash_history/config/env 里的明文凭据。命中即提权,不崩机、不告警。内核 exp 放最后。
-**Q2**: 大而全的枚举脚本要不要一把甩上去?
-**A2**: 分场景。老环境无 EDR,直接跑省时间;有 EDR/HIDS 时,海量文件读取 + 敏感路径访问本身就是强告警。此时改手动精准收集,一次只查一两类判据。
-**Q3**: 收集完"啥都没有",是真没有还是漏了?
-**A3**: "干净"往往是视野不够。补盲区:非标 SUID(自研程序)、root 运行的第三方服务及其配置目录 ACL、非直观定时(/etc/cron.d、systemd timer、anacron、logrotate 的 postrotate)、容器特权/挂载、其他用户 home 凭据。换视角:【从进程反查权限边界】。
-**Q4**: 判据是什么时候算枚举够了?
-**A4**: 能列出至少 3 条独立提权候选路径、按【成功率×动静×可恢复性】排完序。只有一条候选就是没查够。
-**Q5**: 敏感结果怎么存最安全?
-**A5**: 不在目标落地,一律回带操作端;不得已落地就登记清单、撤退前清干净。落地本身就是 DFIR 的告警点。
+### 列挙順序:低リスク高収益を優先
+**Q1**: カーネル、SUID、sudo、cron、認証情報、capability の大量の判定基準を、どんな順序で収集するか?
+**A1**: 【ゼロリスクで即殺できる】ものを先に見る:sudo -l、SUID/SGID の異常、書き込み可能な root cron/systemd unit、bash_history/config/env 内の平文認証情報。該当すれば即権限昇格で、マシンを崩さずアラートも出さない。カーネル exp は最後に置く。
+**Q2**: 大きくて網羅的な列挙スクリプトを一気に投げるべきか?
+**A2**: 場面による。古い環境で EDR がなければ、直接走らせて時間を節約する。EDR/HIDS があるとき、大量のファイル読み取り + 機微パスへのアクセス自体が強アラートである。このとき手動の精密収集に替え、一度に 1〜2 種類の判定基準だけを調べる。
+**Q3**: 収集しても「何もない」場合、本当にないのか漏れたのか?
+**A3**: 「きれい」は多くの場合視野不足である。盲区を補う:非標準 SUID(自作プログラム)、root が動かすサードパーティサービスとその設定ディレクトリの ACL、非直感的なスケジュール(/etc/cron.d、systemd timer、anacron、logrotate の postrotate)、コンテナの特権/マウント、他ユーザーの home 認証情報。視点を替える:【プロセスから権限境界を逆算する】。
+**Q4**: 判定基準は、いつ列挙が十分と見なすか?
+**A4**: 少なくとも 3 本の独立した権限昇格候補経路を列挙し、【成功率×騒ぎ×回復可能性】で並べ終えたら。候補が 1 本しかないなら調べ足りない。
+**Q5**: 機微な結果をどう最も安全に保存するか?
+**A5**: 対象に落とさず、全て操作端に持ち帰る。やむを得ず落とすならリストに登録し、撤退前にきれいに掃除する。配置自体が DFIR のアラートポイントである。
 
-### Linux SUID 二进制的筛选与利用
-**Q1**: find / -perm -4000 出来一堆,怎么筛?
-**A1**: 三类分开:① 系统标品(passwd/su/mount)—— 除非有已知本地 CVE 一般跳过;② GTFOBins 名单里的(find/vim/less/awk/nmap 等)—— 查对应姿势;③ 【非标/自研】—— 最高优先,常见坑:未指定绝对路径调外部命令、可劫持 LD_PRELOAD、参数注入。
-**Q2**: 自研 SUID 二进制怎么快速判洞?
-**A2**: strings 看是否 system()/popen();ltrace/strace 看它 execve 了什么;ldd 看依赖库是否可写。如果它 popen("curl ...") 而 PATH 里我有可写目录,PATH 劫持就赢。
-**Q3**: SUID 二进制只有【任意读】能力怎么办?
-**A3**: 目标从"提权"改为"用它读 root 才能读的东西"—— shadow、/root/.ssh、systemd unit 里的密码字段。拿到凭据后 su/横向,一样等价提权。
-**Q4**: SUID 一条不通、转哪里?
-**A4**: 【三个正交维度】—— getcap -r / 找 cap_setuid/cap_dac_read_search;sudo -l 看免密条目;id 看 docker/lxd/disk/shadow 组。这三者和 SUID 不重叠,一条断另外三条大概率活。
-**Q5**: 什么时候放弃 SUID 路线?
-**A5**: 15 分钟没发现明显利用点就走。SUID 是"要么很快找到、要么根本没有",不值得死磕。
+### Linux SUID バイナリの選別と利用
+**Q1**: find / -perm -4000 で大量に出た。どう選別するか?
+**A1**: 3 種類に分ける:① システム標準品(passwd/su/mount)。既知のローカル CVE がない限り通常スキップ。② GTFOBins リスト内(find/vim/less/awk/nmap など)。対応する手順を引く。③ 【非標準/自作】。最高優先。よくある落とし穴:絶対パスを指定せず外部コマンドを呼ぶ、LD_PRELOAD をハイジャックできる、引数注入。
+**Q2**: 自作 SUID バイナリをどう素早く穴判定するか?
+**A2**: strings で system()/popen() があるか見る。ltrace/strace で何を execve するか見る。ldd で依存ライブラリが書き込み可能か見る。popen("curl ...") で PATH に私の書き込み可能なディレクトリがあれば、PATH ハイジャックで勝ちである。
+**Q3**: SUID バイナリが【任意読み取り】能力しかない場合、どうするか?
+**A3**: 目標を「権限昇格」から「root でしか読めないものを読む」に変える。shadow、/root/.ssh、systemd unit 内のパスワードフィールド。認証情報を得たら su/横展開で、同じく権限昇格と等価である。
+**Q4**: SUID が 1 本通らない場合、どこへ方向転換するか?
+**A4**: 【3 つの直交ディメンション】。getcap -r / で cap_setuid/cap_dac_read_search を探す。sudo -l でパスワード不要項目を見る。id で docker/lxd/disk/shadow グループを見る。この 3 つは SUID と重ならず、1 本切れても他の 3 本が生きている可能性が高い。
+**Q5**: いつ SUID の経路を諦めるか?
+**A5**: 15 分で明らかな利用点が見つからなければ去る。SUID は「すぐ見つかるか、そもそもないか」であり、固執する価値はない。
 
-### sudo -l 有条目的利用决策
-**Q1**: sudo -l 有几条 NOPASSWD,先看哪个?
-**A1**: 优先级:① (ALL) NOPASSWD: ALL 白送;② 允许解释器/编辑器/带 shell 逃逸的(vim/less/awk/python/perl/git 等)查 GTFOBins;③ 允许自研脚本 —— 看脚本能否命令注入、能否写它读的配置。
-**Q2**: 条目指向 root 拥有 644 的脚本,不可写,还有戏?
-**A2**: 三条正交:① 脚本调外部命令是否走绝对路径 —— PATH 劫持;② 脚本读环境变量吗 —— sudo env_keep 保留的 env 注入;③ 脚本读【我能写的】配置文件吗 —— 改配置触发命令执行。
-**Q3**: sudo 版本很老要不要打 sudo 本身的 CVE?
-**A3**: 可以但放最后。sudo/内核这种系统组件的 exp 是重炮,失败大概率被 auditd/EDR 抓,放低成本路线之后。
-**Q4**: 条目是 -u lowuser 而非 root,还有价值吗?
-**A4**: 【中转跳板】—— 跳到 lowuser 重新做 sudo -l/组/home 枚举。侧向到另一身份常常打开完全不同的攻击面(比如 lowuser 是 db 账号能读明文库密码)。
-**Q5**: 完全没条目、sudo 不能免密怎么办?
-**A5**: 【转凭据路线】—— 目标改成拿到 root 或其他用户的密码,而不是绕 sudo。bash_history、.mysql_history、last、进程 cmdline、swap dump、备份文件是常见泄漏点。
+### sudo -l に項目がある場合の利用決定
+**Q1**: sudo -l に NOPASSWD が数本ある。先にどれを見るか?
+**A1**: 優先順位:① (ALL) NOPASSWD: ALL は無条件。② インタープリタ/エディタ/shell エスケープを持つもの(vim/less/awk/python/perl/git など)は GTFOBins を引く。③ 自作スクリプト。コマンド注入できるか、それが読む設定を書けるかを見る。
+**Q2**: 項目が root 所有 644 のスクリプトを指し、書き込み不可の場合、まだ見込みはあるか?
+**A2**: 3 つの直交:① スクリプトが外部コマンドを絶対パスで呼ぶか。PATH ハイジャック。② スクリプトが環境変数を読むか。sudo env_keep が保持する env 注入。③ スクリプトが【私が書ける】設定ファイルを読むか。設定を変えてコマンド実行をトリガー。
+**Q3**: sudo バージョンが非常に古い場合、sudo 自身の CVE を撃つべきか?
+**A3**: できるが最後に置く。sudo/カーネル系のシステムコンポーネントの exp は重砲で、失敗すると auditd/EDR に掴まる可能性が高い。低コスト経路の後に置く。
+**Q4**: 項目が -u lowuser で root でない場合、まだ価値はあるか?
+**A4**: 【中継の踏み台】。lowuser に跳んで sudo -l/グループ/home の列挙をやり直す。別の身元へ横展開すると、全く異なる攻撃面が開くことが多い(例 lowuser が db アカウントでライブラリの平文パスワードを読める)。
+**Q5**: 全く項目がなく、sudo がパスワード不要にできない場合、どうするか?
+**A5**: 【認証情報の経路に方向転換】。目標を「root か他ユーザーのパスワードを取る」に変え、sudo を迂回しない。bash_history、.mysql_history、last、プロセス cmdline、swap dump、バックアップファイルが一般的な漏えい点である。
 
-### 内核 exp 的稳定性权衡
-**Q1**: 前面路都断了、只剩内核 exp,该不该开?
-**A1**: 四问:① 内核版本与 exp 精确匹配吗;② 是否生产核心机器(蓝屏 = 事故);③ 有 EDR/HIDS 检测 LPE 吗;④ 有回撤路径吗(exp 崩了 shell 是否还在)。四个里任一"是",都要再想想。
-**Q2**: 怎么判 exp 稳不稳?
-**A2**: 看作者 + issue 区 + "unstable/PoC only" 标记 + 本地起同版本内核跑一遍。绝不在目标"试试看"—— 真机就是一次机会。
-**Q3**: exp 要编译但目标没 gcc?
-**A3**: 【本地静态编译】—— 同版本内核头 + musl 静态,单文件二进制。上传到 /dev/shm 或 /tmp,chmod +x 后立刻 rm 保留内存 fd。或者找纯 shell/python 的 PoC。
-**Q4**: exp 打完 shell 断了怎么办?
-**A4**: 打之前就要有【至少两条独立回连】—— 一条 shell + 一条独立后门或 SSH key。exp 后必崩的场景更要提前准备。
-**Q5**: 内核路彻底不能走(核心生产、太旧太不稳、有 HIDS),转哪?
-**A5**: 【凭据 + 横向】—— 不追求本机提权,改为在本权限下能读到什么、能连到哪里。或者【容器逃逸/hypervisor 侧信道】完全绕开内核 LPE。
+### カーネル exp の安定性の比較検討
+**Q1**: 前の経路が全て切れ、カーネル exp だけが残った。撃つべきか?
+**A1**: 四問:① カーネルバージョンと exp が正確に一致するか。② 本番の核心マシンか(ブルースクリーン = 事故)。③ EDR/HIDS が LPE を検知するか。④ 撤退経路があるか(exp が崩れた後も shell が残るか)。4 つのどれかが「はい」なら、もう一度考える。
+**Q2**: exp が安定かどう判断するか?
+**A2**: 作者 + issue 欄 + 「unstable/PoC only」マーク + ローカルで同バージョンカーネルを起動して 1 回走らせる。対象で「試してみる」ことは絶対にしない。実機は一度きりの機会である。
+**Q3**: exp がコンパイルを要するが対象に gcc がない場合はどうするか?
+**A3**: 【ローカル静的コンパイル】。同バージョンのカーネルヘッダ + musl 静的で、単一ファイルバイナリ。/dev/shm か /tmp にアップロードし、chmod +x 後すぐ rm してメモリ fd を残す。または純 shell/python の PoC を探す。
+**Q4**: exp を撃った後 shell が切れた場合、どうするか?
+**A4**: 撃つ前に【少なくとも 2 本の独立した折り返し】を用意する。1 本の shell + 1 本の独立バックドアか SSH key。exp 後に必ず崩れる場面は、なおさら事前準備が必要。
+**Q5**: カーネルの経路が全く通れない(核心本番、古すぎて不安定、HIDS あり)場合、どこへ方向転換するか?
+**A5**: 【認証情報 + 横展開】。本機の権限昇格を追わず、現在の権限で何を読めるか、どこに接続できるかに変える。または【コンテナエスケープ/ハイパーバイザーのサイドチャネル】でカーネル LPE を完全に迂回する。
 
-### cron/systemd timer 提权的判据
-**Q1**: 发现 root 的 cron 跑一个脚本,怎么判能否利用?
-**A1**: 三问:① 脚本本身我能写吗;② 脚本所在目录我能写吗(能就替换/覆盖);③ 脚本调的外部命令/配置/包含的其他脚本,我能影响任何一个吗?任一"能",就有路。
-**Q2**: 脚本是绝对路径 644 不可写,还有戏?
-**A2**: 看内容 —— source /etc/xxx?读环境变量?通配符展开(tar czf /backup/*.log 通配符注入经典)?相对路径调外部命令?这些都是【不改脚本本身】就能注入的口子。
-**Q3**: 没找到明显 cron 弱点,还该看什么?
-**A3**: 【非 cron 定时】—— systemd timer(systemctl list-timers)、anacron、at 队列、应用自带 scheduler(Jenkins、Airflow)、logrotate postrotate。cron 只是最显眼一种。
-**Q4**: cron 是别的用户不是 root 也值得打?
-**A4**: 值得。提权 = 【任何一次权限跃升】,不一定一步到 root。跳到那个用户重新枚举,可能它的 sudo/组/文件权限直接送下一步。
-**Q5**: 完全没有可利用定时任务怎么转?
-**A5**: 【长驻服务】—— 定时的本质是"root 周期性执行代码",服务是"root 常驻执行代码"。ps -ef | grep root 找进程,它们的配置、日志、pid、socket,任何一个能写就有戏。
+### cron/systemd timer 権限昇格の判定基準
+**Q1**: root の cron があるスクリプトを走らせるのを見つけた。利用できるかどう判定するか?
+**A1**: 三問:① スクリプト自体を私が書けるか。② スクリプトの所在ディレクトリを私が書けるか(書ければ置換/上書き)。③ スクリプトが呼ぶ外部コマンド/設定/インクルードする他スクリプトのどれかに私が影響できるか。どれか「できる」なら経路がある。
+**Q2**: スクリプトが絶対パス 644 で書き込み不可の場合、まだ見込みはあるか?
+**A2**: 内容を見る。source /etc/xxx か、環境変数を読むか、ワイルドカード展開(tar czf /backup/*.log のワイルドカード注入が定番)か、相対パスで外部コマンドを呼ぶか。これらは【スクリプト自体を変えずに】注入できる口である。
+**Q3**: 明らかな cron の弱点が見つからない場合、他に何を見るべきか?
+**A3**: 【非 cron のスケジュール】。systemd timer(systemctl list-timers)、anacron、at キュー、アプリ内蔵 scheduler(Jenkins、Airflow)、logrotate postrotate。cron は最も目立つ 1 種にすぎない。
+**Q4**: cron が root でなく別ユーザーでも攻める価値はあるか?
+**A4**: ある。権限昇格 = 【任意の一度の権限跳躍】であり、必ずしも一歩で root でなくてよい。そのユーザーに跳んで再列挙すれば、その sudo/グループ/ファイル権限が次の一歩を直接くれるかもしれない。
+**Q5**: 利用できるスケジュールタスクが全くない場合、どう方向転換するか?
+**A5**: 【常駐サービス】。スケジュールの本質は「root が周期的にコードを実行する」ことで、サービスは「root が常駐してコードを実行する」ことである。ps -ef | grep root でプロセスを探し、その設定、ログ、pid、socket のどれかが書ければ見込みがある。
 
-### PATH 劫持与相对路径提权
-**Q1**: 什么时候 PATH 劫持能奏效?
-**A1**: 两个条件同时:① 有【会以高权限运行】的程序/脚本;② 它调外部命令时没写绝对路径。宿主常见:SUID 二进制、cron 脚本、sudo 白名单脚本、systemd unit 的 ExecStart。
-**Q2**: 怎么验证一个二进制会不会中招?
-**A2**: strace -f -e execve 跑一遍,看 execve 第一个参数是不是绝对路径。相对路径就有戏,写同名恶意脚本放 PATH 前面(比如 /tmp),export PATH=/tmp:$PATH,触发。
-**Q3**: SUID 二进制的 PATH 劫持要注意什么?
-**A3**: SUID 会 sanitize LD_* 但 PATH 常保留。注意:SUID 下 shell 脚本(#!/bin/sh)现代系统会降权或拒绝,用二进制包装或直接改成 execve 无 shell。
-**Q4**: PATH 里没可写目录怎么办?
-**A4**: 【转目标进程的 PATH】—— 别改我自己的,读 /proc/<pid>/environ 拿 root 进程的 PATH,想办法影响它(systemd Environment=、启动脚本)。
-**Q5**: 目标脚本用了绝对路径怎么办?
-**A5**: 【其他相对性】—— LD_LIBRARY_PATH 加载 so、python sys.path 加载 module、node require 查找、bash source 相对路径。同类"路径劫持"机会。
+### PATH ハイジャックと相対パス権限昇格
+**Q1**: PATH ハイジャックが効くのはいつか?
+**A1**: 2 つの条件が同時に成立するとき:① 【高権限で実行される】プログラム/スクリプトがある。② それが外部コマンドを呼ぶ際に絶対パスを書かない。宿主で多いのは:SUID バイナリ、cron スクリプト、sudo ホワイトリストスクリプト、systemd unit の ExecStart。
+**Q2**: バイナリが中るかをどう検証するか?
+**A2**: strace -f -e execve を 1 回走らせ、execve の第 1 引数が絶対パスかを見る。相対パスなら見込みがあり、同名の悪意あるスクリプトを PATH の前方(例 /tmp)に書き、export PATH=/tmp:$PATH してトリガーする。
+**Q3**: SUID バイナリの PATH ハイジャックで注意すべき点は何か?
+**A3**: SUID は LD_* を sanitize するが PATH は保持することが多い。注意:SUID 下の shell スクリプト(#!/bin/sh)は現代システムで権限を下げるか拒否するので、バイナリラッパーを使うか、直接 execve で shell なしに変える。
+**Q4**: PATH に書き込み可能なディレクトリがない場合はどうするか?
+**A4**: 【対象プロセスの PATH に方向転換】。自分のを変えず、/proc/<pid>/environ を読んで root プロセスの PATH を取り、それに影響する方法を工夫する(systemd の Environment=、起動スクリプト)。
+**Q5**: 対象スクリプトが絶対パスを使う場合はどうするか?
+**A5**: 【他の相対性】。LD_LIBRARY_PATH で so をロード、python sys.path で module をロード、node require の検索、bash source の相対パス。同種の「パスハイジャック」の機会である。
 
-### 组权限提权(docker/lxd/disk 等)
-**Q1**: id 显示我在 docker 组怎么打?
-**A1**: docker 组 = root。特权容器把宿主 / mount 进去:docker run -v /:/mnt --rm -it alpine chroot /mnt。判据:能连 docker.sock 就 100%。
-**Q2**: lxd/lxc 组呢?
-**A2**: 类似 —— 起 privileged container,把宿主根挂进去。init 镜像 + config raw.idmap + security.privileged=true + mount root。
-**Q3**: disk 组?
-**A3**: 直接读写块设备。debugfs 或 tune2fs 绕过所有权限:改 /etc/shadow、加 SUID shell、种 SSH key,想干什么干什么。
-**Q4**: shadow 组?
-**A4**: 能读 /etc/shadow。目标从"提权"改为"离线爆破 root",hashcat 跑一晚,拿到密码 = 拿到 root。
-**Q5**: adm、systemd-journal、sudo 空条目这种非常见组?
-**A5**: adm/journal 能读大量日志 —— 里面常有密码/token 泄漏;sudo 组但空条目 —— 找 sudo CVE 或社工触发。先查这个组能读写哪些具体路径,再从路径反推能干什么。
-**Q6**: 完全不在有用组怎么办?
-**A6**: 【转组加入】—— 如果我能触发某个 root 脚本(比如 useradd/usermod 封装),把自己加进 docker/sudo。以有限能力换更强的组权限。
+### グループ権限の権限昇格(docker/lxd/disk など)
+**Q1**: id が docker グループを示す。どう攻めるか?
+**A1**: docker グループ = root。特権コンテナにホスト / をマウントする:docker run -v /:/mnt --rm -it alpine chroot /mnt。判定基準:docker.sock に接続できれば 100% である。
+**Q2**: lxd/lxc グループはどうするか?
+**A2**: 同様に。privileged container を起動し、ホストルートをマウントする。init イメージ + config raw.idmap + security.privileged=true + mount root。
+**Q3**: disk グループはどうするか?
+**A3**: ブロックデバイスを直接読み書きする。debugfs か tune2fs で全権限を迂回する:/etc/shadow を変更、SUID shell を追加、SSH key を植える。何でもできる。
+**Q4**: shadow グループはどうするか?
+**A4**: /etc/shadow を読める。目標を「権限昇格」から「root のオフライン爆破」に変える。hashcat を一晩走らせ、パスワードを得れば root を得たのと同じである。
+**Q5**: adm、systemd-journal、sudo 空項目のような非一般的なグループはどうするか?
+**A5**: adm/journal は大量のログを読める。中にパスワード/token の漏えいがよくある。sudo グループだが空項目。sudo CVE かソーシャルトリガーを探す。先にこのグループがどの具体的なパスを読み書きできるか調べ、パスから逆に何ができるか推す。
+**Q6**: 有用なグループに全くいない場合、どうするか?
+**A6**: 【グループ加入に方向転換】。root スクリプト(例 useradd/usermod ラッパー)をトリガーできれば、自分を docker/sudo に加える。有限の能力でより強いグループ権限に替える。
 
-### Windows 低权初勘顺序
-**Q1**: 拿到 Windows 低权 shell 先跑什么?
-**A1**: whoami /all(重点看【权限列表】)、systeminfo(hotfix)、netstat -ano、tasklist /v(用户 + EDR)、net user、net localgroup administrators、reg query HKLM\Software\Policies。顺序:身份 → 补丁 → 网络 → 进程 → 用户组 → 组策略。
-**Q2**: whoami /priv 里看到啥眼睛一亮?
-**A2**: SeImpersonate/SeAssignPrimaryToken(Potato 家族,基本白送 SYSTEM);SeBackup/SeRestore(读 SAM 离线);SeDebug(读任意进程内存);SeLoadDriver(装恶意驱动)。这些是 Windows 的"糖"。
-**Q3**: 组信息里看什么值得留意?
-**A3**: Backup Operators、Server Operators、Print Operators、Account Operators —— AD 里这些内置组权限极强,常被当"低权"忽略;自定义组要看它对 OU/GPO/ACL 的权限。
-**Q4**: 补丁全新、EDR 强怎么办?
-**A4**: 【转错配】—— 服务弱 ACL、未引号服务路径、AlwaysInstallElevated、计划任务弱 ACL、Autorun 可写。不是漏洞是配置,EDR 一般不管。
-**Q5**: 全干净怎么办?
-**A5**: 【转凭据】—— 目标改为从这台机器抓到任何一个其他用户凭据(浏览器保存、cmdkey、DPAPI blob、.rdp 文件、config 里的连接串)。这个别人可能就是本地管理员。
+### Windows 低権限初査の順序
+**Q1**: Windows 低権限 shell を得て、先に何を走らせるか?
+**A1**: whoami /all(重点は【権限リスト】)、systeminfo(hotfix)、netstat -ano、tasklist /v(ユーザー + EDR)、net user、net localgroup administrators、reg query HKLM\Software\Policies。順序:身元 → パッチ → ネットワーク → プロセス → ユーザーグループ → グループポリシー。
+**Q2**: whoami /priv で何が見えたら目が輝くか?
+**A2**: SeImpersonate/SeAssignPrimaryToken(Potato ファミリー。ほぼ SYSTEM をプレゼント)、SeBackup/SeRestore(SAM を読んでオフライン)、SeDebug(任意プロセスのメモリを読む)、SeLoadDriver(悪意あるドライバをロード)。これらは Windows の「糖」である。
+**Q3**: グループ情報で何を見れば注目すべきか?
+**A3**: Backup Operators、Server Operators、Print Operators、Account Operators。AD 内のこれらの内蔵グループは権限が非常に強く、「低権限」と見落とされがち。カスタムグループは OU/GPO/ACL への権限を見る。
+**Q4**: パッチが全新で、EDR が強い場合はどうするか?
+**A4**: 【設定ミスに方向転換】。サービスの弱い ACL、未引用サービスパス、AlwaysInstallElevated、スケジュールタスクの弱い ACL、Autorun の書き込み可能。脆弱性でなく設定で、EDR は通常関知しない。
+**Q5**: 全てきれいな場合はどうするか?
+**A5**: 【認証情報に方向転換】。目標を「このマシンから他の任意のユーザーの認証情報を 1 つ取る」に変える(ブラウザ保存、cmdkey、DPAPI blob、.rdp ファイル、config 内の接続文字列)。その他人がローカル管理者かもしれない。
 
-### SeImpersonate 与 Potato 家族选型
-**Q1**: 有 SeImpersonatePrivilege,用哪个 Potato?
-**A1**: 看 OS 版本 + 补丁:老系统(2016 前)Juicy/Hot;新系统(2019/2022、Win10/11 打了补丁)RoguePotato/PrintSpoofer/GodPotato/EfsPotato。判据:exp 作者的适用范围 + 本地同版本靶机验证。
-**Q2**: web/db 服务账号带 SeImpersonate 是常态吗?
-**A2**: 是。这就是为什么 web/db 打进去大概率能 SYSTEM —— 微软给这些服务账号默认带。反过来,如果 web/db shell 没有 SeImpersonate,说明降权了,得走别的路。
-**Q3**: Potato 打完新 shell 怎么稳?
-**A3**: 拿到 SYSTEM 后立刻:抓 SAM/LSASS + 种独立持久化(服务/计划任务)+ 退出 Potato 进程。别停在 Potato 打出的 shell 里干活 —— 它依附父进程很脆。
-**Q4**: Potato 被 EDR 拦怎么办?
-**A4**: 换实现:PrintSpoofer 走打印、EfsPotato 走 EFS RPC、GodPotato 走不同 COM。EDR 常常只识别一种实现。或【转不依赖 impersonation 的路】—— 服务 ACL 错配。
-**Q5**: 没有 SeImpersonate 怎么办?
-**A5**: 【转服务错配 + 未打补丁 LPE】。SeImpersonate 是最爽的路,没有就老老实实找 CVE(PrintNightmare、SpoolFool、CLFS、AFD 系列)或错配。
+### SeImpersonate と Potato ファミリーの選定
+**Q1**: SeImpersonatePrivilege がある。どの Potato を使うか?
+**A1**: OS バージョン + パッチを見る:旧システム(2016 以前)は Juicy/Hot。新システム(2019/2022、Win10/11 パッチ済み)は RoguePotato/PrintSpoofer/GodPotato/EfsPotato。判定基準:exp 作者の適用範囲 + ローカルの同バージョン標的マシンでの検証。
+**Q2**: web/db サービスアカウントが SeImpersonate を持つのは常態か?
+**A2**: 常態である。これが web/db に侵入すると SYSTEM になりやすい理由で、マイクロソフトがこれらのサービスアカウントに既定で付与している。逆に、web/db shell に SeImpersonate がないなら、降権されているので、別の経路を進む必要がある。
+**Q3**: Potato を撃って新 shell をどう安定させるか?
+**A3**: SYSTEM を得たら即座に:SAM/LSASS を取得 + 独立した永続化(サービス/スケジュールタスク)を植える + Potato プロセスを終了する。Potato が打った shell 内で作業し続けない。それは親プロセスに依存して脆い。
+**Q4**: Potato が EDR に遮られた場合、どうするか?
+**A4**: 実装を替える:PrintSpoofer は印刷、EfsPotato は EFS RPC、GodPotato は別の COM を通る。EDR はしばしば 1 つの実装しか認識しない。または【impersonation に依存しない経路に方向転換】。サービスの ACL 設定ミス。
+**Q5**: SeImpersonate がない場合、どうするか?
+**A5**: 【サービス設定ミス + 未パッチ LPE に方向転換】。SeImpersonate は最も楽な経路で、なければ素直に CVE(PrintNightmare、SpoolFool、CLFS、AFD 系)か設定ミスを探す。
 
-### 未引号服务路径与服务 ACL 错配
-**Q1**: 未引号服务路径怎么找?
-**A1**: wmic service get name,pathname,startmode | findstr /i "auto",看 PathName 里【有空格但没引号】的。经典:C:\Program Files\Foo Bar\svc.exe 无引号,系统先试 C:\Program.exe、C:\Program Files\Foo.exe。任一中间路径可写就赢。
-**Q2**: 服务有引号还能打吗?
-**A2**: 看服务 ACL(sc sdshow / accesschk)。有 SERVICE_CHANGE_CONFIG 就 sc config binpath= 改成我的 exe;对 exe 文件本身有写权限一样。
-**Q3**: exe 不可写、ACL 不能改还有戏?
-**A3**: 看它加载的 DLL —— DLL 劫持是另一大类。procmon 跑一下看 CreateFile 失败但会 fallback 的路径,放同名 DLL。
-**Q4**: 要重启服务但没权限重启?
-**A4**: 三种触发:① 等系统重启(最慢);② 服务恢复策略(某些服务崩了自动重启,写好文件后杀当前进程);③ 找【会调用该服务】的低权可触发接口(spooler 可通过打印请求触发)。
-**Q5**: 全部服务都干净怎么办?
-**A5**: 【转计划任务同套路】—— 任务 ACL、任务里的脚本/exe 权限、任务 XML 权限。schtasks + accesschk 过一遍,原理和服务提权几乎一样。
+### 未引用サービスパスとサービス ACL 設定ミス
+**Q1**: 未引用サービスパスをどう見つけるか?
+**A1**: wmic service get name,pathname,startmode | findstr /i "auto" で、PathName に【空白はあるが引用符がない】ものを見る。定番:C:\Program Files\Foo Bar\svc.exe が引用符なしなら、システムが先に C:\Program.exe、C:\Program Files\Foo.exe を試す。任意の中間パスが書ければ勝ちである。
+**Q2**: サービスに引用符がある場合、まだ攻められるか?
+**A2**: サービスの ACL(sc sdshow / accesschk)を見る。SERVICE_CHANGE_CONFIG があれば sc config binpath= で私の exe に変える。exe ファイル自体に書き込み権限がある場合も同じ。
+**Q3**: exe が書き込み不可で、ACL も変更できない場合、まだ見込みはあるか?
+**A3**: それがロードする DLL を見る。DLL ハイジャックは別の大きな分類である。procmon を走らせて CreateFile が失敗するが fallback するパスを見つけ、同名 DLL を置く。
+**Q4**: サービスの再起動が必要だが、再起動権限がない場合はどうするか?
+**A4**: 3 つのトリガー:① システム再起動を待つ(最遅)。② サービスの復旧ポリシー(一部のサービスは崩れると自動再起動。ファイルを書いた後に現在のプロセスを殺す)。③ 【そのサービスを呼ぶ】低権限でトリガーできるインターフェースを探す(spooler は印刷リクエストでトリガーできる)。
+**Q5**: 全サービスがきれいな場合、どうするか?
+**A5**: 【スケジュールタスクに同ルーチンで方向転換】。タスクの ACL、タスク内のスクリプト/exe 権限、タスク XML 権限。schtasks + accesschk を一周する。原理はサービス権限昇格とほぼ同じである。
 
-### AlwaysInstallElevated 决策
-**Q1**: 怎么快速验证 AlwaysInstallElevated 是否开?
-**A1**: reg query HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated 和 HKLM 同名键。两个都 1 = 白送,msiexec /quiet /qn /i evil.msi 直接 SYSTEM。
-**Q2**: 只有一边是 1、另一边没有,还能用吗?
-**A2**: 必须【HKLM + HKCU 同时为 1】。但 HKCU 是我自己的,可以自己 reg add!所以【HKLM=1 且 HKCU 没设 = 白送】。
-**Q3**: MSI 打进去被 EDR 杀了怎么办?
-**A3**: 换 payload 生成方式:msfvenom 的 MSI 特征太强,自己用 WiX 写一个只调 CustomAction 起 cmd 的;或让 MSI 只做一件事 —— 加用户到 admins 组,不起 shell。
-**Q4**: 打完后 MSI 留磁盘会不会暴露?
-**A4**: 会。Windows Installer 会记 log。取舍:成功后立刻删 MSI + 清 %WINDIR%\Installer 下对应缓存 + 清事件日志(如果 SYSTEM 到手)。
-**Q5**: AlwaysInstallElevated 不开怎么办?
-**A5**: 【转 GPP cpassword】(如果域内)、或其他高权执行原语 —— DCOM MMC20、Excel 类 COM、任务计划的 UAC bypass 路径。
+### AlwaysInstallElevated の決定
+**Q1**: AlwaysInstallElevated が有効かをどう素早く検証するか?
+**A1**: reg query HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated と HKLM の同名キー。両方が 1 = プレゼントで、msiexec /quiet /qn /i evil.msi で直接 SYSTEM になる。
+**Q2**: 片方だけが 1 で、もう片方がない場合、まだ使えるか?
+**A2**: 【HKLM + HKCU が同時に 1】である必要がある。ただし HKCU は私自身のものなので、自分で reg add できる。だから【HKLM=1 かつ HKCU 未設定 = プレゼント】である。
+**Q3**: MSI を打ち込んだら EDR に殺された場合、どうするか?
+**A3**: payload の生成方式を替える:msfvenom の MSI は特徴が強すぎる。自分で WiX で、CustomAction で cmd を起動するだけのものを書く。または MSI に 1 つだけさせる。admins グループにユーザーを足す。shell を起動しない。
+**Q4**: 撃った後、MSI がディスクに残って露出しないか?
+**A4**: 露出する。Windows Installer は log を記録する。取捨選択:成功後すぐ MSI を削除 + %WINDIR%\Installer 配下の対応キャッシュを掃除 + イベントログを掃除(SYSTEM を取れたら)。
+**Q5**: AlwaysInstallElevated が無効の場合、どうするか?
+**A5**: 【GPP cpassword に方向転換】(ドメイン内なら)、または他の高権限実行原語。DCOM MMC20、Excel 系 COM、スケジュールタスクの UAC bypass 経路。
 
-### Windows 凭据 dump 源的选择
-**Q1**: 拿到 SYSTEM 后先抓什么?
-**A1**: 优先级:① LSASS(内存里活的 hash、Kerberos ticket、明文 —— 最值钱);② SAM+SYSTEM+SECURITY 三件套(本地 hash + DCC2 + LSA secrets 里的服务账号密码);③ DPAPI master key + blob(浏览器、RDP、Wi-Fi、mstsc)。
-**Q2**: LSASS 被 PPL/RunAsPPL 保护怎么办?
-**A2**: 三条路:① BYOVD(自带带签名的 vuln driver)关 PPL;② comsvcs.dll MiniDump 或 taskmgr 转储,离线用 pypykatz 解析;③ 放弃 LSASS,只抓 SAM+SECURITY(不需要 LSASS 访问)。
-**Q3**: 抓完全是本地账号横向不了怎么办?
-**A3**: 【转 DCC2 + LSA secrets + Kerberos ticket】—— 缓存凭据里可能有域账号 DCC2(离线爆);LSA secrets 里的 _SC_ 服务账号密码是明文;ticket 直接 pass-the-ticket。
-**Q4**: 所有 hash 都很复杂爆不动怎么办?
-**A4**: 【放弃爆破,转 hash 直传】—— NTLM pass-the-hash、AES pass-the-key、TGT pass-the-ticket,不需要明文。仅当目标只接受明文(比如某些 web SSO)才必须爆。
-**Q5**: EDR 严防 dump 怎么办?
-**A5**: 【转 shadow copy】—— vssadmin create shadow,复制 SAM/SYSTEM 出来,不碰 LSASS。或【拿高权跳去别机器打】—— 反正有高权就能远程抓。
+### Windows 認証情報 dump 源の選択
+**Q1**: SYSTEM を得た後、先に何を取るか?
+**A1**: 優先順位:① LSASS(メモリ内の生きた hash、Kerberos ticket、平文。最も価値が高い)。② SAM+SYSTEM+SECURITY の三点セット(ローカル hash + DCC2 + LSA secrets 内のサービスアカウントパスワード)。③ DPAPI master key + blob(ブラウザ、RDP、Wi-Fi、mstsc)。
+**Q2**: LSASS が PPL/RunAsPPL で保護されている場合、どうするか?
+**A2**: 3 つの経路:① BYOVD(署名付きの脆弱なドライバを自前で持ち込む)で PPL を無効化。② comsvcs.dll MiniDump か taskmgr 転送で、オフラインで pypykatz 解析。③ LSASS を諦め、SAM+SECURITY だけを取る(LSASS アクセス不要)。
+**Q3**: 取れたのが全てローカルアカウントで横展開できない場合、どうするか?
+**A3**: 【DCC2 + LSA secrets + Kerberos ticket に方向転換】。キャッシュ認証情報にドメインアカウントの DCC2 があるかもしれない(オフライン爆破)。LSA secrets 内の _SC_ サービスアカウントパスワードは平文。ticket は直接 pass-the-ticket。
+**Q4**: 全 hash が複雑で爆破できない場合、どうするか?
+**A4**: 【爆破を諦め、hash 直伝に方向転換】。NTLM pass-the-hash、AES pass-the-key、TGT pass-the-ticket。平文は不要。対象が平文しか受け付けない場合(一部の web SSO)だけ爆破が必須になる。
+**Q5**: EDR が dump を厳重に防ぐ場合、どうするか?
+**A5**: 【shadow copy に方向転換】。vssadmin create shadow で SAM/SYSTEM をコピーし、LSASS に触れない。または【高権限で別のマシンに跳んで攻める】。高権限があればリモートで取れる。
 
-### UAC 绕过要不要打
-**Q1**: 已经在本地管理员组但 UAC 中权限,该不该绕?
-**A1**: 看目的:① 只要 SYSTEM 那 UAC bypass 只是中间一步,不如直接 Potato/MSI/服务替换;② 要长期驻留 High IL 更稳(装服务、写系统目录都需要),值得绕。
-**Q2**: 常见 bypass 路子怎么选?
-**A2**: fodhelper/computerdefaults 走注册表劫持,老系统好用;dll mock trusted dir 绕签名;silentcleanup 走计划任务。每个有版本适用范围,先本地打一遍。
-**Q3**: 绕不过去(补丁全打、AMSI 死拦)怎么办?
-**A3**: 【社工触发】—— 弹假 UAC 让用户点、hook 用户主动开的高权程序。无人值守机器就【转凭据】—— 拿到明文后 runas /user:admin 得 High IL,不用 bypass。
-**Q4**: bypass 成功但 EDR 报警怎么办?
-**A4**: 大多数 UAC bypass 有 IOC(注册表键、临时文件、进程链)。成功后立刻【清 IOC】:删键值、删临时、清日志。或【选小众 COM handler 劫持】,避开常见规则。
-**Q5**: bypass 要不要留痕?
-**A5**: 每次都留痕(4688/4104、AMSI log)。想干净就【只用一次拿 SYSTEM,然后靠 SYSTEM 清痕迹】,不要反复触发。
+### UAC 迂回を撃つべきか
+**Q1**: 既にローカル管理者グループだが、UAC が中権限。迂回すべきか?
+**A1**: 目的を見る:① SYSTEM だけでいいなら UAC bypass は中間の 1 歩にすぎず、直接 Potato/MSI/サービス置換の方がよい。② High IL で長期駐留したい(サービスを入れる、システムディレクトリに書くには必要)なら、迂回する価値がある。
+**Q2**: 一般的な bypass 経路をどう選ぶか?
+**A2**: fodhelper/computerdefaults はレジストリハイジャックで、旧システムで使いやすい。dll mock trusted dir は署名を迂回。silentcleanup はスケジュールタスク経由。それぞれバージョン適用範囲があるので、先にローカルで 1 回撃つ。
+**Q3**: 迂回できない(全パッチ、AMSI が死ぬほど遮る)場合、どうするか?
+**A3**: 【ソーシャルトリガー】。偽の UAC を出してユーザーにクリックさせる、ユーザーが能動的に開く高権限プログラムを hook する。無人マシンなら【認証情報に方向転換】。平文を得たら runas /user:admin で High IL になり、bypass 不要である。
+**Q4**: bypass は成功したが EDR がアラートを出す場合、どうするか?
+**A4**: 大多数の UAC bypass には IOC(レジストリキー、一時ファイル、プロセス連鎖)がある。成功後すぐ【IOC を掃除】。キー値を削除、一時を削除、ログを掃除。または【マイナーな COM handler ハイジャックを選び】、一般的なルールを避ける。
+**Q5**: bypass は痕跡を残すべきか?
+**A5**: 毎回痕跡を残す(4688/4104、AMSI log)。きれいにしたいなら【一度だけ使って SYSTEM を取り、SYSTEM で痕跡を掃除する】。繰り返しトリガーしない。
 
-### 数据库为跳板的提权路线
-**Q1**: web 打进去,发现 mysql/mssql 高权连接怎么用?
-**A1**: 判身份 —— select current_user()/SELECT SYSTEM_USER。root/sa 就直接 OS 执行:mssql 开 xp_cmdshell、mysql 走 UDF(看 secure_file_priv 和 plugin 目录)、postgres 走 COPY FROM PROGRAM 或 CREATE FUNCTION。
-**Q2**: sa 但 xp_cmdshell 开不了?
-**A2**: 三条备选:① CLR assembly(sp_configure 'clr enabled' 后 CREATE ASSEMBLY 加载 .NET dll);② OLE Automation(sp_OACreate);③ Job Agent(msdb 的 sp_add_job)。
-**Q3**: mysql 想上 UDF 但 plugin_dir 不可写?
-**A3**: 检查 secure_file_priv(空最松 null 最严)。有值就只能写该目录 —— 目录里的东西是不是被别的服务用?反过来,Windows 上的 mysql db 用户往往是 SYSTEM 或有 SeImpersonate,直接 xp_cmdshell 起就是 SYSTEM。
-**Q4**: db 用户是低权应用账号怎么办?
-**A4**: 【转数据而不是命令执行】—— 从表里读应用凭据、API key、其他系统密码横向;或读 hash 字段爆破用户密码拿 web 登录态。db 不是只能执行命令。
-**Q5**: db 是内网、只能通过 web 层 SQLi 打、回显有限怎么办?
-**A5**: 【异步/带外】—— DNS OOB、HTTP OOB、时间盲注分段;或用 SQLi 写 webshell(select into outfile 到 web 可解析目录),把一次性通道升级为持续通道。
+### データベースを踏み台にした権限昇格経路
+**Q1**: web に侵入し、mysql/mssql の高権限接続を見つけた。どう使うか?
+**A1**: 身元を判定する。select current_user()/SELECT SYSTEM_USER。root/sa なら直接 OS 実行:mssql は xp_cmdshell を開く、mysql は UDF(secure_file_priv と plugin ディレクトリを見る)、postgres は COPY FROM PROGRAM か CREATE FUNCTION。
+**Q2**: sa だが xp_cmdshell を開けない場合はどうするか?
+**A2**: 3 つの代替:① CLR assembly(sp_configure 'clr enabled' 後、CREATE ASSEMBLY で .NET dll をロード)。② OLE Automation(sp_OACreate)。③ Job Agent(msdb の sp_add_job)。
+**Q3**: mysql で UDF を使いたいが plugin_dir が書き込み不可の場合はどうするか?
+**A3**: secure_file_priv を確認する(空が最も緩く null が最も厳しい)。値があればそのディレクトリしか書けない。そのディレクトリのものが別のサービスに使われているか?逆に、Windows 上の mysql db ユーザーは SYSTEM か SeImpersonate を持つことが多く、直接 xp_cmdshell を起動すれば SYSTEM である。
+**Q4**: db ユーザーが低権限のアプリアカウントの場合、どうするか?
+**A4**: 【コマンド実行でなくデータに方向転換】。テーブルからアプリ認証情報、API key、他システムのパスワードを読んで横展開する。または hash フィールドを読んでユーザーパスワードを爆破し、web ログイン状態を取る。db はコマンド実行しかできないわけではない。
+**Q5**: db が内部ネットワークで、web 層の SQLi でしか攻められず、出力が限られる場合はどうするか?
+**A5**: 【非同期/帯域外】。DNS OOB、HTTP OOB、時間ベースのブラインド注入を分割。または SQLi で webshell を書く(select into outfile を web 解析可能なディレクトリに)。一度きりのチャネルを持続チャネルに昇格する。
 
-### 提权被 EDR 拦截后的转向
-**Q1**: 提权 exp 打完 EDR 弹告警了怎么办?
-**A1**: 冷静评估:① 告警是否被响应(有分析工具启动?连接异常断?新登录?);② 立足点还在不在(shell 活不代表安全,可能被观察);③ 有无其他独立立足点。
-**Q2**: 该继续打还是撤?
-**A2**: 判据:唯一立足点 + 蓝队响应强,立刻【降噪 + 转低特征操作】;有备用立足点,可以【用当前身份做完最后一件事(抓一次凭据)然后主动放弃】。
-**Q3**: 必须提权、怎么绕 EDR?
-**A3**: 换维度:① 不用 exp 用【错配】—— EDR 一般不管 sudo -l/服务 ACL/GPP cpassword;② 换 exp 实现 —— 同 CVE 多 PoC,EDR 常常只识别一种;③ 换 payload 交付 —— shellcode 手工 patch、AV/EDR sandbox evasion。
-**Q4**: dump LSASS 被 EDR 检测怎么办?
-**A4**: 【转不碰 LSASS 的凭据源】—— shadow copy 拷 SAM/SECURITY、DPAPI blob 离线解、DCSync(需域权限但不碰本机 LSASS)、密码喷洒(不 dump 直接猜)。
-**Q5**: 什么时候必须主动放弃立足点?
-**A5**: ① 已确认蓝队在响应;② 继续动作会牵连其他立足点;③ 时间成本超过收益。放弃不等于失败 —— 保住其他立足点、保留下次进入,比死守烧掉的点更重要。
+### 権限昇格が EDR に遮られた後の方向転換
+**Q1**: 権限昇格 exp を撃った後、EDR がアラートを出した。どうするか?
+**A1**: 冷静に評価する:① アラートが応答されたか(分析ツールが起動したか、接続が異常に切れたか、新規ログインか)。② 足場がまだあるか(shell が生きていること=安全ではない。観察されている可能性)。③ 他の独立した足場があるか。
+**Q2**: 続けて撃つか撤退するか?
+**A2**: 判定基準:唯一の足場 + ブルーチームの応答が強いなら、即【ノイズ低減 + 低特徴操作に方向転換】。予備の足場があれば、【現在の身元で最後の 1 つ(認証情報を 1 回取る)をやって能動的に放棄】できる。
+**Q3**: 権限昇格が必須な場合、どう EDR を迂回するか?
+**A3**: ディメンションを替える:① exp を使わず【設定ミス】。EDR は通常 sudo -l/サービス ACL/GPP cpassword を関知しない。② exp の実装を替える。同じ CVE に複数の PoC があり、EDR はしばしば 1 つしか認識しない。③ payload 配送を替える。shellcode を手動 patch、AV/EDR のサンドボックス回避。
+**Q4**: dump LSASS が EDR に検知された場合、どうするか?
+**A4**: 【LSASS に触れない認証情報源に方向転換】。shadow copy で SAM/SECURITY をコピー、DPAPI blob をオフライン解析、DCSync(ドメイン権限が必要だが本機 LSASS に触れない)、パスワードスプレー(dump せず直接推測)。
+**Q5**: いつ能動的に足場を放棄すべきか?
+**A5**: ① ブルーチームが応答中と確認した。② 継続動作が他の足場に波及する。③ 時間コストが収益を超える。放棄は失敗と同義ではない。他の足場を守り、次回の進入を残す方が、焼けた点にしがみつくより重要である。
 
-### 反弹 shell 的稳定性升级
-**Q1**: 拿到 nc 反弹 shell,不能补全、不能 ctrl-c,先升级到什么?
-**A1**: 三步 pty:① python -c 'import pty;pty.spawn("/bin/bash")' 或 script /dev/null;② 本地 stty raw -echo、远端 export TERM=xterm、stty rows X columns Y;③ 现在能 ctrl-c、vim、sudo 交互输密码。没 python 就 perl/ruby/expect/socat。
-**Q2**: 目标出网只允许 http/dns 怎么办?
-**A2**: 【隧道换维度】—— DNS(iodine/dnscat2)、ICMP、HTTP(s) 反代(gost/chisel)、SMB pipe(域内)、走已有应用协议(Redis pub/sub 当命令通道)。别死磕原生 TCP 反连。
-**Q3**: shell 频繁断线怎么办?
-**A3**: 三应对:① 加 keepalive(socat 天然带;裸 nc 外面套 tmux/screen);② 换协议(TCP 短连接 → mTLS 长连接 + 心跳);③ 双通道冗余(shell + 独立后门)。
-**Q4**: 会话稳但延迟高怎么办?
-**A4**: 【降交互频次】—— 少 ls、多脚本化。批处理化命令一次跑完输出全拿。或干脆放持久化 beacon,不用一直挂 shell。
-**Q5**: 通道彻底断了怎么办?
-**A5**: 【被动 C2】—— beacon 主动出连、C2 只应答,断了自动重试;或【存活性极强的介质】—— 公有云对象存储、GitHub gist、社交平台 API 作 dead drop。TCP 反连是最脆,长期驻留不该依赖它。
+### リバース shell の安定性昇格
+**Q1**: nc リバース shell を得たが、補完も ctrl-c もできない。先に何に昇格するか?
+**A1**: 3 歩の pty:① python -c 'import pty;pty.spawn("/bin/bash")' か script /dev/null。② ローカル stty raw -echo、リモート export TERM=xterm、stty rows X columns Y。③ これで ctrl-c、vim、sudo の対話パスワード入力ができる。python がなければ perl/ruby/expect/socat。
+**Q2**: 対象の外向きが http/dns しか許可しない場合、どうするか?
+**A2**: 【トンネルをディメンション替え】。DNS(iodine/dnscat2)、ICMP、HTTP(s) 逆プロキシ(gost/chisel)、SMB pipe(ドメイン内)、既存アプリプロトコル(Redis pub/sub をコマンドチャネルに)。ネイティブ TCP の逆接続に固執しない。
+**Q3**: shell が頻繁に切れる場合、どうするか?
+**A3**: 3 つの対応:① keepalive を足す(socat は天然に持つ。裸 nc は外側に tmux/screen をかぶせる)。② プロトコルを替える(TCP 短接続 → mTLS 長接続 + ハートビート)。③ 二重チャネルの冗長(shell + 独立バックドア)。
+**Q4**: セッションは安定だが遅延が高い場合、どうするか?
+**A4**: 【対話頻度を下げる】。ls を減らし、スクリプト化する。バッチ化したコマンドを一度に走らせて出力を全て取る。または永続化 beacon を置いて、ずっと shell を掛けておかない。
+**Q5**: チャネルが完全に切れた場合、どうするか?
+**A5**: 【受動 C2】。beacon が能動的に外へ接続し、C2 は応答だけして、切れたら自動再試行。または【生存性の極めて強い媒体】。公有クラウドのオブジェクトストレージ、GitHub gist、ソーシャルプラットフォーム API を dead drop にする。TCP 逆接続は最も脆く、長期駐留はそれに依存すべきでない。
 
-### 是否留 webshell 的权衡
-**Q1**: web 打进去了,该不该立刻留 webshell?
-**A1**: 权衡:好处是任何时候能回来,坏处是蓝队应急首先看 web 目录、极易被发现。决策:【分层】—— 一个显眼做诱饵(必要时可弃)、一个隐蔽做备份(藏正常业务文件)、一个终极后手(内存马、不落地)。
-**Q2**: 内存马和落地文件怎么选?
-**A2**: 短平快 + 隐蔽优先 = 内存马(Java Agent、Filter、Servlet 注入);要重启后还活 + 蓝队查得不细 = 落地。理想:【内存马 + 一个休眠落地】,重启后落地拉起内存马。
-**Q3**: webshell 藏在哪不容易被发现?
-**A3**: ① 改静态资源(js/css/图片附加代码);② 藏 vendor/第三方库目录(蓝队默认不动);③ 分片(单文件看不出恶意,组合才生效);④ 改配置(log4j 的 config 里塞恶意 pattern)。绝不用 shell.php/cmd.jsp。
-**Q4**: 密码怎么设、通信怎么加密?
-**A4**: 复杂密码 + 动态密钥(冰蝎/哥斯拉类)避流量特征;或做成【触发式】—— 只有特定 Cookie/UA/header 匹配才响应恶意,平时表现正常,过流量审计。
-**Q5**: 决定不留 webshell 靠什么维持?
-**A5**: 【系统层持久化】—— cron/systemd/服务/注册表 Run,不依赖 web 目录。或【凭据】—— 拿到 web 服务器 SSH key 或管理员密码,以后从 SSH 进来,不走 web。
+### webshell を残すかの比較検討
+**Q1**: web に侵入した。すぐ webshell を残すべきか?
+**A1**: 比較検討する:利点はいつでも戻れること、欠点はブルーチームの応急処置がまず web ディレクトリを見て、非常に見つかりやすいこと。決定:【階層化】。1 つは目立つものをおとりに(必要なとき棄てられる)、1 つは隠蔽的なものを予備に(正常な業務ファイルに隠す)、1 つは究極の後手(メモリ馬、ディスクに置かない)。
+**Q2**: メモリ馬とディスク配置ファイルをどう選ぶか?
+**A2**: 手早く + 隠蔽優先 = メモリ馬(Java Agent、Filter、Servlet 注入)。再起動後も生きる + ブルーチームの調査が粗い = ディスク配置。理想:【メモリ馬 + 休眠ディスク配置 1 つ】。再起動後、ディスク配置がメモリ馬を引き上げる。
+**Q3**: webshell をどこに隠せば見つかりにくいか?
+**A3**: ① 静的リソースを改変(js/css/画像にコードを付加)。② vendor/サードパーティライブラリディレクトリに隠す(ブルーチームは既定で触らない)。③ 分割(単一ファイルでは悪意と分からず、組み合わせで効く)。④ 設定変更(log4j の config に悪意ある pattern を入れる)。shell.php/cmd.jsp は絶対に使わない。
+**Q4**: パスワードをどう設定し、通信をどう暗号化するか?
+**A4**: 複雑なパスワード + 動的鍵(冰蝎/哥斯拉系)でトラフィック特徴を避ける。または【トリガー式】にする。特定の Cookie/UA/header が一致したときだけ悪意を応答し、普段は正常に振る舞ってトラフィック監査を通す。
+**Q5**: webshell を残さないと決めた場合、何で維持するか?
+**A5**: 【システム層の永続化】。cron/systemd/サービス/レジストリ Run。web ディレクトリに依存しない。または【認証情報】。web サーバーの SSH key か管理者パスワードを得て、以後は SSH から入り、web を通らない。
 
-### Windows 持久化机制选型
-**Q1**: 拿到 admin/SYSTEM 后持久化选什么?
-**A1**: 权衡【触发条件、隐蔽性、EDR 感知】:① 计划任务(灵活但显眼);② 服务(常驻但易枚举);③ Run 键(用户登录触发、显眼);④ WMI 事件订阅(隐蔽但 EDR 强检测);⑤ COM 劫持(隐蔽、特定触发);⑥ Winlogon/AppInit_DLLs(旧、EDR 盯);⑦ LSA/authentication package(SYSTEM 级、隐蔽)。
-**Q2**: 最难被发现的是哪几种?
-**A2**: WMI 事件订阅 + 定制 filter —— 传统工具枚举不出;COM 劫持 —— 藏 HKCU 的 TreatAs/InprocServer32;LSA/authentication package —— SYSTEM 级、常规扫描看不到。但现代 EDR 全部会检测。
-**Q3**: 有 EDR 怎么选?
-**A3**: 【白利用而非自建】—— 劫持已有合法服务/计划任务(给已存在的服务加恶意 DLL 依赖)不新建;或【投机】—— 靠特定行为触发(Office 加载、COM 加载),不常驻内存。
-**Q4**: 持久化对目标可用性影响?
-**A4**: 有 —— 服务崩、任务失败、Run 键指向的 exe 找不到都会弹窗告警。载荷【必须自己做异常兜底】,静默失败别弹窗。测试标准:kill 我的进程、断网、重启,持久化路径不能报错。
-**Q5**: 全部持久化路都被 EDR 拦怎么办?
-**A5**: 【凭据 + 域信任】—— 与其在这台机器留后门,不如把域管凭据、AS-REP key、krbtgt hash 拿走。凭据本身就是最好的持久化。或【域级持久化】—— 黄金票据、AdminSDHolder、GPO、ADCS。
+### Windows 永続化の仕組み選定
+**Q1**: admin/SYSTEM を得た後、永続化に何を選ぶか?
+**A1**: 【トリガー条件、隠蔽性、EDR 感知】を比較検討する:① スケジュールタスク(柔軟だが目立つ)。② サービス(常駐だが列挙しやすい)。③ Run キー(ユーザーログインでトリガー、目立つ)。④ WMI イベント購読(隠蔽的だが EDR が強く検知)。⑤ COM ハイジャック(隠蔽的、特定トリガー)。⑥ Winlogon/AppInit_DLLs(古い、EDR が監視)。⑦ LSA/authentication package(SYSTEM 級、隠蔽的)。
+**Q2**: 最も見つかりにくいのはどれか?
+**A2**: WMI イベント購読 + カスタム filter。従来ツールでは列挙できない。COM ハイジャック。HKCU の TreatAs/InprocServer32 に隠す。LSA/authentication package。SYSTEM 級で通常のスキャンでは見えない。ただし現代 EDR は全て検知する。
+**Q3**: EDR がある場合、どう選ぶか?
+**A3**: 【白利用であり自建でない】。既存の正当なサービス/スケジュールタスクをハイジャックする(既存サービスに悪意ある DLL 依存を足す)。新規作成しない。または【投機】。特定の挙動トリガー(Office ロード、COM ロード)に頼り、常時メモリに駐留しない。
+**Q4**: 永続化が対象の可用性に影響するか?
+**A4**: ある。サービスクラッシュ、タスク失敗、Run キーの exe が見つからないと全てポップアップでアラートになる。payload は【自ら異常の底支えを必ず行い】、静かに失敗してポップアップを出さない。テスト基準:私のプロセスを kill、断網、再起動しても、永続化経路がエラーを出さない。
+**Q5**: 全永続化経路が EDR に遮られた場合、どうするか?
+**A5**: 【認証情報 + ドメイン信頼】。このマシンにバックドアを残すより、ドメイン管理者認証情報、AS-REP key、krbtgt hash を持ち去る。認証情報自体が最良の永続化である。または【ドメイン級永続化】。黄金チケット、AdminSDHolder、GPO、ADCS。
 
-### Linux 持久化机制选型
-**Q1**: root 拿到后 Linux 持久化选哪个?
-**A1**: 选项:① cron/systemd timer(简单显眼);② systemd unit(常驻、可 socket activation);③ SSH authorized_keys(极简常见);④ bashrc/profile 插桩(用户登录触发);⑤ PAM 模块劫持(所有认证过一遍,极强);⑥ LD_PRELOAD 全局(risky);⑦ init/rc.local(老式);⑧ 内核 rootkit(最强但风险高)。
-**Q2**: 隐蔽性排序?
-**A2**: PAM 后门 ≈ 内核 rootkit > systemd 高级配置 > SSH key(藏非常规路径)> cron/rc.local > bashrc。但 PAM 和内核 rootkit 一旦被发现基本重装,前中期不建议用重的。
-**Q3**: 想低成本高稳定选什么?
-**A3**: SSH key + systemd user timer 双保险。SSH key 藏【非默认 authorized_keys 路径】(sshd_config 的 AuthorizedKeysFile 可自定义),运维 grep authorized_keys 找不到。timer 干周期心跳。
-**Q4**: 有 auditd/osquery/EDR-for-Linux 怎么办?
-**A4**: 【白利用】—— 改已有 systemd unit 的 ExecStartPost 加一条,不新建 unit;或【挂用户空间】—— 用户 crontab、systemd --user、.bashrc,HIDS 常常只监控 /etc、/root。
-**Q5**: 持久化被清怎么办?
-**A5**: 【多层冗余】—— 至少 3 个不同触发条件(用户登录 + 定时 + 系统事件)。一个被清另外两个还活,而且被清的那个告诉了蓝队"来源",另外两个反而能让我抢先。
+### Linux 永続化の仕組み選定
+**Q1**: root を得た後、Linux 永続化に何を選ぶか?
+**A1**: 選択肢:① cron/systemd timer(簡単で目立つ)。② systemd unit(常駐、socket activation 可能)。③ SSH authorized_keys(極めて簡単で一般的)。④ bashrc/profile の差し込み(ユーザーログインでトリガー)。⑤ PAM モジュールハイジャック(全認証を一度通過、極めて強い)。⑥ LD_PRELOAD 全体(risky)。⑦ init/rc.local(古い)。⑧ カーネル rootkit(最強だがリスクが高い)。
+**Q2**: 隠蔽性の順位はどうか?
+**A2**: PAM バックドア ≈ カーネル rootkit > systemd 高度な設定 > SSH key(非定番パスに隠す)> cron/rc.local > bashrc。ただし PAM とカーネル rootkit は一度見つかるとほぼ再インストールなので、前中期は重いものを使わない。
+**Q3**: 低コスト高安定を選ぶなら何か?
+**A3**: SSH key + systemd user timer の二重保険。SSH key は【非既定の authorized_keys パス】に隠す(sshd_config の AuthorizedKeysFile をカスタマイズできる)。運用者が grep authorized_keys しても見つからない。timer は周期的ハートビートを担う。
+**Q4**: auditd/osquery/EDR-for-Linux がある場合、どうするか?
+**A4**: 【白利用】。既存 systemd unit の ExecStartPost に 1 行足す。新規 unit を作らない。または【ユーザー空間に掛ける】。ユーザー crontab、systemd --user、.bashrc。HIDS は /etc、/root だけを監視することが多い。
+**Q5**: 永続化が消された場合、どうするか?
+**A5**: 【多層冗長】。少なくとも 3 つの異なるトリガー条件(ユーザーログイン + スケジュール + システムイベント)。1 つ消されても他の 2 つが生き、しかも消された 1 つがブルーチームに「発生源」を教えるので、残り 2 つでむしろ先手を取れる。
 
-### SSH key 持久化的实战细节
-**Q1**: 直接往 ~/.ssh/authorized_keys 塞 key,会不会太显眼?
-**A1**: 会。蓝队应急脚本必查这文件。三种规避:① 改 sshd_config AuthorizedKeysFile 指自定义路径;② 用 AuthorizedKeysCommand 让 sshd 从我控制的脚本拉 key;③ 借用户已有的 key 文件插入(隐藏在合法 key 中间)。
-**Q2**: 用户 shell 是 /sbin/nologin 或 /bin/false 怎么办?
-**A2**: SSH 可以 ForceCommand 强制、可以 -N 只做端口转发。或改 /etc/passwd 把 shell 换回来(root 权限时)。或者干脆不图 shell,只要一个能 -D 起 socks 代理的用户身份就够跳板了。
-**Q3**: sshd 被限制(只允许密钥、DenyUsers 等)怎么办?
-**A3**: 读 sshd_config,匹配它的规则挑符合要求的用户下手(比如 AllowUsers 里的),或【转换协议维度】—— 不走 sshd,自己起一个隐藏端口/knock 触发的后门。
-**Q4**: 目标定期扫描 authorized_keys 变更怎么办?
-**A4**: 【从 key 改为 CA 证书】—— sshd 支持 TrustedUserCAKeys,签一个证书给自己用,证书有效期短、指纹变化,签名 CA 藏得深就不容易被追。或者【转 PAM 后门】—— 不走 key 走认证模块。
-**Q5**: SSH 服务本身被换成堡垒机代理、直连不通了怎么办?
-**A5**: 【转堡垒机链路】—— 目标是通过堡垒机的合法路径进入,而不是绕过它。搞堡垒机上的账号凭据、审计脚本插桩、或利用堡垒机的自动登录会话劫持。
+### SSH key 永続化の実戦詳細
+**Q1**: 直接 ~/.ssh/authorized_keys に key を入れると、目立ちすぎないか?
+**A1**: 目立つ。ブルーチームの応急スクリプトは必ずこのファイルを調べる。3 つの回避:① sshd_config の AuthorizedKeysFile をカスタムパスに変える。② AuthorizedKeysCommand で sshd が私の制御するスクリプトから key を引かせる。③ ユーザーの既存 key ファイルに挿入する(正当な key の間に隠す)。
+**Q2**: ユーザーの shell が /sbin/nologin か /bin/false の場合、どうするか?
+**A2**: SSH は ForceCommand で強制でき、-N でポートフォワーディングだけもできる。または /etc/passwd を変えて shell を戻す(root 権限時)。または shell を求めず、-D で socks プロキシを起動できるユーザー身元 1 つあれば踏み台に十分である。
+**Q3**: sshd が制限されている(鍵のみ許可、DenyUsers など)場合、どうするか?
+**A3**: sshd_config を読み、そのルールに一致して要求を満たすユーザーを選んで手を付ける(例 AllowUsers 内の)。または【プロトコルのディメンションを転換】。sshd を通らず、隠しポート/knock トリガーのバックドアを自分で起動する。
+**Q4**: 対象が authorized_keys の変更を定期的にスキャンする場合、どうするか?
+**A4**: 【key から CA 証明書に変える】。sshd は TrustedUserCAKeys に対応し、自分用の証明書を 1 枚署名する。証明書は有効期間が短く、フィンガープリントが変わり、署名 CA を深く隠せば追われにくい。または【PAM バックドアに方向転換】。key でなく認証モジュールを通る。
+**Q5**: SSH サービス自体が踏み台プロキシに置き換えられ、直結できない場合、どうするか?
+**A5**: 【踏み台連鎖に方向転換】。対象へは踏み台を経由する正当な経路で入るのであり、それを迂回しない。踏み台上のアカウント認証情報、監査スクリプトへの差し込み、または踏み台の自動ログインセッションのハイジャックを狙う。
 
-### AD 域内持久化选型
-**Q1**: 拿到域管后域级持久化选什么?
-**A1**: 从"能活多久 vs 有多显眼"排:① krbtgt hash → 黄金票据(能活到 krbtgt 改密两次为止,极强但一旦响应就废);② 目标服务 hash → 白银票据(单机粒度,隐蔽);③ DSRM 密码同步(单 DC 本地登录);④ AdminSDHolder ACL 后门(改一次影响长期);⑤ ADCS 证书持久化(合法证书,极难发现);⑥ Skeleton Key(内存驻留,DC 重启就没)。
-**Q2**: 黄金票据要不要立刻用?
-**A2**: 别频繁用。抓完 krbtgt 后存下来,只在【真的需要】时开一次。黄金票据的检测点是"不合理的 TGT lifetime + 不合理的用户"。用得越少越难被发现。
-**Q3**: AdminSDHolder ACL 后门怎么埋?
-**A3**: 给一个我控制的低权账号在 AdminSDHolder 上加 GenericAll/WriteDacl。每小时 SDProp 自动把这条 ACL 复制到所有受保护账号(Domain Admins 等)。之后即使管理员重置密码,我的低权账号仍能重新写他们。
-**Q4**: 想最"合法"的持久化选什么?
-**A4**: 【ADCS 证书】—— 给自己签一张长期证书,用证书 PKINIT 认证换 TGT。证书是 CA 签的、完全合规,除非专门审 CA log 否则发现不了。
-**Q5**: 域管凭据丢了(密码改了、krbtgt 转了)怎么办?
-**A5**: 【回归 ACL/GPO 后门】—— AdminSDHolder、GPO Delegation、OU ACL 这些是"权限而非凭据",不受密码轮转影响。这就是为什么打完域管一定要种一个非凭据类的备份。
+### AD ドメイン内永続化の選定
+**Q1**: ドメイン管理者を得た後、ドメイン級永続化に何を選ぶか?
+**A1**: 「どれだけ生きられるか vs どれだけ目立つか」で並べる:① krbtgt hash → 黄金チケット(krbtgt のパスワードを 2 回変更されるまで生きる。極めて強いが、一度応答されると無効)。② 対象サービス hash → 白銀チケット(単機粒度、隠蔽的)。③ DSRM パスワード同期(単一 DC のローカルログイン)。④ AdminSDHolder ACL バックドア(一度変更すると長期に影響)。⑤ ADCS 証明書永続化(正当な証明書、非常に見つかりにくい)。⑥ Skeleton Key(メモリ駐留、DC 再起動で消える)。
+**Q2**: 黄金チケットをすぐ使うべきか?
+**A2**: 頻繁に使わない。krbtgt を取ったら保存し、【本当に必要なとき】だけ 1 回使う。黄金チケットの検知点は「不合理な TGT lifetime + 不合理なユーザー」である。使うほど見つかりにくい。
+**Q3**: AdminSDHolder ACL バックドアをどう埋めるか?
+**A3**: 私が制御する低権限アカウントに、AdminSDHolder 上で GenericAll/WriteDacl を足す。毎時 SDProp がこの ACL を全保護アカウント(Domain Admins など)に自動コピーする。その後、管理者がパスワードをリセットしても、私の低権限アカウントは彼らを再度書き換えられる。
+**Q4**: 最も「正当」な永続化を選ぶなら何か?
+**A4**: 【ADCS 証明書】。自分に長期証明書を 1 枚署名し、証明書の PKINIT 認証で TGT に替える。証明書は CA が署名した完全に合法なもので、CA ログを専門に監査しない限り見つからない。
+**Q5**: ドメイン管理者認証情報を失った(パスワード変更、krbtgt が回った)場合、どうするか?
+**A5**: 【ACL/GPO バックドアに回帰】。AdminSDHolder、GPO Delegation、OU ACL は「権限であり認証情報でない」ので、パスワードローテーションの影響を受けない。これが、ドメイン管理者を取ったら必ず非認証情報型の予備を植えるべき理由である。
 
-### ADCS 证书路线(ESC 系列)
-**Q1**: 域内看到 CA 服务在跑,先做什么?
-**A1**: 用 Certipy/Certify 枚举模板,识别 ESC1-8 的哪几个存在。判据:ESC1(模板允许申请者提供 SAN + 客户端认证 EKU)是最白送的;ESC8(NTLM relay 到 CA web enrollment)动静大但强。
-**Q2**: ESC1 能白嫖到什么?
-**A2**: 直接申一张 SAN=domain admin@domain 的证书,用它 PKINIT 拿 TGT,拿完就是域管。判据:我当前身份能 enroll 那个模板 + 模板 flag 允许 SAN。
-**Q3**: 用作持久化 vs 用作提权,怎么选?
-**A3**: 提权:一次性签一张管理员证书用完就废;持久化:签一张【自己控制账号 SAN 为管理员】的证书,长期有效期(默认 1 年到 10 年),下次要用就 PKINIT。
-**Q4**: 蓝队发现并撤销证书怎么办?
-**A4**: 【多张 + 多账号】—— 别只签一张,给多个身份签多张分批用。CRL 检查慢,新签的证书生效比撤销传播快。或者【转其他 ESC】—— ESC 系列有 8 个,ESC4(模板 ACL 弱)可以直接改模板重签。
-**Q5**: 没有 CA 或 CA 严格审计怎么办?
-**A5**: 【转其他域持久化】—— AdminSDHolder、GPO、DCSync 权限、krbtgt。ADCS 只是众多手段之一,不是唯一。
+### ADCS 証明書経路(ESC シリーズ)
+**Q1**: ドメイン内で CA サービスが動いているのを見た。先に何をするか?
+**A1**: Certipy/Certify でテンプレートを列挙し、ESC1-8 のどれが存在するか識別する。判定基準:ESC1(テンプレートが申請者に SAN 提供を許可 + クライアント認証 EKU)が最もプレゼントに近い。ESC8(NTLM relay を CA web enrollment へ)は騒ぎが大きいが強い。
+**Q2**: ESC1 で何をただで取れるか?
+**A2**: 直接 SAN=domain admin@domain の証明書を 1 枚申請し、それで PKINIT して TGT を取り、取ればドメイン管理者である。判定基準:私の現在の身元がそのテンプレートを enroll できる + テンプレート flag が SAN を許可する。
+**Q3**: 永続化に使うか権限昇格に使うか、どう選ぶか?
+**A3**: 権限昇格:一度きりで管理者証明書を 1 枚署名し、使い切って廃棄。永続化:【自分の制御するアカウントの SAN を管理者にする】証明書を 1 枚署名し、長い有効期間(既定 1 年〜10 年)、次回使うとき PKINIT する。
+**Q4**: ブルーチームが見つけて証明書を失効させた場合、どうするか?
+**A4**: 【複数枚 + 複数アカウント】。1 枚だけ署名せず、複数の身元に複数枚を署名して分けて使う。CRL チェックは遅く、新しく署名した証明書の有効化は失効伝播より速い。または【他の ESC に方向転換】。ESC シリーズは 8 つあり、ESC4(テンプレート ACL が弱い)は直接テンプレートを変更して再署名できる。
+**Q5**: CA がない、または CA が厳格監査の場合、どうするか?
+**A5**: 【他のドメイン永続化に方向転換】。AdminSDHolder、GPO、DCSync 権限、krbtgt。ADCS は多くの手段の 1 つにすぎず、唯一ではない。
 
-### 反检测:beacon 心跳、jitter、流量特征
-**Q1**: beacon 心跳设多长?
-**A1**: 权衡"响应速度 vs 可探测性"。长驻期(信息收集完等待时机)心跳可以很长(数分钟到几小时),jitter 拉到 30%+;交战期(要操作)缩短到秒级。默认几秒的心跳在流量分析里是明显信标。
-**Q2**: jitter 为什么重要?
-**A2**: 固定周期心跳会在流量图上形成规律脉冲,IDS/NDR 有专门检测这个的算法。jitter(比如 ±50%)打乱周期。加上随机 payload 大小填充,就更像正常业务流量。
-**Q3**: 流量特征怎么避?
-**A3**: ① 走合规协议(https + 合规 TLS 指纹);② 走 CDN/知名云域名(malleable profile);③ 内容加密 + padding;④ 频率控制在业务基线内。核心是【看起来像目标环境本来就有的流量】。
-**Q4**: 流量已经被识别了怎么办?
-**A4**: 【切换通道 + 切换域名/IP】。预先准备多条备用通道:一条 https、一条 DNS、一条 SMB(域内)、一条 email/cloud storage dead drop。任何一条被封切下一条,别死磕。
-**Q5**: 完全静默的通信怎么做?
-**A5**: 【转 dead drop】—— 不主动通信,读写一个公共介质(GitHub gist、云对象存储的 metadata、某个论坛帖子),我和 beacon 都定时去读写。没有直接连接、没有反向通道,极难在网络流量里定位。
+### 反検知:beacon ハートビート、jitter、トラフィック特徴
+**Q1**: beacon のハートビートをどれだけに設定するか?
+**A1**: 「応答速度 vs 検知可能性」を比較検討する。長期駐留期(情報収集が終わり時機を待つ)はハートビートを非常に長くできる(数分〜数時間)、jitter を 30%+ に引く。交戦期(操作が必要)は秒級に縮める。既定の数秒のハートビートはトラフィック解析で明らかなビーコンである。
+**Q2**: jitter がなぜ重要か?
+**A2**: 固定周期のハートビートはトラフィックグラフ上に規則的な脈拍を作り、IDS/NDR にこれを検知する専用アルゴリズムがある。jitter(例 ±50%)が周期を乱す。ランダムな payload サイズのパディングを足せば、より正常な業務トラフィックに似る。
+**Q3**: トラフィック特徴をどう避けるか?
+**A3**: ① 合法プロトコル(https + 合法な TLS フィンガープリント)。② CDN/著名クラウドドメイン(malleable profile)。③ 内容を暗号化 + padding。④ 頻度を業務ベースライン内に制御。核心は【対象環境に元からあるトラフィックに見える】ことである。
+**Q4**: トラフィックが既に識別された場合、どうするか?
+**A4**: 【チャネルを切り替え + ドメイン/IP を切り替え】。複数の予備チャネルを事前に用意する:1 本 https、1 本 DNS、1 本 SMB(ドメイン内)、1 本 email/cloud storage の dead drop。どれかが封じられたら次に切り替え、固執しない。
+**Q5**: 完全に静かな通信をどう行うか?
+**A5**: 【dead drop に方向転換】。能動通信せず、公共メディア(GitHub gist、クラウドオブジェクトストレージの metadata、あるフォーラムの投稿)を読み書きする。私も beacon も定期的に読み書きする。直接接続も逆方向チャネルもなく、ネットワークトラフィックでの特定が極めて難しい。
 
-### 多 C2 冗余部署
-**Q1**: 为什么要多 C2?
-**A1**: 单 C2 = 单点故障。C2 服务器被打掉、域名被封、IP 被拉黑,所有 beacon 一起死。多 C2 保证一条挂了自动切下一条。
-**Q2**: 多 C2 怎么设计?
-**A2**: 分层:① primary(每天用)高质量域名 + 前置基础设施;② secondary(每周心跳)完全独立域名/IP;③ tertiary(dead drop,月级)极稀疏心跳,只用于 primary/secondary 全挂时找回。三层之间【不共享任何基础设施】,不然一起挂。
-**Q3**: 一个 beacon 支持几个 C2 才够?
-**A3**: 最少 2 个不同信道 + 不同域名。理想 3 个,分别是 https / DNS / dead drop。每个信道用不同 TLS 指纹、不同 UA、不同心跳节奏,避免关联。
-**Q4**: 切换策略怎么设?
-**A4**: 主动 + 被动组合:① 心跳 N 次失败自动切;② C2 主动下发切换指令;③ 时间片轮换(每小时切一次,反检测)。别只靠"失败自动切",蓝队可以做流量降级让 beacon 反复重连暴露基础设施。
-**Q5**: 所有 C2 一起挂怎么办?
-**A5**: 【dead drop + 兜底重连】—— beacon 内置最后手段:去一个公共平台(GitHub、Pastebin、某社交平台)拉配置。这个"配置源"是最重要的复活锚,要藏得极深、极稀疏访问。
+### 多 C2 冗長配備
+**Q1**: なぜ多 C2 か?
+**A1**: 単一 C2 = 単点障害。C2 サーバーが打たれる、ドメインが封じられる、IP がブラックリスト化されると、全 beacon が一緒に死ぬ。多 C2 は 1 本が死んでも自動で次に切り替わることを保証する。
+**Q2**: 多 C2 をどう設計するか?
+**A2**: 階層化する:① primary(毎日使う)高品質ドメイン + 前置インフラ。② secondary(毎週ハートビート)完全に独立したドメイン/IP。③ tertiary(dead drop、月級)極めてまばらなハートビートで、primary/secondary が全て死んだときの回収専用。3 層の間は【いかなるインフラも共有しない】。共有すれば一緒に死ぬ。
+**Q3**: 1 つの beacon が何個の C2 をサポートすれば足りるか?
+**A3**: 最低 2 つの異なるチャネル + 異なるドメイン。理想は 3 つで、https / DNS / dead drop。各チャネルは異なる TLS フィンガープリント、異なる UA、異なるハートビートリズムで、関連付けを避ける。
+**Q4**: 切り替え戦略をどう設定するか?
+**A4**: 能動 + 受動の組み合わせ:① ハートビートが N 回失敗したら自動切り替え。② C2 が能動的に切り替え命令を配信。③ タイムスライスローテーション(毎時切り替え、反検知)。「失敗自動切り替え」だけに頼らない。ブルーチームはトラフィックを劣化させて beacon に繰り返し再接続させ、インフラを露出させることができる。
+**Q5**: 全 C2 が一緒に死んだ場合、どうするか?
+**A5**: 【dead drop + 底支えの再接続】。beacon に最後の手段を内蔵する:公共プラットフォーム(GitHub、Pastebin、あるソーシャルプラットフォーム)に行って設定を引く。この「設定源」が最も重要な復活の錨で、非常に深く隠し、非常にまばらにアクセスする。
 
-### 持久化被发现的应急响应
-**Q1**: 突然发现有个持久化被删/被隔离怎么办?
-**A1**: 冷静评估:① 只是被删还是蓝队在追(查其他持久化点、有没有异常登录、有没有 EDR 部署时间戳);② 我的其他立足点是否也暴露(它们有关联特征吗)。
-**Q2**: 该立刻放弃这台机器还是继续?
-**A2**: 判据:如果被删的持久化和其他立足点【共用基础设施】(同 C2、同域名、同凭据),预设它们全都危险,立刻切基础设施;如果完全独立,可以继续观察。
-**Q3**: 是不是要主动清痕迹?
-**A3**: 不要。这时清痕迹反而是【二次告警】—— 蓝队正在看这台机器,你一动他就知道你还在。宁可放弃,让机器"看起来干净地被清完了",从其他立足点继续。
-**Q4**: 蓝队在 hunt 但还没定位到我怎么办?
-**A4**: 【降到最低活动】—— beacon 心跳拉长到小时级、停止一切主动操作、把 C2 切到 dead drop。等他们放松警惕(一般 1-2 周)再评估。
-**Q5**: 全部立足点都在响应范围内怎么办?
-**A5**: 【战略撤退,保留复活手段】—— 主动放弃所有主动通信的立足点,只留 dead drop 类的极稀疏后门。凭据类的("我知道 krbtgt hash")无法被应急抹掉,是最后的复活手段。
+### 永続化が発見された応急対応
+**Q1**: 突然、ある永続化が削除/隔離されたのに気づいた。どうするか?
+**A1**: 冷静に評価する:① 単に削除されただけか、ブルーチームが追っているか(他の永続化点を調べる、異常ログイン、EDR 配備のタイムスタンプ)。② 私の他の足場も露出したか(関連する特徴があるか)。
+**Q2**: 即このマシンを諦めるか、続けるか?
+**A2**: 判定基準:削除された永続化と他の足場が【インフラを共有する】(同じ C2、同じドメイン、同じ認証情報)なら、それらが全て危険と仮定し、即インフラを切り替える。完全に独立なら、観察を続けられる。
+**Q3**: 能動的に痕跡を掃除すべきか?
+**A3**: しない。このときの痕跡掃除はむしろ【二次アラート】である。ブルーチームがこのマシンを見ているので、あなたが動けば、まだいることが分かる。諦める方がよい。マシンを「きれいに掃除され終わった」ように見せ、他の足場から続行する。
+**Q4**: ブルーチームがハント中だが、まだ私を特定していない場合、どうするか?
+**A4**: 【最低活動に落とす】。beacon ハートビートを時間級に延ばし、全能動操作を止め、C2 を dead drop に切り替える。彼らが警戒を緩めるのを待って(通常 1-2 週間)から再評価する。
+**Q5**: 全足場が応答範囲内にある場合、どうするか?
+**A5**: 【戦略的撤退、復活手段を残す】。能動通信する足場を全て能動的に放棄し、dead drop 系の極めてまばらなバックドアだけを残す。認証情報系のもの(「krbtgt hash を知っている」)は応急処置で消せないので、最後の復活手段になる。
 
-### 何时故意"不提权"
-**Q1**: 什么场景该故意保低权、不提权?
-**A1**: ① 目标可能是蜜罐 —— 提权触发是典型诱饵检测手段,低权持续潜伏更安全;② EDR 极强 —— 低权时它不管,提权时全监控;③ 目标是拿数据而非拿权 —— 数据在低权可读的地方,提权是不必要的暴露。
-**Q2**: 怎么判断可能是蜜罐?
-**A2**: 蛛丝马迹:① 明明是普通服务器却主动"送洞"(路径太明显、凭据太规整);② 没有正常业务痕迹(用户 home 空、log 全新、history 干净);③ 出网太宽松;④ 有明显的分析工具指纹(sysmon 严配、Falco、tracee)。有 2 条以上就该警觉。
-**Q3**: 蜜罐怀疑但还是想榨点价值怎么办?
-**A3**: 只做【零副作用信息收集】—— 只读、不写、不执行任何二进制。用现有 shell 内建命令读几个高价值文件(kerberos 缓存、DNS 缓存、arp 表)证实内网真实性,然后立刻撤。别种任何持久化。
-**Q4**: EDR 强到不能提权,还能干什么?
-**A4**: 【横向收集】—— 低权能连到哪些其他服务?能读到哪些配置文件?能不能横向到 EDR 更弱的机器?目标从"这台提权"改为"用这台当跳板找到 EDR 弱的目标提权"。
-**Q5**: 长期潜伏低权账号怎么维持?
-**A5**: 用【极稀疏 dead drop beacon】—— 每周甚至每月一次心跳,基本不会被任何异常检测捕获。做的少 = 被发现的概率低。有事再激活。
+### いつ故意に「権限昇格しない」か
+**Q1**: どんな場面で故意に低権限を保ち、権限昇格すべきでないか?
+**A1**: ① 対象が蜜罐かもしれない。権限昇格のトリガーは典型的なおとり検知手段で、低権限で継続潜伏する方が安全。② EDR が極めて強い。低権限では関知しないが、権限昇格すると全監視する。③ 目標がデータ取得で権限取得でない。データが低権限で読める場所にあり、権限昇格は不要な露出である。
+**Q2**: 蜜罐かもしれないとどう判断するか?
+**A2**: 微かな痕跡:① 明らかに普通のサーバーなのに能動的に「穴をくれる」(経路があまりに明白、認証情報があまりに整然)。② 正常な業務の痕跡がない(ユーザー home が空、log が全新、history がきれい)。③ 外向きが緩すぎる。④ 明らかな分析ツールのフィンガープリント(sysmon 厳配、Falco、tracee)。2 項目以上あれば警戒すべき。
+**Q3**: 蜜罐を疑うが、まだ価値を搾りたい場合、どうするか?
+**A3**: 【副作用ゼロの情報収集】だけをする。読み取り専用、書き込みなし、バイナリを一切実行しない。既存 shell の内蔵コマンドで高価値ファイル(Kerberos キャッシュ、DNS キャッシュ、arp テーブル)を数個読んで内部ネットワークの実在性を確認し、即撤退する。永続化は一切植えない。
+**Q4**: EDR が強くて権限昇格できない場合、まだ何ができるか?
+**A4**: 【横展開の収集】。低権限で他のどのサービスに接続できるか?どの設定ファイルを読めるか?EDR がより弱いマシンへ横展開できるか?目標を「このマシンで権限昇格」から「このマシンを踏み台に EDR の弱い目標を見つけて権限昇格」に変える。
+**Q5**: 長期潜伏の低権限アカウントをどう維持するか?
+**A5**: 【極めてまばらな dead drop beacon】を使う。毎週から毎月に 1 回のハートビートで、ほぼどの異常検知にも捕まらない。やることが少ない = 発見確率が低い。有事に再活性化する。
 
-### 提权后立刻要做的三件事
-**Q1**: 拿到 root/SYSTEM 那一刻先干什么?
-**A1**: 【凭据快照】—— 立刻抓 hash/ticket/密码/私钥。理由:提权刚成功那一刻权限最高、系统状态最稳,是抓凭据最佳时刻;拖到后面 EDR 可能上线、系统可能重启。
-**Q2**: 第二件事?
-**A2**: 【独立持久化】—— 种一个和当前提权路径完全无关的后门。理由:当前 shell 是通过提权拿到的,一旦提权路径被封堵(补丁、配置修复)当前 shell 就没了。持久化要走另一条独立触发。
-**Q3**: 第三件事?
-**A3**: 【痕迹快照 + 清理规划】—— 记录我这次提权留下的所有痕迹(exp 文件、临时释放的 dll、事件日志条目、注册表键值),然后决定清哪些不清哪些。全清反而暴露,选择性清(比如清 exp 文件但保留正常系统日志)。
-**Q4**: 三件事的顺序能变吗?
-**A4**: 不能。凭据 > 持久化 > 清理。凭据一旦丢窗口(EDR 上、进程重启)就再也没了;持久化没做好就动清理,清完发现回不来。三件事在 5 分钟内完成。
-**Q5**: 时间紧迫只能做一件呢?
-**A5**: 【抓凭据】。有凭据就有下一次进入的可能,没凭据就是纯打赢一次就完。持久化和清理可以下次进来再做。
+### 権限昇格直後に必ずやる 3 つのこと
+**Q1**: root/SYSTEM を得たその瞬間、先に何をするか?
+**A1**: 【認証情報スナップショット】。即座に hash/ticket/パスワード/秘密鍵を取る。理由:権限昇格が成功したその瞬間が権限が最も高く、システム状態が最も安定した、認証情報取得の最良の時刻である。後回しにすると EDR が立ち上がり、システムが再起動するかもしれない。
+**Q2**: 2 つ目は?
+**A2**: 【独立した永続化】。現在の権限昇格経路と全く無関係なバックドアを 1 つ植える。理由:現在の shell は権限昇格で得たもので、権限昇格経路が封じられると(パッチ、設定修正)、現在の shell がなくなる。永続化は別の独立トリガーを通る必要がある。
+**Q3**: 3 つ目は?
+**A3**: 【痕跡スナップショット + 掃除計画】。今回の権限昇格が残した全痕跡(exp ファイル、一時解放した dll、イベントログ項目、レジストリキー値)を記録し、何を掃除し何を掃除しないか決める。全掃除はかえって露出するので、選択的に掃除する(例 exp ファイルは掃除するが正常なシステムログは残す)。
+**Q4**: 3 つの順序を変えられるか?
+**A4**: 変えられない。認証情報 > 永続化 > 掃除。認証情報は一度ウィンドウを逃すと(EDR 稼働、プロセス再起動)二度と取れない。永続化が済まないうちに掃除すると、掃除後に戻れない。3 つを 5 分以内に完了する。
+**Q5**: 時間が逼迫して 1 つしかできない場合、どれをするか?
+**A5**: 【認証情報を取る】。認証情報があれば次に進入できる可能性があり、なければ純粋に 1 回勝っただけで終わる。永続化と掃除は次に入ってからできる。
 
-### 长期驻留 vs 速战速决的取舍
-**Q1**: 什么时候该长期驻留?
-**A1**: 目标是【持续观察 + 等待时机】(等待某个高价值行为发生、比如管理员登录、某月度任务运行、某内部会议)。长期驻留 = 极低活动 + 极稀疏心跳 + 多层冗余。
-**Q2**: 什么时候该速战速决?
-**A2**: 目标明确、时机已到、拖延成本高。比如需要在被打补丁前拿数据、需要在蓝队上班前完成操作。这时不做隐蔽,把所有能做的最快做完,最后连立足点一起放弃。
-**Q3**: 长期驻留的核心矛盾是什么?
-**A3**: "存在 vs 隐蔽"。想长期驻留就得少动;少动就用不到,那存在的意义就低。解:【冷备份 + 热工作】—— 长期驻留的后门是冷的(月级心跳),只用于关键时刻激活热工作后门(短期高频)。
-**Q4**: 速战速决的核心风险是什么?
-**A4**: 【暴露连带】—— 快速动作留下大量痕迹,不仅这个立足点烧掉,可能牵连基础设施(C2、域名、TTPs)以后都用不了。要控制在"愿意烧掉一整套基础设施"的心理预算内。
-**Q5**: 中间态怎么选?
-**A5**: 【分阶段】—— 前期长期驻留潜伏,后期确定要动手就切换到速战速决模式。切换的判据:目标价值明确、时间窗口出现、备份复活手段就位。切换后不再回头。
+### 長期駐留 vs 速戦即決の取捨選択
+**Q1**: いつ長期駐留すべきか?
+**A1**: 目標が【継続観察 + 時機待ち】(高価値な挙動の発生を待つ。例 管理者ログイン、ある月度タスクの実行、ある内部会議)。長期駐留 = 極低活動 + 極めてまばらなハートビート + 多層冗長。
+**Q2**: いつ速戦即決すべきか?
+**A2**: 目標が明確で、時機が来て、遅延コストが高いとき。例 パッチを当てられる前にデータを取る必要がある、ブルーチームが出勤する前に操作を終える。このとき隠蔽をせず、できることを全て最速でやり、最後に足場ごと放棄する。
+**Q3**: 長期駐留の核心矛盾は何か?
+**A3**: 「存在 vs 隠蔽」である。長期駐留したいなら動きを減らす必要がある。動かなければ使えず、存在の意味が低くなる。解:【冷バックアップ + 熱作業】。長期駐留のバックドアは冷たい(月級ハートビート)で、重要な瞬間に熱作業バックドア(短期高頻度)を活性化するためだけに使う。
+**Q4**: 速戦即決の核心リスクは何か?
+**A4**: 【露出の連鎖】。素早い動作は大量の痕跡を残し、この足場を焼くだけでなく、インフラ(C2、ドメイン、TTPs)まで巻き込み、以後使えなくなるかもしれない。「インフラ一式を焼く覚悟がある」という心理予算内に制御する必要がある。
+**Q5**: 中間態をどう選ぶか?
+**A5**: 【段階化】。前期は長期駐留で潜伏し、後期に動くと決めたら速戦即決モードに切り替える。切り替えの判定基準:対象価値が明確、時間窓が現れた、予備の復活手段が整った。切り替えたら後戻りしない。
 
-### 立足点丢失后的回归策略
-**Q1**: 立足点被清了但我还有凭据/后门,怎么回来?
-**A1**: 优先级:① 用凭据从别的服务重进(SSH key、VPN 账号、RDP 凭据);② 触发休眠后门(dead drop 里发唤醒指令);③ 从其他已控机器横向重进原目标。
-**Q2**: 凭据也过期了怎么办?
-**A2**: 【找哪些凭据不受轮转影响】—— 服务账号密码常年不换、备份文件里存着老快照、代码仓库里 hardcode 的、GPP cpassword 类历史遗留。或者 ADCS 证书 —— 只要 CA 没换、我的证书有效期内就能用。
-**Q3**: 目标基础设施重装了怎么办?
-**A3**: 换目标。重装意味着蓝队已经清干净,再打这台是硬打。转向【周边未响应的目标】—— 同网段其他机器、上下游服务、供应链。同批被打的机器如果没都重装,还有活路。
-**Q4**: 所有已知路径都不通怎么办?
-**A4**: 【回到侦察阶段】—— 承认这一轮结束,重新做外围扫描、社工、供应链侦察。别死磕。红队周期性"重启"是正常的,别陷入"一定要从原来的洞回去"。
-**Q5**: 什么时候该真正放弃这个目标?
-**A5**: ① 目标已经知道被打并进入长期监控;② 我的所有 TTPs 都被采录进 IOC;③ 时间成本远超预期收益。放弃单个目标不等于放弃项目,基础设施轮换 + 换 TTPs + 换目标才是长线运作。
+### 足場を失った後の回帰戦略
+**Q1**: 足場が消されたが、まだ認証情報/バックドアがある。どう戻るか?
+**A1**: 優先順位:① 認証情報で別のサービスから再進入(SSH key、VPN アカウント、RDP 認証情報)。② 休眠バックドアをトリガー(dead drop に起床命令を送る)。③ 他の制御済みマシンから横展開して元の対象に再進入する。
+**Q2**: 認証情報も期限切れの場合、どうするか?
+**A2**: 【ローテーションの影響を受けない認証情報を探す】。サービスアカウントのパスワードは常年変わらない、バックアップファイルに古いスナップショットが残る、コードリポジトリに hardcode されている、GPP cpassword 系の歴史的遺物。または ADCS 証明書。CA が変わらず、私の証明書が有効期間内なら使える。
+**Q3**: 対象インフラが再インストールされた場合、どうするか?
+**A3**: 目標を替える。再インストールはブルーチームがきれいに掃除したことを意味し、このマシンを再攻撃するのは硬攻めである。【周辺の未応答の目標】に方向転換する。同じセグメントの他マシン、上流下流のサービス、サプライチェーン。同時に攻められたマシンのうち、全てが再インストールされていなければ、まだ活路がある。
+**Q4**: 全既知経路が通らない場合、どうするか?
+**A4**: 【偵察段階に戻る】。このラウンドが終わったと認め、外周スキャン、ソーシャル、サプライチェーン偵察をやり直す。固執しない。レッドチームの周期的な「再起動」は正常であり、「必ず元の穴から戻る」に陥らない。
+**Q5**: いつ本当にこの対象を諦めるべきか?
+**A5**: ① 対象が攻撃されたことを知り、長期監視に入った。② 私の全 TTPs が IOC に採録された。③ 時間コストが期待収益を大きく超える。単一対象の放棄はプロジェクトの放棄と同義ではなく、インフラのローテーション + TTPs の交換 + 対象の交換が長期的な運用である。
 
-### 内存马 vs 落地 shell 的取舍
-**Q1**: web 服务器上想要长期后门,内存马和落地文件怎么选?
-**A1**: 【生存期 vs 隐蔽性】—— 内存马隐蔽(不落地、传统扫描找不到)但重启就没;落地文件生存长但易被 grep 到。理想:【落地 + 内存马】,落地文件极其隐蔽,启动时把内存马注入自己,平时用内存马。
-**Q2**: 内存马注入到什么位置最好?
-**A2**: 通用高价值点:Servlet Filter(Java 所有请求经过)、Interceptor、Listener、Websocket。避免注入 Controller —— 太具体、覆盖面小。理想:注入到框架级组件,新增 Controller/Service 都自动经过我的 filter。
-**Q3**: 内存马被 dump 分析怎么办?
-**A3**: 【转分片 + 加密】—— 恶意逻辑分散到多个 filter 组合触发,单个 dump 看不出恶意。或者内存马代码本身运行时解密,dump 出来是加密字节码,反编译看不到明显特征。
-**Q4**: 目标频繁重启(容器化、K8s)怎么办?
-**A4**: 内存马配合【启动时注入机制】—— 改镜像/Dockerfile、改 K8s config、改 entrypoint 脚本。让每次启动都自动注入内存马。相当于把内存马的"持久性"外包给编排层。
-**Q5**: 完全不能落地(严格文件完整性监控)怎么办?
-**A5**: 【纯内存 + 外部激活】—— beacon 完全从远程内存加载(反射加载 dll/jar)、本地零文件;或【劫持已加载的合法进程】—— hook 一个合法长驻进程,只在内存里改行为。存活期就是进程存活期。
+### メモリ馬 vs ディスク配置 shell の取捨選択
+**Q1**: web サーバー上で長期バックドアが欲しい。メモリ馬とディスク配置ファイルをどう選ぶか?
+**A1**: 【生存期間 vs 隠蔽性】。メモリ馬は隠蔽的(ディスクに置かず、従来スキャンでは見つからない)だが再起動で消える。ディスク配置ファイルは生存が長いが grep されやすい。理想:【ディスク配置 + メモリ馬】。ディスク配置ファイルを極めて隠蔽的にし、起動時にメモリ馬を自分に注入し、普段はメモリ馬を使う。
+**Q2**: メモリ馬をどの位置に注入するのが最良か?
+**A2**: 汎用高価値点:Servlet Filter(Java の全リクエストが通過)、Interceptor、Listener、Websocket。Controller への注入は避ける。具体すぎてカバー範囲が小さい。理想:フレームワーク級コンポーネントに注入し、新規 Controller/Service が全て自動で私の filter を通るようにする。
+**Q3**: メモリ馬が dump 解析された場合、どうするか?
+**A3**: 【分割 + 暗号化に方向転換】。悪意ロジックを複数の filter に分散して組み合わせでトリガーし、単一 dump では悪意が見えない。またはメモリ馬のコード自体を実行時に復号し、dump しても暗号化バイトコードで、逆コンパイルで明らかな特徴が見えない。
+**Q4**: 対象が頻繁に再起動する(コンテナ化、K8s)場合、どうするか?
+**A4**: メモリ馬と【起動時注入の仕組み】を組み合わせる。イメージ/Dockerfile を変える、K8s config を変える、entrypoint スクリプトを変える。毎回の起動で自動的にメモリ馬を注入する。メモリ馬の「永続性」をオーケストレーション層に外部委託するのに等しい。
+**Q5**: 全くディスクに置けない(厳格なファイル整合性監視)場合、どうするか?
+**A5**: 【純メモリ + 外部活性化】。beacon を完全にリモートメモリからロードする(reflective load で dll/jar)、ローカルはゼロファイル。または【ロード済みの正当なプロセスをハイジャック】。正当な長駐プロセスを hook し、メモリ内だけで挙動を変える。生存期間はプロセスの生存期間である。
 
-### rootkit 的使用决策
-**Q1**: 什么场景可以考虑 rootkit?
-**A1**: ① 目标极高价值需要几年隐蔽驻留;② 蓝队能力弱(不做内核审计、无 EDR);③ 我熟悉目标内核版本、有测试环境。三条同时满足才考虑。
-**Q2**: rootkit 的风险是什么?
-**A2**: ① 稳定性 —— 内核代码写错直接崩;② 版本适配 —— 内核升级 rootkit 可能失效或崩;③ 一旦发现 = 立即重装 + 全面事件调查,整个入侵链暴露。风险极高。
-**Q3**: 什么时候明确不该用?
-**A3**: ① 不熟目标内核;② 目标是短期项目;③ 有 kABI 检测/内核签名验证;④ 蓝队有内核级检测能力(内核 IMA、integrity)。这些情况用 rootkit 是自杀。
-**Q4**: rootkit 的替代是什么?
-**A4**: 用户态 hook + 用户态隐藏。LD_PRELOAD 全局 hook、ptrace 注入、动态修改 /proc 显示。虽然不如 rootkit 强大,但风险低得多、也够骗过大多数常规检测。
-**Q5**: rootkit 被发现怎么办?
-**A5**: 目标机器基本报废。立刻【放弃 + 切基础设施】—— 假设我所有 TTPs 已经被完整逆向。这就是为什么 rootkit 是重炮,只在做好"这一枪打完可能就要撤"的心理准备时才开。
+### rootkit の使用決定
+**Q1**: どんな場面で rootkit を検討できるか?
+**A1**: ① 対象が非常に高価値で、数年の隠蔽駐留が必要。② ブルーチームの能力が弱い(カーネル監査をしない、EDR がない)。③ 私が対象のカーネルバージョンに精通し、テスト環境がある。3 つが同時に満たされたら検討する。
+**Q2**: rootkit のリスクは何か?
+**A2**: ① 安定性。カーネルコードの書き間違いは直接クラッシュする。② バージョン適応。カーネルアップグレードで rootkit が無効かクラッシュするかもしれない。③ 一度見つかれば即再インストール + 全面的事件調査で、侵入連鎖全体が露出する。リスクが極めて高い。
+**Q3**: いつ明確に使うべきでないか?
+**A3**: ① 対象のカーネルに不案内。② 対象が短期プロジェクト。③ kABI 検知/カーネル署名検証がある。④ ブルーチームがカーネル級検知能力を持つ(カーネル IMA、integrity)。これらの場合は rootkit の使用が自殺行為である。
+**Q4**: rootkit の代替は何か?
+**A4**: ユーザーモード hook + ユーザーモード隠蔽。LD_PRELOAD 全体 hook、ptrace 注入、動的な /proc 表示の変更。rootkit ほど強くないが、リスクがはるかに低く、大多数の通常検知を騙すのに十分である。
+**Q5**: rootkit が見つかった場合、どうするか?
+**A5**: 対象マシンはほぼ廃棄である。即座に【放棄 + インフラ切り替え】。私の全 TTPs が完全に逆解析されたと仮定する。これが rootkit が重砲である理由で、「この一発で撤退する覚悟」をしてから撃つべきである。
 
-### 影子账号 vs 加显式账号
-**Q1**: 想在 Windows 上留一个后门账号,加新用户还是搞影子?
-**A1**: 加新用户会被 net user 枚举 —— 除非蓝队从不看。影子账号(比如把已有账号 SID/属性做手脚,或者创建看似系统内置名字的账号)更隐蔽,但需要更精细的操作。
-**Q2**: 什么叫"影子"?
-**A2**: 几种玩法:① 用 $ 结尾的账号名(net user 默认过滤显示);② 直接改 SAM 让某个账号具备管理员 SID 但显示为普通;③ 复用一个已废弃/禁用的账号(改密启用,蓝队查活跃账号常常忽略禁用列表)。
-**Q3**: 什么时候【就应该】加显式账号?
-**A3**: 临时性、可弃、快速需要有一个稳定登录点时。反正打完就撤,追求可用性大于隐蔽性。用完立刻删。
-**Q4**: 加了账号被应急发现怎么办?
-**A4**: 预期之内。这就是为什么显式账号只做【一次性用】,不做主要持久化。持久化应该同时有多层,显式账号只是最快最容易的一层。
-**Q5**: Linux 上对应的思路?
-**A5**: ① 直接改 /etc/passwd 加 UID=0 的账号(极显眼、easy 被发现);② 把某个系统账号(比如 games、news、nobody)的 shell 改成 /bin/bash + 加密码或 key(常被忽略);③ 走 nsswitch/PAM 让某个特殊输入直接认证通过。第 3 种最隐蔽。
+### 影アカウント vs 明示アカウント追加
+**Q1**: Windows 上にバックドアアカウントを残したい。新規ユーザーを足すか、影をやるか?
+**A1**: 新規ユーザー追加は net user で列挙される。ブルーチームが決して見ない場合を除く。影アカウント(例 既存アカウントの SID/属性に細工、またはシステム内蔵名のようなアカウントを作成)はより隠蔽的だが、より精密な操作が必要である。
+**Q2**: 「影」とは何か?
+**A2**: 数種の遊び方:① $ で終わるアカウント名(net user の既定表示でフィルタされる)。② 直接 SAM を変えて、あるアカウントに管理者 SID を持たせるが普通と表示する。③ 廃止/無効化されたアカウントを再利用する(パスワード変更で有効化。ブルーチームがアクティブアカウントを調べる際、無効リストを無視することが多い)。
+**Q3**: いつ【明示アカウントを足すべき】か?
+**A3**: 一時的、使い捨て、素早く安定したログインポイントが必要なとき。撃ったら撤退するので、可用性を隠蔽性より優先する。使い終わったら即削除する。
+**Q4**: アカウントを足して応急処置に見つかった場合、どうするか?
+**A4**: 想定内である。だから明示アカウントは【一回限り】で、主要な永続化にしない。永続化は同時に多層あるべきで、明示アカウントは最も速く最も簡単な 1 層にすぎない。
+**Q5**: Linux 上の対応する考え方は何か?
+**A5**: ① 直接 /etc/passwd を変えて UID=0 のアカウントを足す(非常に目立ち、簡単に見つかる)。② あるシステムアカウント(例 games、news、nobody)の shell を /bin/bash に変え + パスワードか key を足す(よく無視される)。③ nsswitch/PAM で、ある特殊な入力が直接認証を通るようにする。第 3 種が最も隠蔽的である。
 
-### DPAPI 与本地凭据的深度利用
-**Q1**: 拿到 SYSTEM 但 LSASS 严防、SAM 也难抓,还能抓什么?
-**A1**: 【DPAPI】—— Windows 上所有浏览器保存的密码、cmdkey 缓存、Wi-Fi 密码、RDP 保存的密码、Chrome/Edge 的 Cookie 都靠 DPAPI 加密。有 master key + blob 就全解开。
-**Q2**: DPAPI master key 藏在哪?
-**A2**: %APPDATA%\Microsoft\Protect\<SID>\<GUID>。解密 master key 需要用户密码或者 SYSTEM 的 pre-key。SYSTEM 权限下可以直接用 mimikatz dpapi::masterkey + /system 参数解。
-**Q3**: 用户没登录、系统上没活的 master key 怎么办?
-**A3**: 【转域备份密钥】—— 域环境下 master key 有一份用域备份密钥加密的副本。拿到域管权限后 lsadump::backupkeys 拿出域备份 key,可以解密该域内所有用户所有 master key。这是一次投入无限收益的杠杆。
-**Q4**: DPAPI blob 能挖出什么高价值?
-**A4**: ① Chrome/Edge 保存的所有密码(含 SSO 平台、云服务);② RDP 密码(横向直接用);③ Wi-Fi 密码(如果目标是笔记本,拿到用户家里/办公室 Wi-Fi 是有趣情报);④ Outlook 密码(邮箱是黄金);⑤ VPN 客户端保存的密码。
-**Q5**: DPAPI 都抓不到怎么办?
-**A5**: 【转配置文件】—— 用户 %APPDATA% 下各种应用的配置(FileZilla、WinSCP、各类 IDE 的 credentials、云 CLI 的 config)。很多应用自己加密,但加密弱(硬编码 key、简单 XOR),可离线解。
+### DPAPI とローカル認証情報の深い利用
+**Q1**: SYSTEM を得たが、LSASS が厳重で SAM も取りにくい。他に何を取れるか?
+**A1**: 【DPAPI】。Windows 上の全ブラウザ保存パスワード、cmdkey キャッシュ、Wi-Fi パスワード、RDP 保存パスワード、Chrome/Edge の Cookie は全て DPAPI 暗号化に依存する。master key + blob があれば全て解ける。
+**Q2**: DPAPI master key はどこに隠れているか?
+**A2**: %APPDATA%\Microsoft\Protect\<SID>\<GUID>。master key の復号にはユーザーパスワードか SYSTEM の pre-key が必要。SYSTEM 権限下では mimikatz の dpapi::masterkey + /system パラメータで直接解ける。
+**Q3**: ユーザーがログインしておらず、システム上に生きた master key がない場合、どうするか?
+**A3**: 【ドメインバックアップ鍵に方向転換】。ドメイン環境では master key に、ドメインバックアップ鍵で暗号化された副本が 1 つある。ドメイン管理者権限を得たら lsadump::backupkeys でドメインバックアップ key を取り出し、そのドメイン内の全ユーザーの全 master key を復号できる。これは一度の投入で無限収益のてこである。
+**Q4**: DPAPI blob からどんな高価値を掘り出せるか?
+**A4**: ① Chrome/Edge が保存する全パスワード(SSO プラットフォーム、クラウドサービスを含む)。② RDP パスワード(横展開に直接使える)。③ Wi-Fi パスワード(対象がノートなら、ユーザーの自宅/オフィス Wi-Fi は興味深い情報)。④ Outlook パスワード(メールは黄金)。⑤ VPN クライアントが保存するパスワード。
+**Q5**: DPAPI が全く取れない場合、どうするか?
+**A5**: 【設定ファイルに方向転換】。ユーザー %APPDATA% 配下の各種アプリ設定(FileZilla、WinSCP、各種 IDE の credentials、クラウド CLI の config)。多くのアプリは自前で暗号化するが、暗号化が弱い(ハードコード key、単純 XOR)のでオフラインで解ける。
 
-### 数据外传的稳定性设计
-**Q1**: 抓到几十 GB 数据要外传,怎么做?
-**A1**: 【分批 + 加密 + 时间打散】—— 一次性大流量必然触发 DLP/NDR。分小包(<10MB)、走加密通道、在业务高峰时段夹带,伪装成合法流量(HTTPS PUT/POST、DNS 隧道很慢但极难拦)。
-**Q2**: 目标出网严格白名单只能上几个云怎么办?
-**A2**: 【白名单本身就是通道】—— 白名单里的云对象存储、GitHub、公共 CDN 都能当外传通道。把数据 PUT 到公有云 bucket、push 到 github repo 的 issue/gist,不需要额外通道。
-**Q3**: 外传中被 DLP 识别怎么办?
-**A3**: 【转 stego 或深度混淆】—— 数据 base64 后塞到图片 EXIF、DNS TXT 记录、HTTP header、Cookie。数据被拆解成"看起来像元数据"就极难被内容识别的 DLP 抓住。速度慢但稳。
-**Q4**: 大量文件要选筛选?
-**A4**: 【预压缩 + 关键词过滤 + 分级】—— 高价值(密码、证书、内部文档)优先抓、立刻传;中价值(源代码、配置)打包分批;低价值(日志、公开材料)最后或不抓。别贪心。
-**Q5**: 外传通道全被封了怎么办?
-**A5**: 【转物理/带外】—— 极端场景下:U 盘、社工内部人员、走目标的外部合作伙伴通道。数据不一定必须通过我的原始 C2 走,思路要开阔。
+### データ持ち出しの安定性設計
+**Q1**: 数十 GB のデータを取って持ち出す必要がある。どうするか?
+**A1**: 【分割 + 暗号化 + 時間分散】。一度の大流量は必ず DLP/NDR をトリガーする。小パケット(<10MB)に分け、暗号化チャネルを通し、業務ピーク時間帯に紛れ、正当なトラフィックを装う(HTTPS PUT/POST。DNS トンネルは非常に遅いが遮りにくい)。
+**Q2**: 対象の外向きが厳格なホワイトリストで、数個のクラウドにしか行けない場合、どうするか?
+**A2**: 【ホワイトリスト自体がチャネル】。ホワイトリスト内のクラウドオブジェクトストレージ、GitHub、公共 CDN は全て持ち出しチャネルに使える。データを公有クラウド bucket に PUT、github repo の issue/gist に push。追加チャネルは不要である。
+**Q3**: 持ち出し中に DLP に識別された場合、どうするか?
+**A3**: 【stego か深い難読化に方向転換】。データを base64 して画像の EXIF、DNS TXT レコード、HTTP header、Cookie に入れる。データを「メタデータらしく見える」ように分解すれば、内容識別の DLP に捕まりにくい。速度は遅いが安定する。
+**Q4**: 大量のファイルを選別する必要がある場合、どうするか?
+**A4**: 【事前圧縮 + キーワードフィルタ + 等級分け】。高価値(パスワード、証明書、内部文書)を優先して取り、即送る。中価値(ソースコード、設定)はパッケージして分割。低価値(ログ、公開資料)は最後か取らない。欲張らない。
+**Q5**: 持ち出しチャネルが全て封じられた場合、どうするか?
+**A5**: 【物理/帯域外に方向転換】。極端な場面では:USB メモリ、内部関係者へのソーシャル、対象の外部協業先チャネルを通る。データは必ず私の元の C2 を通る必要はなく、発想を広げる。
 
-### 什么算好的持久化:自检清单
-**Q1**: 我种了个持久化,怎么自检它算不算好?
-**A1**: 五问:① 目标重启后还活吗;② 我主动 kill 我所有进程后能重连回来吗;③ 蓝队 grep 常见 IOC(可疑 cron、可疑 Run 键、可疑 SUID)能被发现吗;④ 触发条件是否稳定(不依赖偶发事件);⑤ 我能远程唤醒吗还是被动等触发。
-**Q2**: 达标标准?
-**A2**: 前 3 项必须全过。第 4/5 项看目标 —— 长期驻留可以牺牲响应速度(极稀疏被动),交战期需要主动唤醒(带命令通道)。
-**Q3**: 部署完立刻验一次的重要性?
-**A3**: 极重要。当场 kill 所有 shell 后走"验证路径"重连一次,能重连才算成功。种完不验就走 = 大概率下次回不来。这是最常见的低级错误。
-**Q4**: 如果只能通过"看起来还活"来判断而无法真验证怎么办?
-**A4**: 【做多层冗余】—— 反正无法确认单点可靠,那就同时布 3 种不同触发的持久化。就算一种失效,另外两种大概率还活。
-**Q5**: 持久化"好"的终极指标?
-**A5**: 【蓝队实际做过一次完整应急、清完之后我还能回来】。达到这个标准的持久化,才算真正"持久"。绝大多数持久化只是"活到蓝队响应之前",真正的高质量持久化是"活过蓝队响应之后"。
+### 良い永続化とは何か:自己点検リスト
+**Q1**: 永続化を 1 つ植えた。それが良いかどう自己点検するか?
+**A1**: 五問:① 対象が再起動しても生きるか。② 私が自分の全プロセスを能動的に kill しても再接続できるか。③ ブルーチームが一般的な IOC(怪しい cron、怪しい Run キー、怪しい SUID)を grep して見つかるか。④ トリガー条件が安定か(偶発イベントに依存しないか)。⑤ 私がリモートで起床できるか、受動的にトリガーを待つか。
+**Q2**: 合格基準は?
+**A2**: 前の 3 項目は必ず全通過。第 4/5 項目は対象による。長期駐留は応答速度を犠牲にできる(極めてまばらな受動)、交戦期は能動起床が必要(コマンドチャネル付き)。
+**Q3**: 配備後、即 1 回検証することの重要性は?
+**A3**: 非常に重要。その場で全 shell を kill した後、「検証経路」で 1 回再接続する。再接続できて初めて成功である。植えて検証せず去る = 次回戻れない可能性が高い。これが最も一般的な初歩的ミスである。
+**Q4**: 「生きているように見える」でしか判断できず、真の検証ができない場合、どうするか?
+**A4**: 【多層冗長を行う】。単点の信頼性を確認できないなら、3 種の異なるトリガーの永続化を同時に配置する。1 種が無効でも、他の 2 種が生きている可能性が高い。
+**Q5**: 永続化が「良い」ことの究極指標は?
+**A5**: 【ブルーチームが実際に 1 回完全な応急処置を行い、掃除した後も私が戻れる】こと。この基準に達した永続化だけが、本当に「持続的」と言える。大多数の永続化は「ブルーチームが応答する前まで生きる」だけで、本当に高品質な永続化は「ブルーチームの応答を生き延びる」ことである。

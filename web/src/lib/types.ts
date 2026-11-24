@@ -1109,7 +1109,7 @@ export interface SkillCall {
   args_len: number;
 }
 
-// MissingSkill は指定されたが存在しない skill —— 「使いたいが無い」ギャップ。
+// MissingSkill は指定されたが存在しない skill。「使いたいが無い」ギャップ。
 export interface MissingSkill {
   skill: string;
   calls: number;
@@ -1431,7 +1431,7 @@ export interface FindingTrafficDetail {
   response: EvidenceBodyPreview;
 }
 
-/** GET /api/update/check —— 現在のバージョンと GitHub 最新正式版の比較結果。 */
+/** GET /api/update/check。現在のバージョンと GitHub 最新正式版の比較結果。*/
 export interface UpdateCheck {
   /** 現在実行中のバージョン；開発ビルドは "dev" または git describe の接尾辞付き形式。 */
   current: string;

@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import { ProfileRetryFields, RetryPolicyPanel, ZERO_OVERRIDE } from "./_components/retry";
 
 // 思考スイッチ(thinking.type)と思考強度(reasoning_effort)は【互いに独立】のフィールドで、
-// それぞれ個別に設定する——thinking を持たず強度だけで思考を有効化できる API もあるため分離する。
+// それぞれ個別に設定する。thinking を持たず強度だけで思考を有効化できる API もあるため分離する。
 // 保存時の空文字列 = そのフィールドを【送信しない】；Radix Select は空 value を受け付けないため、
 // UI では "none" センチネルで表現し、保存・読込時に "" と相互変換（NONE / fromStore / toStore）。
 const NONE = "none";
@@ -116,7 +116,7 @@ function PoolSheet({
 }) {
   const [busy, setBusy] = React.useState(false);
 
-  // クールダウン残り秒数はバックエンドが算出する——ドロワーが開いていて異常な設定がある時だけ定期取得し、進める。
+  // クールダウン残り秒数はバックエンドが算出する。ドロワーが開いていて異常な設定がある時だけ定期取得し、進める。
   React.useEffect(() => {
     if (!open || !pool?.enabled || !pool.chain.some((m) => m.state !== "ok")) return;
     const t = setInterval(() => void onReload(), 10_000);
@@ -217,7 +217,7 @@ function PoolSheet({
                 </div>
                 {inChain.length < 2 && (
                   <p className="text-muted-foreground text-xs">
-                    現在利用可能な設定は {inChain.length} 個のみで、ポーリングは機能しません——API Key が入力済みでポーリングに参加する設定が最低 2 個必要です。
+                    現在利用可能な設定は {inChain.length} 個のみで、ポーリングは機能しません。API Key が入力済みでポーリングに参加する設定が最低 2 個必要です。
                   </p>
                 )}
                 {chain.map((m) => {
@@ -668,7 +668,7 @@ function ProfileSheet({
                 <Label className="text-sm">ストリーミング出力 · streaming</Label>
                 <p className="text-muted-foreground text-xs">
                   オン（デフォルト）はストリーミング SSE で、実行中のリアルタイム進捗と token 数の逐次表示あり。 オフは純粋な非ストリーミング（stream:false、
-                  完全な応答を一括返却）——一部ゲートウェイの粗悪な SSE 実装（空フレーム / 思考フィールドの欠落）を回避できますが、
+                  完全な応答を一括返却）。一部ゲートウェイの粗悪な SSE 実装（空フレーム / 思考フィールドの欠落）を回避できますが、
                   実行中のリアルタイム進捗は失われます。
                 </p>
               </div>

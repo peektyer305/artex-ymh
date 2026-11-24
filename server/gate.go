@@ -1,4 +1,4 @@
-// 対スキャン用の偽装ゲート（F14）: ゲートを通過していないリクエストには ARTEX の特徴を一切返さない——静的 SPA、
+// 対スキャン用の偽装ゲート（F14）: ゲートを通過していないリクエストには ARTEX の特徴を一切返さない。静的 SPA、
 // /api/*、SSE、favicon、エラーページは一律でバイト単位に固定した偽の nginx デフォルトウェルカムページを返す。
 // ゲートは秘匿層であり、Handler() の最外周（requireAuth の前）に被せる。ゲートを通ればあとは従来どおりで、
 // JWT は依然として認証層であり、2 つは互いに代替しない。秘匿 ≠ 認証: 入口 URL が漏れれば無効になり、自動化された
@@ -35,7 +35,7 @@ const (
 )
 
 // decoyPage はバイト単位に固定した偽装レスポンスボディで、実際の nginx デフォルトウェルカムページと一致する。偽装レスポンスは
-// 固定でなければならない——固定でない偽装はそれ自体が新たなフィンガープリントになる。ゲートを通過していない全リクエスト（誤ったパスワード、
+// 固定でなければならない。固定でない偽装はそれ自体が新たなフィンガープリントになる。ゲートを通過していない全リクエスト（誤ったパスワード、
 // 誤ったパス、/api/*）はこの 1 つを返し、バイト単位で一致させて列挙を防ぐ。
 var decoyPage = []byte(`<!DOCTYPE html>
 <html>
@@ -121,7 +121,7 @@ func NewGate(addr, dataDir, keyDir string) (*Gate, error) {
 	path := strings.TrimSpace(os.Getenv("ARTEX_GATE_PATH"))
 	if path == "" {
 		// 入口パスを永続化する。gate.path に保存済みのものがあれば優先して再利用し（再起動してもアドレスが変わらず、
-		// ブックマークも無効にならない）、初回かファイル欠落時のみ新しいランダムパスを生成する（UX の負債を解消——以前は再起動のたびに再ランダム化していた）。
+		// ブックマークも無効にならない）、初回かファイル欠落時のみ新しいランダムパスを生成する（UX の負債を解消。以前は再起動のたびに再ランダム化していた）。
 		if prev, err := os.ReadFile(filepath.Join(dataDir, gatePathFilename)); err == nil {
 			if p := strings.TrimSpace(string(prev)); strings.HasPrefix(p, "/g-") {
 				path = p
@@ -245,7 +245,7 @@ func (g *Gate) wrap(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// /s/ は管理下ステージングのダウンロード面（F13）: 対象マシンが curl/wget でファイルを取得し、ゲートの
-		// cookie も JWT も持たない——安全性は 24 バイトのランダム token パス + token ごとのレート制限 +
+		// cookie も JWT も持たない。安全性は 24 バイトのランダム token パス + token ごとのレート制限 +
 		// 一貫した 404（stage.Manager.Download）で担保する。ゲートの【前】に除外する必要がある。
 		if strings.HasPrefix(r.URL.Path, "/s/") {
 			next.ServeHTTP(w, r)

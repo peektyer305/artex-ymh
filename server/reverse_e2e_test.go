@@ -164,7 +164,7 @@ func TestReverseHandlerE2E(t *testing.T) {
 
 	// 8. 死亡を正直に:リバースクライアントを落とす。注意点として penelope の自動昇格は python agent を配信する
 	// (独立プロセスで別のリバース socket を張る。実測:元の payload プロセスを落としても agent は影響を受けない)。
-	// セッションの死亡 = agent プロセスの死亡——4444 の対向プロセスをすべて落としてターゲット側の全滅を模擬する。
+	// セッションの死亡 = agent プロセスの死亡。4444 の対向プロセスをすべて落としてターゲット側の全滅を模擬する。
 	_ = client.Process.Kill()
 	_, _ = client.Process.Wait()
 	if out, err := exec.Command("bash", "-c",

@@ -16,11 +16,13 @@ services:
 
   artex:
     # ソースからカスタマイズ版イメージをビルド（Dockerfile.source による自己完結ビルド：フロントエンド＋Go＋ツール層）。
-    # 公式イメージ autumn27/artex は使わない——あれは上流のオリジナルで、カスタマイズコードを含まない。
+    # 公式イメージ autumn27/artex は使わない。あれは上流のオリジナルで、カスタマイズコードを含まない。
     build:
       context: .
       dockerfile: Dockerfile.source
     image: artex-ymh:local
+    # ローカルの Dockerfile.source から常にビルドする（レジストリから artex イメージを取得しない）
+    pull_policy: build
     depends_on:
       postgres:
         condition: service_healthy

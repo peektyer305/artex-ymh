@@ -22,7 +22,7 @@ import (
 	"github.com/Autumn-27/artex/db"
 )
 
-// 本ファイルはカスタムツール実行器を実装する(docs/自定义工具设计.md)。system=false の tools 行を
+// 本ファイルはカスタムツール実行器を実装する(docs/カスタムツール設計.md)。system=false の tools 行を
 // kind で分派する：command(コマンドをレンダリング→Bash の下位 run を再利用)、script(Python のみ。一時ファイルを書き、
 // stdin=パラメータ JSON + env TOOL_*、設定済みのインタプリタを使用)、http(ネイティブリクエスト+プロキシ指定可)。これらのツールは
 // トラフィック/編成ツールと同様に seed は不要(もともと tools テーブルにある)で、hostTools 経由で注入され、紐付けで絞り込まれる。

@@ -188,7 +188,7 @@ func (s *CredentialStore) ListByTask(ctx context.Context, taskID int64) ([]*Cred
 	return out, rows.Err()
 }
 
-// ListAll は全認証情報を取得する（id 昇順、secret は復号済み）——イントラネット運用ページのタスク横断ビュー用。
+// ListAll は全認証情報を取得する（id 昇順、secret は復号済み）。イントラネット運用ページのタスク横断ビュー用。
 // マスク（MaskSecret）は呼び出し側の責務であり、secret が平文で server の外に出ることはない。
 func (s *CredentialStore) ListAll(ctx context.Context) ([]*CredentialRecord, error) {
 	rows, err := s.d.QueryContext(ctx,

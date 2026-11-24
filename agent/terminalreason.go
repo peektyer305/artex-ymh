@@ -34,7 +34,7 @@ var reasonHint = map[harness.TerminalReason]string{
 	harness.ReasonCompleted:         "モデルがこのターンを正常に終了しましたが、文字のまとめを残していません。事実とアセットはこのターンのツール呼び出し記録を基準にします",
 	harness.ReasonMaxTurns:          "ステップ上限(MaxTurns)に到達：SDK が終了処理を実行して事実とアセットを書き戻しました。意図は exhausted として記録され、Planner が方向を変えて続行できます（失敗扱いではありません）",
 	harness.ReasonTimeout:           "1 回の実行のウォールクロック予算(MaxDuration)に到達:期限到達で実行中のツールを打ち切り、その場で終了処理に入って判明済みの事実とアセットを書き戻します。意図は exhausted として記録されます",
-	harness.ReasonModelError:        "モデルまたは API の呼び出しに失敗しました（ネットワーク、認証、レート制限、プロバイダの 5xx など）。再試行を使い切ると意図は blocked として記録されます——伝送層の障害によりこの意図はほぼ実質的に探索できていません。実行過程（get_worker_trace）を確認してから再派遣か手段の変更を判断してください",
+	harness.ReasonModelError:        "モデルまたは API の呼び出しに失敗しました（ネットワーク、認証、レート制限、プロバイダの 5xx など）。再試行を使い切ると意図は blocked として記録されます。伝送層の障害によりこの意図はほぼ実質的に探索できていません。実行過程（get_worker_trace）を確認してから再派遣か手段の変更を判断してください",
 	harness.ReasonBlockingLimit:     "コンテキスト長がハード上限に達し、リクエストは送信前にブロックされました。意図の粒度を細かくするか、ツールの戻り値を圧縮してください",
 	harness.ReasonPromptTooLong:     "プロンプトが長すぎ、コンテキスト圧縮の再試行も使い切ったため実行を継続できません",
 	harness.ReasonImageError:        "現在のモデルはこのターンのマルチモーダル内容に対応していません。視覚対応モデルに切り替えるか、ツールが画像を返さないようにしてください",

@@ -1,33 +1,33 @@
 ---
 name: chains-rev
-description: 逆向分析反问决策链原文索引(静态切入/去混淆反反调试/动态调试试断点策略/算法加密还原)。拿到陌生二进制、加壳混淆、逆向卡住时查阅。
+description: リバースエンジニアリング分析の反問式意思決定チェーンの原文インデックス(静的切り口/難読化解除とアンチデバッグ対策/動的デバッグとブレークポイント戦略/アルゴリズム・暗号化の復元)。未知のバイナリ、パッカーや難読化、リバースエンジニアリングで行き詰まったときに参照する。
 ---
 
-# chains-rev · 逆向分析反问决策链(L4 原文索引)
+# chains-rev · リバースエンジニアリング分析の反問式意思決定チェーン(L4 原文インデックス)
 
-## 何时使用
+## 使うタイミング
 
-- 拿到陌生 ELF/PE,要定第一分钟的切入顺序(rev-static-entry、rev-deobf)
-- 怀疑加壳/混淆,要分诊标准壳 vs 定制混淆(rev-deobf)
-- static+stripped 无符号,要做符号恢复与语义定位(rev-deobf)
-- 要定动态调试与断点策略(rev-dynamic-debug)
-- 要还原算法/加密逻辑(rev-algo-recover)
+- 未知の ELF/PE を手にしたとき、最初の 1 分間の切り込み順序を決めたい(rev-static-entry、rev-deobf)
+- パッカー/難読化が疑われるとき、標準パッカー vs 独自難読化をトリアージしたい(rev-deobf)
+- static+stripped でシンボルがないとき、シンボル復元と意味的な位置特定をしたい(rev-deobf)
+- 動的デバッグとブレークポイント戦略を決めたい(rev-dynamic-debug)
+- アルゴリズム/暗号化ロジックを復元したい(rev-algo-recover)
 
-## 铁律
+## 鉄則
 
-- 第一分钟零成本三连:file(架构/链接/strip)→ checksec(保护)→ strings(线索),这三步决定后面所有路线(refs/rev-static-entry.md)
-- static+stripped 是常态而非异常:从入口(__libc_start_main)和常量反推,而非按名字找(refs/rev-deobf.md)
-- 高熵(>7.2)大段 + 特征节名(UPX0/UPX1)= 加壳,先脱壳再回到静态流程(refs/rev-static-entry.md)
-- 标准壳看入口 stub 可秒脱;定制混淆(花指令/控制流平坦化)要长期作战,投入天差地别先分诊(refs/rev-deobf.md)
-- 菜单文本/格式串是宝贝:交叉引用直接落到命令分发与核心逻辑(refs/rev-static-entry.md)
+- 最初の 1 分間のコストゼロの三連:file(アーキテクチャ/リンク/strip)→ checksec(保護)→ strings(手がかり)。この 3 ステップが以降のすべてのルートを決める(refs/rev-static-entry.md)
+- static+stripped は異常ではなく常態:入口(__libc_start_main)と定数から逆算する。名前で探さない(refs/rev-deobf.md)
+- 高エントロピー(>7.2)の大きなブロック + 特徴的なセクション名(UPX0/UPX1)= パッカー。まずアンパックしてから静的フローに戻る(refs/rev-static-entry.md)
+- 標準パッカーは入口 stub を見れば瞬時にアンパックできる。独自難読化(ジャンクコード/制御フロー平坦化)は長期戦になる。投入コストが天と地ほど違うので先にトリアージする(refs/rev-deobf.md)
+- メニューテキスト/フォーマット文字列は宝:相互参照が直接コマンドディスパッチとコアロジックに行き着く(refs/rev-static-entry.md)
 
-## refs/ 原文清单
+## refs/ 原文一覧
 
-- `refs/rev-algo-recover.md` — 算法/加密还原的思路
-- `refs/rev-deobf.md` — 去混淆与反反调试
-- `refs/rev-dynamic-debug.md` — 动态调试与断点策略
-- `refs/rev-static-entry.md` — 逆向静态切入与目标函数定位
+- `refs/rev-algo-recover.md` — アルゴリズム/暗号化復元の考え方
+- `refs/rev-deobf.md` — 難読化解除とアンチデバッグ対策
+- `refs/rev-dynamic-debug.md` — 動的デバッグとブレークポイント戦略
+- `refs/rev-static-entry.md` — リバースエンジニアリングの静的切り口と対象関数の位置特定
 
-## 用法
+## 使い方
 
-先用本索引定位篇目与场景节(`### 场景句`),再 Read 对应文件;回答/决策时优先遵循其中的判据与转向规则。worker 无 Glob/Grep,按上面的精确相对路径直接 Read。
+まず本インデックスで篇目と場面節(`### 場面句`)を特定し、対応するファイルを Read する。回答/意思決定の際はその中の判定基準と方向転換のルールを優先して従う。worker には Glob/Grep がないため、上の正確な相対パスで直接 Read する。

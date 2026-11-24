@@ -1,6 +1,6 @@
 // ldpreloadgen は session/ldpreload_x86_64.so をオフラインで生成する: freestanding x86_64 ELF
 // 共有ライブラリで、コンストラクタ(DT_INIT_ARRAY)は純粋な syscall で「パススロット」が指すファイルに 1 バイトの
-// 疎通確認マーカーを書いてから _exit(0)——「ロード即証明」の最小限の LD_PRELOAD バイパスプローブ(振り返り R1、
+// 疎通確認マーカーを書いてから _exit(0)。「ロード即証明」の最小限の LD_PRELOAD バイパスプローブ(振り返り R1、
 // 使い方は session/bypass.go 参照)。libc 依存も外部ツールチェーン依存もない(ビルドホストに
 // as/ld/gcc は不要): ELF ヘッダ/プログラムヘッダ/動的セクション/機械語はすべて本生成器がレイアウト定数から直接出力する。
 //
@@ -20,7 +20,7 @@
 //	write(fd, marker, 1)                          ; rax=1
 //	_exit(0)                                      ; rax=60
 //
-// _exit(0) は同時に preload された sendmail/sh 本体を止める——これがまさに LD_PRELOAD バイパスの
+// _exit(0) は同時に preload された sendmail/sh 本体を止める。これがまさに LD_PRELOAD バイパスの
 // 古典的な意味論: 子プロセスはロード即終了し、コマンド実行はすべてコンストラクタ内で完結する(本プローブはマーカーを書くだけ)。
 package main
 
@@ -139,7 +139,7 @@ func main() {
 	// sysv hash: nbucket=1, nchain=1、すべて空(本ライブラリはシンボルを公開しない)。
 	binary.LittleEndian.PutUint32(out[hashOff:], 1)
 	binary.LittleEndian.PutUint32(out[hashOff+4:], 1)
-	// strtab は "\0" のみ、symtab は全ゼロの空シンボル 1 個(24B)——make で既にゼロ。
+	// strtab は "\0" のみ、symtab は全ゼロの空シンボル 1 個(24B)。make で既にゼロ。
 
 	copy(out[magicOff:], magic)
 	// パススロット(128B)は既定で全ゼロ: 投与前に session/bypass.go が疎通確認マーカーパスへ書き換える。

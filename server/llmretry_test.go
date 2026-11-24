@@ -8,7 +8,7 @@ import (
 	"github.com/Autumn-27/artex/db"
 )
 
-// 設定がまったくない場合、解析結果はすべてゼロでなければならない —— つまり SDK と task_llm それぞれの組み込みデフォルトであり、
+// 設定がまったくない場合、解析結果はすべてゼロでなければならない。つまり SDK と task_llm それぞれの組み込みデフォルトであり、
 // 「再試行を設定可能」という機能のリリース前とバイト単位で一致する。
 func TestResolveRetryUnconfigured(t *testing.T) {
 	got := resolveRetry(db.RetryOverride{}, db.LLMRetryPolicy{})

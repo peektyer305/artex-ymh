@@ -1,6 +1,6 @@
 // tunnels.go は多段プロキシトンネルの台帳の永続化層（schema.sql §L、イントラネット侵入フェーズ 3a、
 // docs/architecture/intranet-pivot.md §4.3/4.3a）。deploy_params は完全なデプロイパラメータの JSON
-// （auth、server_pid、stage_token、リモートパス、検証ターゲットを含む）——切断時の自動再デプロイはこれに依存する
+// （auth、server_pid、stage_token、リモートパス、検証ターゲットを含む）。切断時の自動再デプロイはこれに依存する
 // （PivotHub の教訓:パラメータを列に分散して保存し、セッション参照を保存しなければ、再デプロイは有名無実;ここでは必ず全部保存する）。
 // deploy_params にはトンネルの auth token が含まれ、プラットフォームの信頼ドメイン内データなので平文 JSONB で保存する
 // （sessions/credentials のターゲット側の認証情報とは異なる:あれはユーザーの資産、これはプラットフォームが生成する使い捨てトークン）。
@@ -134,7 +134,7 @@ func (s *TunnelStore) ListByTask(ctx context.Context, taskID int64) ([]*TunnelRe
 	return s.list(ctx, ` WHERE task_id=$1`, taskID)
 }
 
-// ListAlive は生存中（alive）の全トンネルを取得する——ヘルスチェックとポート監査用。
+// ListAlive は生存中（alive）の全トンネルを取得する。ヘルスチェックとポート監査用。
 func (s *TunnelStore) ListAlive(ctx context.Context) ([]*TunnelRecord, error) {
 	return s.list(ctx, ` WHERE state='alive'`)
 }
@@ -144,7 +144,7 @@ func (s *TunnelStore) ListActive(ctx context.Context) ([]*TunnelRecord, error) {
 	return s.list(ctx, ` WHERE state IN ('deploying','alive','error')`)
 }
 
-// List は台帳の全行を取得する（stopped を含む）。id 昇順——イントラネット運用ページの台帳ビュー用。
+// List は台帳の全行を取得する（stopped を含む）。id 昇順。イントラネット運用ページの台帳ビュー用。
 func (s *TunnelStore) List(ctx context.Context) ([]*TunnelRecord, error) {
 	return s.list(ctx, ``)
 }

@@ -47,6 +47,7 @@ RUN if [ -n "$APT_MIRROR" ]; then \
     fi \
     && apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates ripgrep curl wget vim git jq unzip \
+      build-essential \
       dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap \
     && rm -rf /var/lib/apt/lists/*
 # Node：公式 tarball + 同一配布元の SHASUMS256 検証（fail-closed。検証ファイル内の相対パスは

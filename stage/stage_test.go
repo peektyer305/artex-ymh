@@ -258,7 +258,7 @@ func TestInvalidNameRejected(t *testing.T) {
 			t.Fatalf("name %q should be rejected", name)
 		}
 	}
-	// "../escape" は basename を取ると "escape" になる——許可され（パス脱出なし）、dir 内に収まることを確認する。
+	// "../escape" は basename を取ると "escape" になる。許可され（パス脱出なし）、dir 内に収まることを確認する。
 	e, err := m.PutContent("../escape", []byte("x"), PutOpts{})
 	if err != nil {
 		t.Fatal(err)

@@ -76,7 +76,7 @@ function hostOf(label: string): string {
 }
 
 // shortLabel は親ノードと重複する接頭辞を落とす。service / endpoint の label は完全な URL で、
-// ホスト名/IP は前の行にすでに出ている —— 深い階層のノードはもともと幅が狭く、host を繰り返すと
+// ホスト名/IP は前の行にすでに出ている。深い階層のノードはもともと幅が狭く、host を繰り返すと
 // 情報量のあるポートとパスがすべて切り詰められてしまう。完全な値は title とパンくずに残している。
 function shortLabel(node: FindingAssetNode, parent?: FindingAssetNode): string {
   if (!parent) return node.label;

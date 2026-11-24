@@ -1,36 +1,36 @@
 ---
 name: chains-recon
-description: 信息收集反问决策链原文索引(资产测绘/指纹识别/JS 接口抽取/泄露猎取/OSINT/隐藏参数/何时够了的判断)。侦察阶段、扫描拿不准收手时机、要找入口时查阅。
+description: 情報収集の問い返し式意思決定チェーンの原文索引(アセット調査/フィンガープリント識別/JS API 抽出/漏えいハンティング/OSINT/隠しパラメータ/いつ十分かの判断)。偵察段階、スキャンで止め時がわからないとき、入口を探すときに参照。
 ---
 
-# chains-recon · 信息收集反问决策链(L4 原文索引)
+# chains-recon · 情報収集の問い返し式意思決定チェーン(L4 原文索引)
 
-## 何时使用
+## いつ使うか
 
-- 只有一个 URL/IP,要定侦察优先级与顺序(recon-asset-surface、recon-fingerprint)
-- 扫描结果一堆,纠结继续扫还是收手手工验证(recon-when-enough)
-- 要挖泄露面:备份/.git/.env/swagger/JS 密钥(recon-leak-hunting、recon-js-endpoints)
-- 要挖隐藏参数与未授权接口(recon-param-mining)
-- 技术面榨干,要转 OSINT/人的攻击面(recon-osint)
+- URL/IP が一つしかないとき、偵察の優先度と順序を定める(recon-asset-surface、recon-fingerprint)
+- スキャン結果が大量に出て、続けてスキャンするか、それとも手動検証に移るか迷うとき(recon-when-enough)
+- 漏えい面を掘る場合:バックアップ/.git/.env/swagger/JS キー(recon-leak-hunting、recon-js-endpoints)
+- 隠しパラメータと未認可 API を掘る場合(recon-param-mining)
+- 技術面をやり尽くして、OSINT/人の攻撃面に移る場合(recon-osint)
 
-## 铁律
+## 鉄則
 
-- 收手判据不是"还有没有没扫的端口",而是"已拿到的东西里有没有能形成攻击假设的线索";扫描边际收益在第一轮后急剧衰减(refs/recon-when-enough.md)
-- 先扫"暴露即高危"的确定性目标(.git/.svn/.env/常见备份/swagger),优先级高于宽泛目录爆破(refs/recon-leak-hunting.md)
-- 字典随技术栈切换(Java 找 WEB-INF、PHP 找 .php~、Node 找 .env/source map),别一套字典打天下(refs/recon-leak-hunting.md)
-- 手工验证按"最小验证成本"排序:一个请求能证真/证伪的先验,死胡同要在几分钟内判死(refs/recon-when-enough.md)
-- 命中泄露点先做广度快照再挑收益最高的深挖,别陷进第一个坑(refs/recon-leak-hunting.md)
+- 止め時の判定基準は「まだスキャンしていないポートがあるかどうか」ではなく「手に入れたものの中に攻撃仮説を形成できる手がかりがあるかどうか」。スキャンの限界利益は第1ラウンド以降に急激に減衰する(refs/recon-when-enough.md)
+- 「露出即高リスク」の確定的な対象(.git/.svn/.env/一般的なバックアップ/swagger)を先にスキャンし、広範なディレクトリのブルートフォースより優先する(refs/recon-leak-hunting.md)
+- 辞書は技術スタックに応じて切り替える(Java なら WEB-INF、PHP なら .php~、Node なら .env/source map)。一つの辞書で全部を片付けようとしない(refs/recon-leak-hunting.md)
+- 手動検証は「最小検証コスト」で並べる:1リクエストで真偽を確かめられるものを先に検証し、行き止まりは数分以内に見極める(refs/recon-when-enough.md)
+- 漏えい点に当たったら、まず広さのスナップショットを取り、その後に収益の高いものを深掘りする。最初の穴にはまり込まない(refs/recon-leak-hunting.md)
 
-## refs/ 原文清单
+## refs/ 原文一覧
 
-- `refs/recon-asset-surface.md` — 外网资产测绘与攻击面确定
-- `refs/recon-fingerprint.md` — 子域/端口/服务指纹的取舍与顺序
-- `refs/recon-js-endpoints.md` — JS 与前端里的接口路径和敏感信息抽取
-- `refs/recon-leak-hunting.md` — 泄露猎取:备份/.git/.env/swagger/JS 密钥
-- `refs/recon-osint.md` — OSINT 与人的攻击面
-- `refs/recon-param-mining.md` — 隐藏参数与未授权接口挖掘
-- `refs/recon-when-enough.md` — "信息够了没、何时该动手"的判断
+- `refs/recon-asset-surface.md` — 外部ネットワークのアセット調査と攻撃面の確定
+- `refs/recon-fingerprint.md` — サブドメイン/ポート/サービスのフィンガープリントの取捨選択と順序
+- `refs/recon-js-endpoints.md` — JS とフロントエンド内の API パスと機密情報の抽出
+- `refs/recon-leak-hunting.md` — 漏えいハンティング:バックアップ/.git/.env/swagger/JS キー
+- `refs/recon-osint.md` — OSINT と人の攻撃面
+- `refs/recon-param-mining.md` — 隠しパラメータと未認可 API の掘り出し
+- `refs/recon-when-enough.md` — 「情報が十分か、いつ手を付けるか」の判断
 
-## 用法
+## 使い方
 
-先用本索引定位篇目与场景节(`### 场景句`),再 Read 对应文件;回答/决策时优先遵循其中的判据与转向规则。worker 无 Glob/Grep,按上面的精确相对路径直接 Read。
+まず本索引で篇目と場面節(`### 場面句`)を特定し、次に対応ファイルを Read する。回答/意思決定の際は、その中の判定基準と方向転換ルールを優先して従う。worker には Glob/Grep がないため、上記の正確な相対パスで直接 Read する。

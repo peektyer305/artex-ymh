@@ -112,7 +112,7 @@ func (d *DB) CreateFindingCheck(ctx context.Context, findingID int64, kind strin
 }
 
 func (c *FindingCheck) InitialMessage() string {
-	return fmt.Sprintf("请验证漏洞 #%d 是否真实成立。先调用 get_finding_check_context 读取本会话关联的漏洞快照与任务约束，优先尝试证伪（重放 PoC 是否可复现、是否目标通用错误页/WAF 伪装、是否扫描器特征误报），最后调用 record_finding_check_result 保存结论（verified/false_positive/inconclusive 三选一）。", c.FindingID)
+	return fmt.Sprintf("脆弱性 #%d が実際に成立するかを検証してください。まず get_finding_check_context を呼び出して、このセッションに関連付けられた脆弱性のスナップショットとタスクの制約を読み取ってください。優先して反証を試みてください（PoC を再実行して再現するか、対象の汎用エラーページや WAF の偽装か、スキャナ特有の誤検知かを確認してください）。最後に record_finding_check_result を呼び出して結論（verified / false_positive / inconclusive の三択）を保存してください。", c.FindingID)
 }
 
 func (d *DB) ListFindingChecks(findingID int64) ([]*FindingCheck, error) {

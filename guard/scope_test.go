@@ -112,7 +112,7 @@ func TestScopeMatcherLocalOption(t *testing.T) {
 			t.Errorf("デフォルト AllowLocal:%s は通過させるべきです(worker の本機操作), got %v", h, got)
 		}
 	}
-	// RFC1918 の内部ネットワークアドレスは本機通過の対象外——範囲に登録する必要がある。
+	// RFC1918 の内部ネットワークアドレスは本機通過の対象外。範囲に登録する必要がある。
 	if got := m.Check("10.0.0.9"); got != ScopeOut {
 		t.Errorf("未登録の内部ネットワークアドレスは Out になるべきです, got %v", got)
 	}

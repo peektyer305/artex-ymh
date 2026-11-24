@@ -37,20 +37,20 @@ func (s *Server) handoffHostIP(rec *db.SessionRecord) string {
 	return ""
 }
 
-// handoffGoal は引き継ぎ goal テキスト（中国語テンプレート）を組み立てる：フットホールド
+// handoffGoal は引き継ぎ goal テキスト（日本語テンプレート）を組み立てる：フットホールド
 // 情報 + 検出済みだが未認可の pending セグメント + 認可済み scope + 内部ネットワークの規律。
 func handoffGoal(rec *db.SessionRecord, hostIP string, pending []db.PendingScope, scope []db.TaskScope) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "内网横向:以会话 #%d(%s,%s)所在的立足点主机 %s 为起点,向内网纵深拓展。\n",
+	fmt.Fprintf(&b, "内部ネットワーク横展開：セッション #%d(%s,%s) の存在する足場ホスト %s を起点として、内部ネットワークの奥へ展開します。\n",
 		rec.ID, rec.Kind, rec.URL, hostIP)
-	fmt.Fprintf(&b, "立足点：session_id=%d kind=%s url=%s host_asset_id=%d。\n",
+	fmt.Fprintf(&b, "足場：session_id=%d kind=%s url=%s host_asset_id=%d。\n",
 		rec.ID, rec.Kind, rec.URL, rec.HostAssetID)
 	if len(pending) > 0 {
 		segs := make([]string, 0, len(pending))
 		for _, p := range pending {
 			segs = append(segs, p.Value)
 		}
-		fmt.Fprintf(&b, "原任务已发现但【未授权】的网段(严禁直接动,需人工批准):%s。\n", strings.Join(segs, "、"))
+		fmt.Fprintf(&b, "元タスクで発見済みだが【未認可】のネットワークセグメント(直接触れるのは厳禁。人手の承認が必要):%s。\n", strings.Join(segs, "、"))
 	}
 	if len(scope) > 0 {
 		items := make([]string, 0, len(scope))
@@ -61,14 +61,14 @@ func handoffGoal(rec *db.SessionRecord, hostIP string, pending []db.PendingScope
 			}
 		}
 		if len(items) > 0 {
-			fmt.Fprintf(&b, "原任务已授权 scope(仅背景参考,不自动继承授权):%s。\n", strings.Join(items, "、"))
+			fmt.Fprintf(&b, "元タスクで認可済みの scope(背景の参考のみ。認可を自動継承しない):%s。\n", strings.Join(items, "、"))
 		}
 	}
-	b.WriteString("\n纪律:\n")
-	b.WriteString("1. 本任务初始授权 scope 只有立足点主机 " + hostIP + "/32;被动侦察(session_recon)发现的新网段一律先登记 pending_scope 等人工审批,批准前不得对新网段主动探测/发包。\n")
-	b.WriteString("2. 被动优先:先用 session_recon 只读命令包拿网卡/路由/邻居/监听,被动信息不够再考虑主动慢扫(另过 guard 审批)。\n")
-	b.WriteString("3. 需要出立足点的网络访问走 tunnel_deploy 四件套(部署隧道 → 任务级代理自动经 socks 进内网),不要直接在立足点外盲目扫描。\n")
-	b.WriteString("4. 动静控制:经会话的命令注意 OPSEC(日志/进程/网络留痕),避免大批量高噪声动作。\n")
+	b.WriteString("\n規律:\n")
+	b.WriteString("1. 本タスクの初期認可 scope は足場ホスト " + hostIP + "/32 のみです。受動的偵察(session_recon)で発見した新しいネットワークセグメントは、いったんすべて pending_scope に登録して人手の承認を待ちます。承認前は新しいネットワークセグメントへの能動的プローブ/パケット送信を行わないでください。\n")
+	b.WriteString("2. 受動優先：まず session_recon の読み取り専用コマンド群で NIC/ルート/隣接/リスナーを取得します。受動情報が不十分な場合のみ、能動的な低速スキャンを検討します(別途 guard の承認が必要)。\n")
+	b.WriteString("3. 足場の外へ出るネットワークアクセスは tunnel_deploy の 4 点セット(トンネル展開 → タスクレベルのプロキシが自動で socks 経由で内部ネットワークに入る)を使用し、足場の外で直接やみくもにスキャンしないでください。\n")
+	b.WriteString("4. 動静の制御：セッション経由のコマンドでは OPSEC(ログ/プロセス/ネットワークの痕跡)に注意し、大量で高ノイズな動作を避けてください。\n")
 	return b.String()
 }
 
@@ -119,7 +119,7 @@ func (s *Server) sessionHandoff(w http.ResponseWriter, r *http.Request) {
 
 	desc := fmt.Sprintf("内部ネットワーク横移動（フットホールドセッション #%d %s）", rec.ID, hostIP)
 	goal := handoffGoal(rec, hostIP, pending, scope)
-	// 编排の spawn_task と同じ経路：元タスクを読み取り専用で継承 + parent_ref の親子関連 + launchTask。
+	// オーケストレーションの spawn_task と同じ経路：元タスクを読み取り専用で継承 + parent_ref の親子関連 + launchTask。
 	t, err := s.m.CreateTaskWithOptions(desc, goal, db.TaskCreateOptions{
 		SourceTaskIDs: []int64{rec.CreatedByTask},
 	})

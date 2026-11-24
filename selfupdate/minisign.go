@@ -31,7 +31,7 @@ const skipSignEnv = "ARTEX_UPDATE_SKIP_SIGN"
 //	署名: base64( "ED" || keynum(8) || ed25519_sig(64) )               74 バイト
 //
 // アルゴリズムのマーカーは大文字小文字が異なる：公開鍵は常に "Ed"；署名の "ED"（大文字の D）は
-// 事前ハッシュモードで、署名対象は Blake2b-512(message)——minisign ≥0.9 はこの形式しか出力しない。
+// 事前ハッシュモードで、署名対象は Blake2b-512(message)。minisign ≥0.9 はこの形式しか出力しない。
 // 小文字の "Ed" は古いバージョンが元のメッセージを直接署名する形式で、本実装では未対応。
 const (
 	minisignAlgPubKey    = "Ed"
@@ -54,7 +54,7 @@ func parsePubKey(b64 string) ([minisignKeynumLen]byte, ed25519.PublicKey, error)
 }
 
 // parseMinisig は .minisig テキストから主署名を取り出す。最初の base64 行のみを扱う
-// （trusted comment とそのグローバル署名は検証に参加しない——更新経路はコメント内容を使わない）。
+// （trusted comment とそのグローバル署名は検証に参加しない。更新経路はコメント内容を使わない）。
 func parseMinisig(raw string) ([minisignKeynumLen]byte, []byte, error) {
 	var keynum [minisignKeynumLen]byte
 	for line := range strings.Lines(raw) {

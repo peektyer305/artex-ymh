@@ -32,7 +32,7 @@ func TestScoreReuse(t *testing.T) {
 	}
 	// 各加点には可読な reason がある。
 	joined := strings.Join(sugs[0].Reasons, " ")
-	for _, kw := range []string{"同网段", "域凭据", "重叠", "PtH", "已实测验证"} {
+	for _, kw := range []string{"同じネットワークセグメント", "ドメイン認証情報", "重複", "PtH", "実測で検証済み"} {
 		if !strings.Contains(joined, kw) {
 			t.Errorf("top1 の reason に %q がありません: %s", kw, joined)
 		}

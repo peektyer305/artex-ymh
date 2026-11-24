@@ -24,7 +24,7 @@
 | トンネル消費側 | `SetUpstreamProxy` が認証付き socks5、アトミックなホットスイッチに対応 | `traffic/traffic.go:205-233` |
 | 対話型 shell の仕組み | `shell_open` は「ssh 対話／nc リバース」シナリオを明示的に想定済み | `server/assembly.go:238,312-314` |
 
-**本当に欠けており、新規に作る必要があるのは三つだけである**：① セッションサブシステム（フットホールドの第一級管理）、② トンネル編成サブシステム（プローブ→選定→デプロイ→検証→ヘルス→撤去）、③ データモデルのイントラネット拡張（host の統合／セグメント／リンク／認証情報）。この三つこそ PivotHub で検証済みの三要素である——**そのアルゴリズムと判定基準を参考に、実装は Go で書き直す**。
+**本当に欠けており、新規に作る必要があるのは三つだけである**：① セッションサブシステム（フットホールドの第一級管理）、② トンネル編成サブシステム（プローブ→選定→デプロイ→検証→ヘルス→撤去）、③ データモデルのイントラネット拡張（host の統合／セグメント／リンク／認証情報）。この三つこそ PivotHub で検証済みの三要素である。**そのアルゴリズムと判定基準を参考に、実装は Go で書き直す**。
 
 ## 3. PivotHub から何を取り入れるか（原則でありコードではない）
 
@@ -61,27 +61,27 @@
 
 ### 4.2 サブシステム 1：session（フットホールドの第一級管理）
 
-- **インターフェース**：`Session { Test / Exec / ExecStream / ReadFile / WriteFile / Upload / Close }`。ドライバ：http_shell（php/jsp/aspx/asp）、reverse（リスナー + コールバック登録）、ssh（`golang.org/x/crypto/ssh` を使用——go.mod には既に x/crypto 依存があり、`go.mod:14`）。
+- **インターフェース**：`Session { Test / Exec / ExecStream / ReadFile / WriteFile / Upload / Close }`。ドライバ：http_shell（php/jsp/aspx/asp）、reverse（リスナー + コールバック登録）、ssh（`golang.org/x/crypto/ssh` を使用。go.mod には既に x/crypto 依存があり、`go.mod:14`）。
 - **永続化**：新規テーブル `sessions`（kind/host_asset_id/接続パラメータの暗号化/health/last_beat/created_by_intent）。起動時にリスナーを復元する（PivotHub の `restore_reverse_listeners` パターン、`api/shells.py:929-950`）。
-- **agent から触れる面**：新規ツール `register_session`（worker が webshell を取得した後に登録：URL+パスワード+言語）、`session_exec`、`session_read/write`、`session_list`——**いずれも通常のツール呼び出しであり、自動的に guard の承認を通り、自動的に activity へ証跡が残る**。これが PivotHub のチャネルに対する本質的な優位性である（fusion 評価の「問題一」への回答）。
+- **agent から触れる面**：新規ツール `register_session`（worker が webshell を取得した後に登録：URL+パスワード+言語）、`session_exec`、`session_read/write`、`session_list`。**いずれも通常のツール呼び出しであり、自動的に guard の承認を通り、自動的に activity へ証跡が残る**。これが PivotHub のチャネルに対する本質的な優位性である（fusion 評価の「問題一」への回答）。
 - **攻撃機アドレスの概念**：リバースのコールバックには「ターゲットから到達できる ARTEX のアドレス」が必要である（PivotHub の attackIp、README §9）。ARTEX を Docker で動かす場合、これは現実のデプロイ制約になる。設定項目 `ARTEX_CALLBACK_ADDR` + compose でのリスナーポート公開が必要で、起動時に到達性を検証し明示的に警告する。
 - **安全上の下限**（PivotHub の教訓）：コールバックリスナーにはワンタイムパスワードの検証が必須である（PivotHub の `_accept_loop` は誰彼構わず受け入れる、`reverse.py:140-149`）。セッション接続パラメータは暗号化して永続化する（PivotHub はすべて平文、`models/credential.py:18`）。
-- **フットホールド戦略（foothold ladder、2026-09-13 に著者と確認）**：**webshell を優先し、リバースシェルは一時チャネルへ降格する**。理由：① webshell はインバウンド HTTP チャネルを再利用し、外向き通信への依存がゼロ（リバースの前提である「ターゲットから接続し返せること」は、まさに最も遮断されやすい。chains の `pivot-no-reverse`/`pivot-oneway-webshell` を参照）。② リバースは長接続 + 非標準ポートでトラフィックの特徴が強く、webshell は業務 HTTPS に紛れる。③ http_shell のセッションはリクエスト駆動であり、プラットフォーム側に長命プロセスが存在しない——**これにより session 層は ROADMAP C1 の衝突から外れる**。リバースリスナーはもはや例外扱いを要する長寿リソースではない（C1 に残る本質的な長命リソースはトンネルのみで、管理台帳が下支えする）。④ webshell のコマンドは記録プロキシ経由で発出されるため**二重の証跡**が残る（ツール呼び出しは activity へ、HTTP は MITM へ）。リバースの生 TCP は記録体系を完全に迂回する。標準動作チェーン：初期 RCE → 優先的に webshell を書き込み永続フットホールドを確立（主チャネル）→ 対話性が必要なとき（PTY 権限昇格/大容量ファイル/トンネルデバッグ）にリバース／対話チャネルを一時的に立ち上げ、**使い終わったら即座に回収（管理 TTL、常駐させない）** → トンネルは主チャネル経由で投入する。レッドライン：webshell の書き込みは高リスクな書き込み操作であり、必ず RoE/guard ask を通す。webshell のディスク上への書き込みには、検出エンジンに発見される検出面があるため、chains にはインメモリ webshell／ディスク配置時の難読化の判定基準を補うべきである。判定基準の知識は chains の L3 pivot-\* 骨格が担う。
-- **implant 戦略（2026-09-13 に著者と確認）**：外部 webshell プラットフォーム（vshell／Godzilla／Behinder）には接続しない——二つの体系が併存し、プロトコルは既にシグネチャライブラリに覆われているため、接続することは自前開発に金を払いながら自前開発の実利を得られないことになる。完全な C2 を今自前で作ることもない——それは月単位の対抗エンジニアリングであり、現時点でプラットフォームに欠けているのは、implant 対抗ではなくイントラネット深部である。判断は期 3 のトンネルが通った後、実データを以て再決定するまで先送りする（session のインターフェースとドライバには無関係で、将来バイナリ implant を追加しても上位層は動かない）。**直近のアクション：http_shell ドライバに自前の暗号化 webshell 型を追加する（期 2 の後にスケジュール、2-3 日）**——webshell 本体に復号を内蔵し、セッションごとに独立した AES-GCM 鍵、リクエスト／レスポンスは全て暗号文 + ランダムパディングで、トラフィックのシグネチャを無効化する。「機能が単一」である点は、暗号化 webshell + トンネル（期 3）+ 対話チャネル（期 5）の組み合わせで解決し、巨大な C2 には依存しない。
+- **フットホールド戦略（foothold ladder、2026-09-13 に著者と確認）**：**webshell を優先し、リバースシェルは一時チャネルへ降格する**。理由：① webshell はインバウンド HTTP チャネルを再利用し、外向き通信への依存がゼロ（リバースの前提である「ターゲットから接続し返せること」は、まさに最も遮断されやすい。chains の `pivot-no-reverse`/`pivot-oneway-webshell` を参照）。② リバースは長接続 + 非標準ポートでトラフィックの特徴が強く、webshell は業務 HTTPS に紛れる。③ http_shell のセッションはリクエスト駆動であり、プラットフォーム側に長命プロセスが存在しない。**これにより session 層は ROADMAP C1 の衝突から外れる**。リバースリスナーはもはや例外扱いを要する長寿リソースではない（C1 に残る本質的な長命リソースはトンネルのみで、管理台帳が下支えする）。④ webshell のコマンドは記録プロキシ経由で発出されるため**二重の証跡**が残る（ツール呼び出しは activity へ、HTTP は MITM へ）。リバースの生 TCP は記録体系を完全に迂回する。標準動作チェーン：初期 RCE → 優先的に webshell を書き込み永続フットホールドを確立（主チャネル）→ 対話性が必要なとき（PTY 権限昇格/大容量ファイル/トンネルデバッグ）にリバース／対話チャネルを一時的に立ち上げ、**使い終わったら即座に回収（管理 TTL、常駐させない）** → トンネルは主チャネル経由で投入する。レッドライン：webshell の書き込みは高リスクな書き込み操作であり、必ず RoE/guard ask を通す。webshell のディスク上への書き込みには、検出エンジンに発見される検出面があるため、chains にはインメモリ webshell／ディスク配置時の難読化の判定基準を補うべきである。判定基準の知識は chains の L3 pivot-\* 骨格が担う。
+- **implant 戦略（2026-09-13 に著者と確認）**：外部 webshell プラットフォーム（vshell／Godzilla／Behinder）には接続しない。二つの体系が併存し、プロトコルは既にシグネチャライブラリに覆われているため、接続することは自前開発に金を払いながら自前開発の実利を得られないことになる。完全な C2 を今自前で作ることもない。それは月単位の対抗エンジニアリングであり、現時点でプラットフォームに欠けているのは、implant 対抗ではなくイントラネット深部である。判断は期 3 のトンネルが通った後、実データを以て再決定するまで先送りする（session のインターフェースとドライバには無関係で、将来バイナリ implant を追加しても上位層は動かない）。**直近のアクション：http_shell ドライバに自前の暗号化 webshell 型を追加する（期 2 の後にスケジュール、2-3 日）**。webshell 本体に復号を内蔵し、セッションごとに独立した AES-GCM 鍵、リクエスト／レスポンスは全て暗号文 + ランダムパディングで、トラフィックのシグネチャを無効化する。「機能が単一」である点は、暗号化 webshell + トンネル（期 3）+ 対話チャネル（期 5）の組み合わせで解決し、巨大な C2 には依存しない。
 
 ### 4.3 サブシステム 2：tunnel（多層プロキシ編成）
 
-- **四つの構成要素**：`probe`（セッション経由でターゲット側で四つの探針を実行し、構造化レポートを返す）→ `plan`（リレー導出。入力はアセットグラフの NIC／セグメントデータ）→ `deploy`（セッション経由で chisel バイナリを投入＝filestage パターン、リモートで立ち上げ、**トンネル内での決定的検証**、失敗時は層ごとにロールバック）→ `health`（実際の活性プローブ。死んだら error を付け、再立ち上げをトリガーする——再立ち上げは永続化したデプロイパラメータを使うので、PivotHub のように名ばかりにはならない）。
+- **四つの構成要素**：`probe`（セッション経由でターゲット側で四つの探針を実行し、構造化レポートを返す）→ `plan`（リレー導出。入力はアセットグラフの NIC／セグメントデータ）→ `deploy`（セッション経由で chisel バイナリを投入＝filestage パターン、リモートで立ち上げ、**トンネル内での決定的検証**、失敗時は層ごとにロールバック）→ `health`（実際の活性プローブ。死んだら error を付け、再立ち上げをトリガーする。再立ち上げは永続化したデプロイパラメータを使うので、PivotHub のように名ばかりにはならない）。
 - **agent から触れる面**：ツール `tunnel_probe / tunnel_plan / tunnel_deploy / tunnel_list / tunnel_teardown`。plan は構造化された hops（JSON）を出力し、planner はそれに基づいて「次のセグメントを攻撃する」意図を派遣できる。
-- **トンネル消費**：トンネルが完成 = 一つの socks5 エンドポイント。worker の `proxyEnv` 注入は「グローバルに唯一の globalProxy」から**タスク（または意図）ごとの上流バインド**へ拡張する（`agent/worker.go:194-214` をタスク runtime から取得するよう変更）：worker の Bash トラフィック = ローカル MITM 記録プロキシ → socks5 トンネル → イントラネットのターゲット、と**証跡チェーンが途切れない**（ローカル MITM が引き続き記録する）。これはアーキテクチャ上最も美しい点である——記録とトンネルがトポロジ上、天然に直列する。
+- **トンネル消費**：トンネルが完成 = 一つの socks5 エンドポイント。worker の `proxyEnv` 注入は「グローバルに唯一の globalProxy」から**タスク（または意図）ごとの上流バインド**へ拡張する（`agent/worker.go:194-214` をタスク runtime から取得するよう変更）：worker の Bash トラフィック = ローカル MITM 記録プロキシ → socks5 トンネル → イントラネットのターゲット、と**証跡チェーンが途切れない**（ローカル MITM が引き続き記録する）。これはアーキテクチャ上最も美しい点である。記録とトンネルがトポロジ上、天然に直列する。
 - **プロセス監視**：トンネルプロセスを台帳に登録し、settlement／タスク停止時にクリーンアップする（P6 で発見された「worker が起動したバックグラウンドプロセスが誰にも管理されない」問題を修正）。切断時は実際の活性プローブ + 自動再立ち上げ + planner への通知（リンク切断は重要な状況イベントである）。
 
 ### 4.3a 管理対象リソースの原則と stage_share（2026-09-13 追加。「AI がツール投入用の一時 HTTP サービスを立ち上げたまま閉じ忘れ、漏えいに至る」という通弊への対応）
 
-**アーキテクチャ原則：外部への露出面を持つリソース——HTTP 一時ステージング、トンネルプロセス、リバースリスナー、一時ファイアウォールルール——は必ずプラットフォームが台帳に登録し、TTL を強制し、タスクに帰属させ、プラットフォームが回収する。例外のリソースは存在しない。** 根本原因は AI の記憶力ではなく、リソースがプラットフォームの台帳の外にあることである。一時 HTTP サービスは 1 本の Bash コマンドの副作用であり、プラットフォームは一切感知せず、settlement もバックグラウンドプロセスを片付けないため、意図の終了／コンテキスト圧縮の後には全ネットワークに開放された孤児になる（ディレクトリには戦利品の認証情報が混じっていることが多い）。prompting is not enforcement であり、仕組みで担保する必要がある：
+**アーキテクチャ原則：外部への露出面を持つリソース。HTTP 一時ステージング、トンネルプロセス、リバースリスナー、一時ファイアウォールルール。は必ずプラットフォームが台帳に登録し、TTL を強制し、タスクに帰属させ、プラットフォームが回収する。例外のリソースは存在しない。** 根本原因は AI の記憶力ではなく、リソースがプラットフォームの台帳の外にあることである。一時 HTTP サービスは 1 本の Bash コマンドの副作用であり、プラットフォームは一切感知せず、settlement もバックグラウンドプロセスを片付けないため、意図の終了／コンテキスト圧縮の後には全ネットワークに開放された孤児になる（ディレクトリには戦利品の認証情報が混じっていることが多い）。prompting is not enforcement であり、仕組みで担保する必要がある：
 
 1. **`stage_share` 管理対象の投入サービス**（組み込みツール。トンネルバイナリの投入と同一のステージング実装を共有する。すなわち 4.3 の filestage パターン）：24 バイトのランダム token パス、ディレクトリ一覧の不可、ハード TTL はデフォルト 15 分で期限切れ時に自動破棄、ワンタイムのダウンロード即焼却に対応、デフォルトは loopback（ターゲットから可視にする必要がある場合は指定インターフェースにバインドするかトンネルを経由）、activity への全記録（誰が投入したか／いつ期限切れか／どのソース IP に取得されたか）。
-2. **guard の削除不可の組み込みルール**が `python -m http.server` / `php -S` / `busybox httpd` / `npx serve` などの野良手段をインターセプトし、ブロック理由に「stage_share を使ってください」と明記する——正規の手段の方が野良手段より使いやすいので、迂回の動機は自然に下がる。
+2. **guard の削除不可の組み込みルール**が `python -m http.server` / `php -S` / `busybox httpd` / `npx serve` などの野良手段をインターセプトし、ブロック理由に「stage_share を使ってください」と明記する。正規の手段の方が野良手段より使いやすいので、迂回の動機は自然に下がる。
 3. **下支えの回収**：worker の Bash は独立したプロセスグループで実行し、意図の終了／タスク停止時にグループごと回収する。本機のリスニングポートを定期的に走査し、台帳外のリスナーを警告し、自動 kill を設定可能にする。
 4. **投入の階級分け**：`stage_share` はツールの送出のみを行う。戦利品／認証情報の回流はセッション経由の読み取り／evidence ストレージのみを通す。payload の暗号化投入は任意。
 
@@ -92,8 +92,8 @@
 P6 のエビデンス：現在の `uq_av2_ip` により 1 つの IP はグローバルに 1 行であり（`db/schema.sql:84`）、デュアル NIC のホストは無関係な 2 つのアセットに分解される。辺の関係は 5 種類しかない（`db/schema.sql:251`）。必要なもの：
 
 - **host エンティティ**：新規テーブル、またはアセットの新種別 `host` を作り、複数の ip/nic アセットをその下に統合する（nic テーブル：ip+segment+iface）。デュアル NIC の統合は「同一セッションが報告した ifconfig」または MAC／ホスト名のフィンガープリントで行う。
-- **セグメントエンティティ**：`segments`（cidr、どのリンク経由で到達可能か）——現状は派生列 `c_segment` しかない（`db/schema.sql:55`）。
-- **リンクの辺**：アセット層の新規テーブル `links`（kind=socks/portfwd/relay, src_host/dst_segment, adapter, state, deploy_params）——exploration_edges に詰め込まない。リンクはタスクを跨ぐグローバルな事実であり、アセットグラフに属する。
+- **セグメントエンティティ**：`segments`（cidr、どのリンク経由で到達可能か）。現状は派生列 `c_segment` しかない（`db/schema.sql:55`）。
+- **リンクの辺**：アセット層の新規テーブル `links`（kind=socks/portfwd/relay, src_host/dst_segment, adapter, state, deploy_params）。exploration_edges に詰め込まない。リンクはタスクを跨ぐグローバルな事実であり、アセットグラフに属する。
 - **認証情報の第一級エンティティ**：新規テーブル `credentials`（type=password/hash/ticket/key, secret は暗号化, source_host, scope の推定）。再利用のスコアリングはプログラム上のルールで行う（PivotHub のフロントエンド採点は素朴で、`cred.js:44-50`。ARTEX はサーバー側+LLM の二系統で行うべき）。**スプレー／ブルートフォースの動作は必ず guard ask ルールを通す**（RoE のハード制約）。
 - **カバレッジ統計の拡張**：分母を「task_scope にヒットしたアセット」から「発見済みセグメント内の存続アセット」へ拡張し、covered の定義に「セッション／トンネル経由の実測」を加える。
 
@@ -101,21 +101,21 @@ P6 のエビデンス：現在の `uq_av2_ip` により 1 つの IP はグロー
 
 1. 段階 1 は従来どおり。worker が webshell を取得 → `register_session` → fact（「フットホールド@hostX」）+ finding を書き込む。
 2. fact が planner を起床させる。planner は chains の pivot 骨格（L3 ルーティング、`chains-integration.md`）から「まず偵察してから線を広げる」ことを知り、`session_exec`（ifconfig／arp／ルーティング）の偵察意図を派遣する → 新セグメントのアセットが登録される。
-3. **人手承認のチェックポイント（必須）**：新セグメントを発見した ≠ 新セグメントを攻撃する権限がある。イントラネットの RoE は外部ネットワークとほぼ必然に異なるため、タスクが「イントラネット段階」に入るには guard ask + 人手による確認の後で新たな scope を登録する（`db/task_scope.go`）——これは修正案 F5（コード層での RoE 強制）と同じゲートであり、**それゆえ F5 は「提案」からイントラネット機能の前提依存へ変わる**。
+3. **人手承認のチェックポイント（必須）**：新セグメントを発見した ≠ 新セグメントを攻撃する権限がある。イントラネットの RoE は外部ネットワークとほぼ必然に異なるため、タスクが「イントラネット段階」に入るには guard ask + 人手による確認の後で新たな scope を登録する（`db/task_scope.go`）。これは修正案 F5（コード層での RoE 強制）と同じゲートであり、**それゆえ F5 は「提案」からイントラネット機能の前提依存へ変わる**。
 4. 確認後、**関連タスク**を作成する（継承機構は既に存在する）：scope=イントラネットセグメント、worker のツール面に session/tunnel ツールを追加、proxyEnv をトンネルにバインド、プロンプトをイントラネットの語彙に差し替え（chains の pivot/ad/priv が L3 ルーティング経由で意図に応じて注入される）、planner は pivot/priv/ad 骨格で深部を計画する。
-5. 認証情報の収集 → 認証情報庫 → 再利用スコアリング → 横展開意図（ssh／wmi／psexec を session またはトンネル経由で）——prove_goal まで循環する。
+5. 認証情報の収集 → 認証情報庫 → 再利用スコアリング → 横展開意図（ssh／wmi／psexec を session またはトンネル経由で）。prove_goal まで循環する。
 
 ### 4.6 プロンプトと chains の役割
 
 - worker のイントラネット向けプロンプト：現状はすべて Web の語彙である（`agent/worker.go:220-233`）。イントラネット変種（横展開、トンネル、認証情報、OPSEC）が必要である。
-- chains の L3 ルーティング（`chains-integration.md`）が意図 tag に応じて pivot-tunnel-choice / priv-linux / ad-kerberos 骨格を注入する——**イントラネット機能は chains 設計の第一の受益シナリオであり**、二つのプロジェクトは互いを前提とする。
+- chains の L3 ルーティング（`chains-integration.md`）が意図 tag に応じて pivot-tunnel-choice / priv-linux / ad-kerberos 骨格を注入する。**イントラネット機能は chains 設計の第一の受益シナリオであり**、二つのプロジェクトは互いを前提とする。
 - L1 のコード判定基準はイントラネットでも同様に適用できる（同質なレスポンス→WAF／ハニーポットの識別。ハニーポットはイントラネットでより一般的であり、chains の meta-trust-obs に対応する判定基準がある）。
 
 ## 5. 実施フェーズ（提案）
 
 | 期 | 内容 | 依存 | 規模 |
 |---|---|---|---|
-| 0 | 修正案 P1（guard の fail-closed、RoE のコード強制 F5）——イントラネット機能の安全面の前提 | なし | 2-3 日 |
+| 0 | 修正案 P1（guard の fail-closed、RoE のコード強制 F5）。イントラネット機能の安全面の前提 | なし | 2-3 日 |
 | 1 | session サブシステム：http_shell（php 先行）+ ssh ドライバ、register_session/session_exec ツール、sessions テーブル、guard のカバレッジ検証 | 期 0 | 1-2 週 |
 | 2 | 認証情報の第一級エンティティ + 再利用スコアリング + session のイントラネット偵察意図（ifconfig／arp／ルーティングの解析。PivotHub の `recon.py` のパーサは移植可能） | 期 1 | 1 週 |
 | 3 | tunnel サブシステム：probe/plan/deploy（chisel 先行）/health／台帳のクリーンアップ。proxyEnv のタスク単位バインド | 期 1-2 | 1-2 週 |
@@ -128,18 +128,18 @@ P6 のエビデンス：現在の `uq_av2_ip` により 1 つの IP はグロー
 ## 7. 実施進捗の記録
 
 - 期 0（安全面の前提）：**完了**（F3/F4/F5 の guard fail-closed、planner/mainagent の hooks、RoE 三態の強制 off/warn/strict、リリース済み）。
-- 期 1（session サブシステム）：**完了・検収済み**——http_shell ドライバ（eval/assert/JSP/ASPX の複数 webshell 型 + 関数フォールバック）、sessions テーブル（secret は AES-GCM）、register_session/session_exec/read/write ツール、RoE 登録の検証。タスク #9 がエンドツーエンドで通過（CVE を突く→webshell を書き込む→登録→ターゲット側で root コマンドを実行）。
-- 期 2（認証情報 + 偵察）：**完了**——credentials テーブル、サーバー側の再利用スコアリング、パッシブ偵察パーサ（ip/ifconfig/route/arp/netstat/Windows 変種）、session_recon ツール、v4 横展開スプレー用の組み込み ask ルール。
-- 暗号化 webshell 型（2026-09-13 の implant 戦略の着手）：**完了・検収済み**——AES-256-GCM/CBC+HMAC の二経路、ランダムパディング、セッションごとの独立鍵、generate_webshell/register_session（phpenc/jspenc）。タスク #11 がエンドツーエンドで通過。
-- 期 3（tunnel サブシステム）：**完了・検収済み**（タスク #12-16）——四つの構成要素 probe/plan/deploy/health、タスク単位の MITM 上流バインド（taskproxy）、portfwd と socks の両形態で alive + teardown がクリーン。実戦で 6 個の bug を修正：① hostTools に tunnel ツールの登録漏れ、② authfile は JSON users 形式でなければならない、③ chisel client のオプションは server/remote より前に置く必要がある、④ 分割サイズ 512KB→64KB（Linux MAX_ARG_STRLEN=128KB）、⑤ probe の三態（refused を通と数える）+ ポートプールのサンプリング、⑥ socks の検証ターゲットが NAT／ポートマッピング下で無効になる→自ループ候補（callbackHost:listenPort）。ほかに v5 の裸トンネルバイナリ用の組み込み ask ルール（grep のテキスト誤検出の修正を含む）。
-- 期 5（reverse リバースシェルハンドラ）：**完了**——管理対象の penelope プロセス（`server/reverse.go`：`--mcp` は 127.0.0.1 のみにバインド + ランダムな Bearer token、`-C` で TTY なしでは attach しない、自動 PTY 昇格は保持、セッションログは dataDir/reverse/ に書き出し）、シングルトンで遅延起動する `EnsureHandler`、プロセス終了で直ちに台帳をクリーンアップ（ポート登録解除 + セッションを正直に dead とマーク）、プラットフォーム終了時にプロセスを回収。MCP ブリッジ（mcphttp クライアント）が penelope のセッションを sessions 台帳へ突き合わせ（kind=reverse、secret には penelope のセッション識別子 + token、url=reverse://送信元アドレス）、Session アダプタを Registry へ登録する（Exec=exec_in_session、Read=download_from_session でローカルに読み戻して書き出し、Write=upload_to_session でローカルステージング経由、remote_path はディレクトリでなければならない——実測の意味論）。reverse_listen ツール（デフォルトで worker にバインド）はリスナーポート + bash/python/nc payload を返す（host=ARTEX_CALLBACK_ADDR）。リスナーはデフォルトで 127.0.0.1 にバインドし、ターゲットからの直結には明示的な iface が必要。死亡と再生：セッションが消える→台帳を dead にし、再生は次の reverse_listen に委ねる。実測の結論（penelope MCPServer）：POST / の単一エンドポイント、Bearer hmac 認証、レスポンスは通常の JSON（SSE ではない）、Mcp-Session-Id なし、6 つのツール（list/get_info/exec/kill/upload/download）、結果はいずれも text block に埋め込まれた JSON、ファイル転送には永続 shell が必要（自動 PTY で満たす）、死んだセッションは JSON-RPC -32602 で list から消える。
-- 期 3.5（suo5 トンネルアダプタ、2026-09-13 に追加し実測）：**完了**——`tunnel/suo5.go`：session の webshell 型に応じて payload を選び（php/jsp/aspx、暗号化 webshell は平文 payload）→ session.WriteFile でランダム名で webshell のディレクトリへ投入 → プラットフォームから URL へ直接プローブ → `suo5 -t <url> -l 127.0.0.1:<port> --auth <u>:<p>`（auth は必ず有効化）→ 決定的検証（auth 付きで socks CONNECT によりホスト自身へ接続）。失敗時は層ごとにロールバックし、deploy_params は全量を永続化して自動再立ち上げに供し、health/Teardown もすべて接続済み。選定：auto=probe 駆動（TCP が通れば→chisel、それ以外→suo5）。suo5 は socks のみ、portfwd は chisel 強制。taskproxy の上流 URL には user:pass を埋め込む。guard ルールに suo5 を組み込む（プラットフォームの Go exec は自然に免除、worker の直接使用は従来どおりブロック）。実測（Apache+mod_php）：ハンドシェイク 3s、socks のデータ面が通る、auth が有効。注意：php -S は単一スレッドで half モードを支えられない（ターゲット側環境の属性であり、コメントに明記済み）。
+- 期 1（session サブシステム）：**完了・検収済み**。http_shell ドライバ（eval/assert/JSP/ASPX の複数 webshell 型 + 関数フォールバック）、sessions テーブル（secret は AES-GCM）、register_session/session_exec/read/write ツール、RoE 登録の検証。タスク #9 がエンドツーエンドで通過（CVE を突く→webshell を書き込む→登録→ターゲット側で root コマンドを実行）。
+- 期 2（認証情報 + 偵察）：**完了**。credentials テーブル、サーバー側の再利用スコアリング、パッシブ偵察パーサ（ip/ifconfig/route/arp/netstat/Windows 変種）、session_recon ツール、v4 横展開スプレー用の組み込み ask ルール。
+- 暗号化 webshell 型（2026-09-13 の implant 戦略の着手）：**完了・検収済み**。AES-256-GCM/CBC+HMAC の二経路、ランダムパディング、セッションごとの独立鍵、generate_webshell/register_session（phpenc/jspenc）。タスク #11 がエンドツーエンドで通過。
+- 期 3（tunnel サブシステム）：**完了・検収済み**（タスク #12-16）。四つの構成要素 probe/plan/deploy/health、タスク単位の MITM 上流バインド（taskproxy）、portfwd と socks の両形態で alive + teardown がクリーン。実戦で 6 個の bug を修正：① hostTools に tunnel ツールの登録漏れ、② authfile は JSON users 形式でなければならない、③ chisel client のオプションは server/remote より前に置く必要がある、④ 分割サイズ 512KB→64KB（Linux MAX_ARG_STRLEN=128KB）、⑤ probe の三態（refused を通と数える）+ ポートプールのサンプリング、⑥ socks の検証ターゲットが NAT／ポートマッピング下で無効になる→自ループ候補（callbackHost:listenPort）。ほかに v5 の裸トンネルバイナリ用の組み込み ask ルール（grep のテキスト誤検出の修正を含む）。
+- 期 5（reverse リバースシェルハンドラ）：**完了**。管理対象の penelope プロセス（`server/reverse.go`：`--mcp` は 127.0.0.1 のみにバインド + ランダムな Bearer token、`-C` で TTY なしでは attach しない、自動 PTY 昇格は保持、セッションログは dataDir/reverse/ に書き出し）、シングルトンで遅延起動する `EnsureHandler`、プロセス終了で直ちに台帳をクリーンアップ（ポート登録解除 + セッションを正直に dead とマーク）、プラットフォーム終了時にプロセスを回収。MCP ブリッジ（mcphttp クライアント）が penelope のセッションを sessions 台帳へ突き合わせ（kind=reverse、secret には penelope のセッション識別子 + token、url=reverse://送信元アドレス）、Session アダプタを Registry へ登録する（Exec=exec_in_session、Read=download_from_session でローカルに読み戻して書き出し、Write=upload_to_session でローカルステージング経由、remote_path はディレクトリでなければならない。実測の意味論）。reverse_listen ツール（デフォルトで worker にバインド）はリスナーポート + bash/python/nc payload を返す（host=ARTEX_CALLBACK_ADDR）。リスナーはデフォルトで 127.0.0.1 にバインドし、ターゲットからの直結には明示的な iface が必要。死亡と再生：セッションが消える→台帳を dead にし、再生は次の reverse_listen に委ねる。実測の結論（penelope MCPServer）：POST / の単一エンドポイント、Bearer hmac 認証、レスポンスは通常の JSON（SSE ではない）、Mcp-Session-Id なし、6 つのツール（list/get_info/exec/kill/upload/download）、結果はいずれも text block に埋め込まれた JSON、ファイル転送には永続 shell が必要（自動 PTY で満たす）、死んだセッションは JSON-RPC -32602 で list から消える。
+- 期 3.5（suo5 トンネルアダプタ、2026-09-13 に追加し実測）：**完了**。`tunnel/suo5.go`：session の webshell 型に応じて payload を選び（php/jsp/aspx、暗号化 webshell は平文 payload）→ session.WriteFile でランダム名で webshell のディレクトリへ投入 → プラットフォームから URL へ直接プローブ → `suo5 -t <url> -l 127.0.0.1:<port> --auth <u>:<p>`（auth は必ず有効化）→ 決定的検証（auth 付きで socks CONNECT によりホスト自身へ接続）。失敗時は層ごとにロールバックし、deploy_params は全量を永続化して自動再立ち上げに供し、health/Teardown もすべて接続済み。選定：auto=probe 駆動（TCP が通れば→chisel、それ以外→suo5）。suo5 は socks のみ、portfwd は chisel 強制。taskproxy の上流 URL には user:pass を埋め込む。guard ルールに suo5 を組み込む（プラットフォームの Go exec は自然に免除、worker の直接使用は従来どおりブロック）。実測（Apache+mod_php）：ハンドシェイク 3s、socks のデータ面が通る、auth が有効。注意：php -S は単一スレッドで half モードを支えられない（ターゲット側環境の属性であり、コメントに明記済み）。
 - 検収環境の現状（VPS）：DVWA（8081）、Tomcat CVE-2017-12615（8082）、イントラネットサイト（172.17.0.1:18090）、chisel 1.11.3 は data/tools に配置済み。ARTEX_CALLBACK_ADDR=172.18.0.1（コンテナからのコールバック用。本番では実際のトポロジに合わせて設定する）。
 
 ## 6. リスクと正直な声明
 
-1. **工数の大半はエンジニアリング品質にあり、アルゴリズムにはない**。PivotHub はアルゴリズムが難しくないことを証明している（リレー導出は百行程度）。難しいのは、セッション／トンネルの本番対抗環境での堅牢性（センチネル、エンコーディング、切断、ロールバック）である——PivotHub のこれらの細部は事故と引き換えに得られたものであるから、書き直す際はそのコメントにある教訓をそのまま継承し、同じ授業料を二度払わないこと。
-2. **デプロイ形態：イントラネットのシナリオではネイティブバイナリが推奨形態である（2026-09-13 更新、従来の「Docker がハード制約」という判断を置き換える）**。リバースのコールバックとトンネルサーバー側は「ターゲットから ARTEX へ到達できること」を要求する——ネイティブデプロイではリスナーがホスト機の実 NIC に直接バインドされ、callback アドレスは本機のアドレスになるため、制約はほぼ消える。Docker では compose にポートマッピングの追加 + callback アドレスの設定が必要で、クラウド／NAT のシナリオでは使えない可能性がある。ARTEX はもともと単一バイナリのネイティブデプロイをサポートしており（go:embed したフロントエンド + start.sh によるデーモン化 + 自己更新）、Docker を脱するには三つを補う必要がある：① イントラネット向けの重要バイナリ（chisel 先行）を release zip に同梱し、バージョンを固定 + sha256 を記録 + 起動時に検証する（PivotHub の `tools/` のやり方を参考にしつつ、同プロジェクトに欠けていたサプライチェーン検証を補う）。② `artex doctor` によるプリチェックを新設する（PG の到達性／ツールの存在／callback 設定／CA の準備。不足があればインストールコマンドを表示）。③ 重い依存（playwright／ブラウザ MCP）は任意にダウングレードし、検出できなければツール一覧から隠す。分離のコストは正直に述べる：ネイティブ実行 = LLM が生成したコマンドがホスト機上で直接走るということであり、専用のペネトレーション VM + 非 root + 期 0 の guard ゲートによる下支えが必須である。唯一のハードな外部依存は依然として PostgreSQL（`config/config.go:137-149`。PG の機能を深く使っており、DB の差し替えは勧めない）。
+1. **工数の大半はエンジニアリング品質にあり、アルゴリズムにはない**。PivotHub はアルゴリズムが難しくないことを証明している（リレー導出は百行程度）。難しいのは、セッション／トンネルの本番対抗環境での堅牢性（センチネル、エンコーディング、切断、ロールバック）である。PivotHub のこれらの細部は事故と引き換えに得られたものであるから、書き直す際はそのコメントにある教訓をそのまま継承し、同じ授業料を二度払わないこと。
+2. **デプロイ形態：イントラネットのシナリオではネイティブバイナリが推奨形態である（2026-09-13 更新、従来の「Docker がハード制約」という判断を置き換える）**。リバースのコールバックとトンネルサーバー側は「ターゲットから ARTEX へ到達できること」を要求する。ネイティブデプロイではリスナーがホスト機の実 NIC に直接バインドされ、callback アドレスは本機のアドレスになるため、制約はほぼ消える。Docker では compose にポートマッピングの追加 + callback アドレスの設定が必要で、クラウド／NAT のシナリオでは使えない可能性がある。ARTEX はもともと単一バイナリのネイティブデプロイをサポートしており（go:embed したフロントエンド + start.sh によるデーモン化 + 自己更新）、Docker を脱するには三つを補う必要がある：① イントラネット向けの重要バイナリ（chisel 先行）を release zip に同梱し、バージョンを固定 + sha256 を記録 + 起動時に検証する（PivotHub の `tools/` のやり方を参考にしつつ、同プロジェクトに欠けていたサプライチェーン検証を補う）。② `artex doctor` によるプリチェックを新設する（PG の到達性／ツールの存在／callback 設定／CA の準備。不足があればインストールコマンドを表示）。③ 重い依存（playwright／ブラウザ MCP）は任意にダウングレードし、検出できなければツール一覧から隠す。分離のコストは正直に述べる：ネイティブ実行 = LLM が生成したコマンドがホスト機上で直接走るということであり、専用のペネトレーション VM + 非 root + 期 0 の guard ゲートによる下支えが必須である。唯一のハードな外部依存は依然として PostgreSQL（`config/config.go:137-149`。PG の機能を深く使っており、DB の差し替えは勧めない）。
 3. **イントラネット段階ではブラストレイディアス（影響半径）が質的に変わる**。外部ネットワークの Web 浸透の失敗は 1 サイトを壊すだけだが、イントラネットの横展開の失敗（スプレーで全域のアカウントをロックアウト、SMB で端末を落とす）は業務事故になる。期 0（RoE のコード強制 + guard fail-closed）は選択肢ではない。スプレー／ブルートフォース系のコマンドには、削除不可の組み込み ask ルールが必須である。
-4. **二つのモードの併存は現実である**：トンネルを張れるならトンネル経由（kali のツールがすべて使える）、ターゲットが外向き通信を出せない場合はセッション経由の実行に頼るしかない（ツールが制限される）。planner の選定基準は chains の `pivot-tunnel-choice.md` + PivotHub の probe ルールに直接由来する——これこそ両者を合流させる価値点である。
-5. **段階 4 のモデル大改を一気に済ませてから後戻りするのは避けるべきである**。期 1-2 でまず単一フットホールドのシナリオを通すことを勧める（演習場。PivotHub の `scripts/lab` の三層演習場を検収環境としてそのまま借りられる——ポートはすべて loopback にバインドされ、デュアル NIC の L2/L3 深部を備えた、出来合いの検収演習場である）。そのうえで実際のフィードバックに応じてモデル拡張の粒度を決める。
+4. **二つのモードの併存は現実である**：トンネルを張れるならトンネル経由（kali のツールがすべて使える）、ターゲットが外向き通信を出せない場合はセッション経由の実行に頼るしかない（ツールが制限される）。planner の選定基準は chains の `pivot-tunnel-choice.md` + PivotHub の probe ルールに直接由来する。これこそ両者を合流させる価値点である。
+5. **段階 4 のモデル大改を一気に済ませてから後戻りするのは避けるべきである**。期 1-2 でまず単一フットホールドのシナリオを通すことを勧める（演習場。PivotHub の `scripts/lab` の三層演習場を検収環境としてそのまま借りられる。ポートはすべて loopback にバインドされ、デュアル NIC の L2/L3 深部を備えた、出来合いの検収演習場である）。そのうえで実際のフィードバックに応じてモデル拡張の粒度を決める。

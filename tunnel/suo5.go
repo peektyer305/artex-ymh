@@ -1,12 +1,12 @@
 // suo5.go は「ターゲットに外向き通信がない」状況向けのトンネルアダプタ（RED-SUN-3 の振り返りで最大の穴：外向き通信が全 filtered
 // のとき chisel のリバーストンネルでは解決できない）。suo5 は HTTP トンネル：単一ファイルの webshell payload をターゲットの
-// Web 公開パスに配信し、プラットフォーム側の suo5 CLI が【受信方向】の HTTP で payload とネゴシエーションして socks5 を張る——
+// Web 公開パスに配信し、プラットフォーム側の suo5 CLI が【受信方向】の HTTP で payload とネゴシエーションして socks5 を張る。
 // ターゲットの外向き通信にまったく依存せず、フットホールドの webshell が生きていて、プラットフォームがターゲットの Web 口へ直結できればよい。
 //
 // chisel アダプタと台帳/ポートプール/ヘルスチェック/再起動の骨格を共有し（adapter フィールドで区別）、差異は次の層：
 //  1. ターゲット側プロセスなし：payload はターゲットの Web コンテナが実行し、プラットフォーム側には suo5 CLI の 1 プロセスだけ
 //     （ServerPID に記録し、procs 台帳は同じ仕組み）、
-//  2. socks5 入口は必ず --auth 認証付き（CLI はコマンドラインしか受け付けず env オプションがない——プラットフォームの信頼ドメイン内では
+//  2. socks5 入口は必ず --auth 認証付き（CLI はコマンドラインしか受け付けず env オプションがない。プラットフォームの信頼ドメイン内では
 //     ps から見える。入口は 127.0.0.1 にバインドし、このトレードオフをここに記す）、
 //  3. 再起動 = 再配信：ターゲットの payload が削除された後、deploySuo5Into が再び書き込むため、「payload が消えたら再配信」を
 //     自然にカバーする。
@@ -56,7 +56,7 @@ type Suo5PlanOpts struct {
 }
 
 // Suo5PayloadFile はセッション種別に応じて payload のファイル名を選ぶ：jsp→suo5.jsp、php（phpcmd
-// のコマンドシェル、phpenc の暗号化シェルを含む——暗号化シェルはトランスポート層の暗号化で、ターゲットでは平文の PHP が動く）→suo5.php、
+// のコマンドシェル、phpenc の暗号化シェルを含む。暗号化シェルはトランスポート層の暗号化で、ターゲットでは平文の PHP が動く）→suo5.php、
 // aspx→suo5.aspx。純粋関数。
 func Suo5PayloadFile(kind string) (string, error) {
 	s := strings.ToLower(strings.TrimSpace(kind))
@@ -138,7 +138,7 @@ func remoteRemoveCmd(payloadFile, payloadPath string) string {
 }
 
 // PlanSuo5 は suo5 計画を生成する：kind は常に socks で、プラットフォームのループバック ListenPort=SocksPort が
-// socks5 入口（auth 付き）。ターゲット側プロセスなし、stage 配信なし、コールバックなし——PlatformAddr は空のまま。
+// socks5 入口（auth 付き）。ターゲット側プロセスなし、stage 配信なし、コールバックなし。PlatformAddr は空のまま。
 func PlanSuo5(o *Suo5PlanOpts) (*Plan, error) {
 	if o.ShellURL == "" {
 		return nil, fmt.Errorf("shell_url は必須です（suo5 payload は webshell と同じディレクトリに書き込む必要があります）")
@@ -298,7 +298,7 @@ func (m *Manager) deploySuo5Into(ctx context.Context, id int64, sess session.Ses
 		return fmt.Errorf("層 cli_process: %v 以内に socks 入口 %s が起動しませんでした（ログ %s）", suo5UpWait, entry, p.ServerLog)
 	}
 
-	// 層 4：決定的検証——socks（auth 付き）経由で webshell のホスト自身（必ず到達可能）へ CONNECT し、
+	// 層 4：決定的検証。socks（auth 付き）経由で webshell のホスト自身（必ず到達可能）へ CONNECT し、
 	// 成功して初めて「payload が有効 + トンネルが双方向に通信を運べる」ことを証明する。入口が起きた ≠ トンネルが通る。
 	if p.VerifyAddr == "" {
 		return fmt.Errorf("層 verify: verify_addr（webshell の host:port）がなく、決定的検証ができません")
@@ -330,7 +330,7 @@ func (m *Manager) removePayload(ctx context.Context, sess session.Session, p *Pl
 	}
 }
 
-// directHTTP はプラットフォーム直結の HTTP クライアント（環境プロキシを通さない——ターゲットはイントラネットの直結アドレス）。
+// directHTTP はプラットフォーム直結の HTTP クライアント（環境プロキシを通さない。ターゲットはイントラネットの直結アドレス）。
 var directHTTP = &http.Client{
 	Timeout:   10 * time.Second,
 	Transport: &http.Transport{Proxy: nil},

@@ -144,7 +144,7 @@ type Engine struct {
 	// intent_watchdog.go を参照。
 	p0Reported sync.Map
 
-	// タスクレベルのタイムアウト（docs/任务级超时与收尾设计.md を参照）:
+	// タスクレベルのタイムアウト（docs/タスクレベルタイムアウトと収束設計.md を参照）:
 	settling     sync.Map // taskID -> bool, タスクが終了処理段階に入った（新規意図の派出/取得を停止）
 	deadline     sync.Map // taskID -> int64 unix, 絶対期限（初回実行時に刻印;0/未設定=無制限）
 	stamped      sync.Map // taskID -> bool, first_run_at を刻印済みか（本プロセス内で 1 回だけ）
@@ -558,7 +558,7 @@ type steerHooks struct {
 	label string
 	// det は同質レスポンスの停滞検出器(chains L1、docs/operations/postmortem-red-sun-3.md R4):PostToolUse
 	// が各ステップの tool_result を渡し、「情報の勾配がゼロ」と判定したら PreToolUse の
-	// drain 経由で方向転換の指示を注入する。ポインタで nudges と同様——しかも意図的に
+	// drain 経由で方向転換の指示を注入する。ポインタで nudges と同様。しかも意図的に
 	// model_error の再実行ループの外に置き(runIntent 参照)、1 つの意図の発動枠(クール
 	// ダウン/上限)を再実行をまたいで共有し、再実行 1 回では零に戻らない。nil = 無効。
 	det *agent.StuckDetector
@@ -573,7 +573,7 @@ type steerHooks struct {
 // Engine.emptyTurnNudgeLimit を参照。
 //
 // この数は「1 つの意図の総量」であり「連続何回」ではない：harness 自身の
-// stopHookActive が連続空転を 1 回だけに制限しており——その 1 回を押しても空転なら
+// stopHookActive が連続空転を 1 回だけに制限しており。その 1 回を押しても空転なら
 // Stop フックはもう呼ばれず、run はそのまま終わる。クォータが更新されるのは実際に
 // ツールターンが 1 回起きたときだけ(norma/harness/query.go:534)。つまりこのゲートが
 // 止めるのは「ツール → 空転 → 押し → ツール → 空転」という病的なループで、意図の
@@ -583,15 +583,15 @@ const defaultEmptyTurnNudges = 2
 // emptyTurnNudge は空転ターンで注入する続行指示。
 //
 // この種のターンは harness から見れば自然終了(stop_reason=end_turn で tool_use なし)で、
-// 5 層の LLM 再試行はどれも当てはまらない——エラーではなく、モデルが「考え終えたが
+// 5 層の LLM 再試行はどれも当てはまらない。エラーではなく、モデルが「考え終えたが
 // 動かなかった」だけ。SDK の空レスポンス再試行も届かない:空かどうかを「イベントを
 // yield したか」で判定し、思考デルタ自体がイベント(norma/llm/openai.go の
 // SEThinkingDelta)なので thinking-only は空にならない。しかもその層は prompt 全体を
 // そのまま再送するため、コンテキストの形に起因するこの空転では再送してもモデルが
 // もう一度考えるだけ。ここでは指示を 1 つ追記する形に変え、既に出た思考を抱えたまま
-// 先へ進ませる——入力が変わって初めて違う振る舞いをする理由が生まれる。
-const emptyTurnNudge = "【空转提醒】你上一轮只输出了思考过程，既没有给出正文回复，也没有调用任何工具，" +
-	"这一轮等于没有产出。请直接执行你刚才想好的下一步：要么调用工具，要么给出结论文字。不要重复思考。"
+// 先へ進ませる。入力が変わって初めて違う振る舞いをする理由が生まれる。
+const emptyTurnNudge = "【空転リマインド】前のターンでは思考プロセスを出力しただけで、本文の返答もツールの呼び出しもありませんでした。" +
+	"このターンは成果を生んでいません。先ほど考えた次の手順をそのまま実行してください。ツールを呼び出すか、結論の文章を返してください。思考を繰り返さないでください。"
 
 // isThinkingOnlyTurn reports whether the latest assistant turn produced neither
 // text nor a tool call — i.e. the model spent the whole round thinking.
@@ -608,8 +608,8 @@ func isThinkingOnlyTurn(messages []llm.Message) bool {
 
 func (h steerHooks) PreToolUse(ctx context.Context, name string, input []byte) (bool, string, []byte) {
 	if msg, ok := h.drain(); ok {
-		return true, "【规划者实时纠偏】" + msg +
-			"\n（这是规划者对本意图的即时指令；本次工具调用未执行，请据此调整下一步。若与你当前打算冲突，以此为准。）", nil
+		return true, "【プランナーのリアルタイム修正】" + msg +
+			"\n（これはプランナーから本意図への即時指示です。今回のツール呼び出しは実行されていません。これに従って次の手順を調整してください。現在の予定と衝突する場合は、こちらを優先してください。）", nil
 	}
 	// 停滞検出の介入メッセージは planner の訂正より後ろに置く:どちらも「まず動かず
 	// 聞け」だが、planner の指示の方が優先度が高い。メッセージ自体に完全な文脈
@@ -895,14 +895,14 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 		if isTerminalStatus(t.lifecycleSnapshot().Status) {
 			return
 		}
-		// タスクタイムアウトの終了処理中:通常の起床は捨てる——worker の終了処理書き戻しも
+		// タスクタイムアウトの終了処理中:通常の起床は捨てる。worker の終了処理書き戻しも
 		// Resume の Notify も通常の計画ラウンドを発火しない。終局の 1 ラウンドは
 		// コーディネータ(settleTask)が直接駆動し、ここは通らない。
 		if e.isSettling(t.ID) {
 			return
 		}
 		// goalless(人が直接投入)分岐:タスクに open のゴールが無いとき planner は走らない
-		// ——走ると再判定で met→cancelExec となり、ユーザーがメイン agent 経由で直接投入
+		//。走ると再判定で met→cancelExec となり、ユーザーがメイン agent 経由で直接投入
 		// した意図を殺してしまう。終了可否は frontier が決める：open/running の意図が残って
 		// いれば running のまま静かに待ち、意図をすべて走り切ったら done にする。この一連は
 		// 純 Go で、LLM 呼び出しも計画ラウンドの marker も発生しない。
@@ -1092,8 +1092,8 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 	// 「この意図」単位で数え、model_error の再実行をまたいで共有する(steerHooks.det の
 	// コメント参照)。発動時は方向転換の指示を注入するほか、planner に伝える痕跡を 2 つ
 	// 残す:
-	//  1) system activity —— worker trace に入り、planner が get_worker_output で見える;
-	//  2) hint ノードを探索グラフに付ける —— TriggerEvent に system 種別のイベントは
+	//  1) system activity。worker trace に入り、planner が get_worker_output で見える;
+	//  2) hint ノードを探索グラフに付ける。TriggerEvent に system 種別のイベントは
 	//     無く(manager.go の pendingTriggers は done/finding/goal*/cancelled のみ)、
 	//     planner は毎ラウンド graph overview で hints を必ず読む(agent/tools.go
 	//     graphOverviewData)。これが既存構造のうち検出信号を planner の視野に入れる
@@ -1109,7 +1109,7 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 			Detail:  agent.StuckIntervention(*ev)})
 		if t.Store != nil {
 			if _, err := t.Store.AddNode(db.KindHint, map[string]any{"text": fmt.Sprintf(
-				"【停滞检测】意图 #%d 的 worker 连续 %d 次同质/相似失败响应(签名 %s,工具 %s),信息梯度为零,平台已注入转向指令(第 %d 次)。规划时请避开同轴方向(换参数/信道/漏洞类/入口),或确认该方向已榨干再收尾。",
+				"【停滞検出】意図 #%d の worker が同質/類似の失敗応答を連続 %d 回繰り返しています(シグネチャ %s、ツール %s)。情報の勾配がゼロになったため、プラットフォームが方向転換の指示を注入しました(%d 回目)。計画時は同じ軸の方向(パラメータ変更/チャネル/脆弱性クラス/入口)を避けるか、その方向をやり尽くしたことを確認してから収束してください。",
 				iid, ev.Count, ev.Signature, ev.Tool, ev.N)}, 0, "active", "system", nil); err != nil {
 				log.Printf("[work %s] 停滞検出 hint のグラフ書き込みに失敗: %v", label, err)
 			}

@@ -110,7 +110,7 @@ func (s *Server) roeCheckHost(ctx context.Context, host string) (string, error) 
 }
 
 // sessionVerifyAddr はフットホールドセッションの webshell host:port を socks の決定的な検証対象として取得する
-// （ターゲットは必ず自分の web ポートへ接続できる——これが「トンネルが本当に通っている」最も硬い証拠）。
+// （ターゲットは必ず自分の web ポートへ接続できる。これが「トンネルが本当に通っている」最も硬い証拠）。
 func (s *Server) sessionVerifyAddr(ctx context.Context, sessionID int64) string {
 	if s.sessStore == nil {
 		return ""

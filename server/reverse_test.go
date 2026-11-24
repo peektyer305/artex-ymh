@@ -278,7 +278,7 @@ func TestReverseShellClose(t *testing.T) {
 	if args["session_id"] != 3 {
 		t.Fatalf("kill_session の引数が不一致: %v", args)
 	}
-	// セッションが既に死んでいても(kill が -32602 を返す)エラーにしない——Registry のクリーンアップのセマンティクス。
+	// セッションが既に死んでいても(kill が -32602 を返す)エラーにしない。Registry のクリーンアップのセマンティクス。
 	fm.err = map[string]error{"kill_session": fmt.Errorf("mcp rpc error -32602: session 3 not found")}
 	if err := sh.Close(context.Background()); err != nil {
 		t.Fatalf("死んだセッションの Close はエラーを飲み込むべき: %v", err)

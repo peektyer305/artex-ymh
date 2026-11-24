@@ -45,9 +45,8 @@ install_docker(){
   else
     info "既存の .env を使用します"
   fi
-  info "イメージを取得して起動します…"
-  docker compose pull || true
-  docker compose up -d
+  info "ローカルの Dockerfile.source からイメージをビルドして起動します…"
+  docker compose up -d --build
   ok "起動しました → http://localhost:8787"
   info "ログ確認：docker compose logs -f artex"
 }

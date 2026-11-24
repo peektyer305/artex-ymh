@@ -153,7 +153,7 @@ func ParseAutoScopeLine(line string) (ParsedScope, error) {
 		return ParseScopeLine(raw)
 	}
 	// ICP 登録番号自体にはドットが含まれない（例: 京ICP备12345678号-1）。ドットを含むテキストはドメインやバージョン番号が
-	// 混ざっている可能性が高く、ICP として保存してもどのアセットにも一致しない死んだルールになるだけ——ICP の帰属は
+	// 混ざっている可能性が高く、ICP として保存してもどのアセットにも一致しない死んだルールになるだけ。ICP の帰属は
 	// 完全一致比較（companies.go の kind='icp' 帰属クエリを参照）なので、この種のテキストはキーワードに分類する。
 	lower := strings.ToLower(raw)
 	if !strings.ContainsAny(raw, ".．。") &&

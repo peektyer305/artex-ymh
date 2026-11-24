@@ -73,7 +73,7 @@ func TestBuildFindingAssetTree(t *testing.T) {
 	epID := seedTreeAsset(t, d, "endpoint", map[string]any{
 		"domain": sub, "root_domain": root, "url": "https://" + sub + "/admin", "port": 443, "method": "GET",
 	})
-	// 同一ドメイン下の別サービスで、ファインディングを 1 件も紐づけない —— ツリーに出てはならない。
+	// 同一ドメイン下の別サービスで、ファインディングを 1 件も紐づけない。ツリーに出てはならない。
 	seedTreeAsset(t, d, "service", map[string]any{
 		"domain": sub, "root_domain": root, "url": "http://" + sub + ":8080", "port": 8080, "service_type": "http",
 	})
@@ -186,7 +186,7 @@ func TestFindingAssetScopeFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 削除済み資産を指すファインディングは asset_ids が空のものと同じく「未紐づけ」に属する
-	// ——ツリーのバケットが受け取る以上、一覧の絞り込みでも取得できなければならず、2 か所の
+	//。ツリーのバケットが受け取る以上、一覧の絞り込みでも取得できなければならず、2 か所の
 	// 定義が食い違うとバケットの件数が開いた後の件数を超える。
 	if _, err := d.AddFinding(tk.ID, 0, "D", "アセットは削除済み", "high", "s", "e", "w", []int64{999000333}); err != nil {
 		t.Fatal(err)
@@ -224,7 +224,7 @@ func TestFindingAssetScopeFilter(t *testing.T) {
 	}
 
 	// ツリー上の未紐づけバケットの件数は、開いた後に取得できる件数と一致しなければならない
-	// ——まさに 2 か所の定義が分かれたときに壊れるアサーション。
+	//。まさに 2 か所の定義が分かれたときに壊れるアサーション。
 	tree, err := d.BuildFindingAssetTree(base)
 	if err != nil {
 		t.Fatal(err)

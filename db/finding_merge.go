@@ -19,15 +19,15 @@ import (
 //
 // pending もマージ対象とする根拠：負荷試験では 2 件目の報告が届く時点で 1 件目がまだ
 // pending であることが多く、confirmed だけを対象にするとマージが 0 件になる。未検証の
-// 結論もまず集約し、その後に検証パイプラインが判断する——C2 にはマージ後の増分再検証が
+// 結論もまず集約し、その後に検証パイプラインが判断する。C2 にはマージ後の増分再検証が
 // ある（evidence.Store.OnMerged → server.RequestFindingCheck）。後に誤検知と裁定されても、
 // false_positive 処理時にマージで入ったエビデンス段は evidence に残り監査できる。終了状態
 // （fixed/false_positive/duplicate など）は除外し、集約を汚さない。
 //
 // マージ対象外のケース（いずれも従来の新規作成パスに戻る）：
-//   - task なし（TaskID<=0）または主資産なし（AssetIDs が空）——マージキーが不完全;
+//   - task なし（TaskID<=0）または主資産なし（AssetIDs が空）。マージキーが不完全;
 //   - 候補の status が終了状態（fixed/false_positive/duplicate など）;
-//   - 候補に探索ノードがない（node_id IS NULL）——マージは 1ノード↔1行 の契約を保つ。
+//   - 候補に探索ノードがない（node_id IS NULL）。マージは 1ノード↔1行 の契約を保つ。
 
 // vulnClassAliases はよくある脆弱性カテゴリを粗い分類へ収束させる。未知の項目は
 // そのまま小文字で保持する（判等には参加し、カテゴリを跨ぐマージはしない）。キーは
@@ -88,28 +88,28 @@ func normalizeVulnClassKey(v string) string {
 
 // vulnClassFuzzyKeywords は曖昧一致段のキーワード表。上から優先順に照合し、ヒット
 // したら正規の粗い分類へ収束させる。保守的な方針：裸の "injection" は意図的に収録
-// しない——SSTI などは "injection" を含むが SQLi ではない。"sql" 語根こそ sqli の
+// しない。SSTI などは "injection" を含むが SQLi ではない。"sql" 語根こそ sqli の
 // 強いシグナルである。blind sqli は独立した sqli-blind ではなく sqli に寄せる：
 // 既存の粗い分類と揃え、ブラインドは sqli の利用手法であって新しい分類ではない。
 var vulnClassFuzzyKeywords = []struct {
 	keys  []string
 	class string
 }{
-	{[]string{"sql", "盲注"}, "sqli"},
-	{[]string{"xss", "cross-site-script", "跨站脚本"}, "xss"},
+	{[]string{"sql", "ブラインド"}, "sqli"},
+	{[]string{"xss", "cross-site-script", "クロスサイトスクリプティング"}, "xss"},
 	{[]string{"ssrf"}, "ssrf"},
-	{[]string{"ssti", "template-injection", "模板注入"}, "ssti"},
+	{[]string{"ssti", "template-injection", "テンプレートインジェクション"}, "ssti"},
 	{[]string{"xxe"}, "xxe"},
-	{[]string{"command-injection", "命令注入", "rce", "code-execution", "远程代码执行", "远程命令执行", "代码执行", "命令执行"}, "cmdi"},
-	{[]string{"file-upload", "文件上传", "上传"}, "upload"},
-	{[]string{"file-inclusion", "lfi", "rfi", "文件包含"}, "lfi"},
-	{[]string{"deserial", "反序列化"}, "deser"},
+	{[]string{"command-injection", "コマンドインジェクション", "rce", "code-execution", "リモートコード実行", "リモートコマンド実行", "コード実行", "コマンド実行"}, "cmdi"},
+	{[]string{"file-upload", "ファイルアップロード", "アップロード"}, "upload"},
+	{[]string{"file-inclusion", "lfi", "rfi", "ファイルインクルード"}, "lfi"},
+	{[]string{"deserial", "デシリアライズ"}, "deser"},
 	{[]string{"csrf"}, "csrf"},
-	{[]string{"auth-bypass", "authentication-bypass", "认证绕过", "鉴权绕过"}, "auth-bypass"},
-	{[]string{"brute", "爆破"}, "brute-force"},
-	{[]string{"info-leak", "information-leak", "泄露", "泄漏"}, "info-leak"},
-	{[]string{"privesc", "privilege-escalation", "提权"}, "privesc"},
-	{[]string{"logic", "逻辑"}, "logic"},
+	{[]string{"auth-bypass", "authentication-bypass", "認証バイパス", "認可バイパス"}, "auth-bypass"},
+	{[]string{"brute", "ブルートフォース"}, "brute-force"},
+	{[]string{"info-leak", "information-leak", "漏えい", "漏えい"}, "info-leak"},
+	{[]string{"privesc", "privilege-escalation", "権限昇格"}, "privesc"},
+	{[]string{"logic", "ロジック"}, "logic"},
 }
 
 // fuzzyVulnClass は折り畳み後の key にキーワード包含スキャンを行い、ヒット時は粗い分類を返す。
@@ -200,7 +200,7 @@ func MaxSeverity(a, b string) string {
 // appendMergeSegment は evidence の末尾にソースマーカー付きの段落を追加する。note が
 // 非空なら段落マーカーへ付加する（現在は vulnclass の表現揺らぎ監査に使用）。
 func appendMergeSegment(evidence, label, body string, now time.Time, intentID int64, worker, note string) string {
-	marker := fmt.Sprintf("\n\n--- [%s] 合并于 %s", label, now.UTC().Format(time.RFC3339))
+	marker := fmt.Sprintf("\n\n--- [%s] マージ日時 %s", label, now.UTC().Format(time.RFC3339))
 	if intentID > 0 {
 		marker += fmt.Sprintf(", intent #%d", intentID)
 	}
@@ -225,23 +225,23 @@ func mergeFindingFields(old DBFinding, in RecordFindingInput, now time.Time) (se
 	evidence = old.Evidence
 	drift := ""
 	if iv, ov := strings.TrimSpace(in.VulnClass), strings.TrimSpace(old.VulnClass); iv != "" && ov != "" && iv != ov {
-		drift = fmt.Sprintf(", 本次 vulnclass 原文 %q", iv)
+		drift = fmt.Sprintf(", 今回 vulnclass 原文 %q", iv)
 	}
 	appended := false
 	if ns := strings.TrimSpace(in.Summary); ns != "" && ns != strings.TrimSpace(old.Summary) {
 		if s := strings.TrimSpace(old.Summary); s != "" {
-			evidence = appendMergeSegment(evidence, "原摘要", s, now, in.IntentID, in.Worker, drift)
+			evidence = appendMergeSegment(evidence, "元の要約", s, now, in.IntentID, in.Worker, drift)
 			appended = true
 		}
 		summary = in.Summary
 	}
 	if e := strings.TrimSpace(in.Evidence); e != "" {
-		evidence = appendMergeSegment(evidence, "新证据", in.Evidence, now, in.IntentID, in.Worker, drift)
+		evidence = appendMergeSegment(evidence, "新たな証拠", in.Evidence, now, in.IntentID, in.Worker, drift)
 		appended = true
 	}
 	// 付けられる段落はないが表現揺らぎはある：監査用の段落を単独で残し、揺らぎの痕跡を失わない。
 	if drift != "" && !appended {
-		evidence = appendMergeSegment(evidence, "新证据", "(仅 vulnclass 措辞漂移,无新证据正文)", now, in.IntentID, in.Worker, drift)
+		evidence = appendMergeSegment(evidence, "新たな証拠", "(vulnclass の表現揺らぎのみ、新たな証拠本文なし)", now, in.IntentID, in.Worker, drift)
 	}
 	return
 }

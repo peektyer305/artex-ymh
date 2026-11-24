@@ -302,7 +302,7 @@ func (s *AssetStore) CoverageEnabled(taskID int64) bool {
 }
 
 // task_scope→assets match predicate, reused by the count / by-type / untested queries. $1=taskID.
-// 注意：kind='keyword' の範囲行は意図的にここに出していない——keyword はカバレッジの分母に参加しない
+// 注意：kind='keyword' の範囲行は意図的にここに出していない。keyword はカバレッジの分母に参加しない
 // （死んだルール、docs/roadmap/roadmap.md を参照）。ただし Coverage.ScopeRows（範囲未アンカーの判定）には計上される。
 const covTargetCTE = `
 target AS (

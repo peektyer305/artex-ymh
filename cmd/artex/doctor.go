@@ -1,4 +1,4 @@
-// doctor.go —— `artex doctor` デプロイ事前チェックサブコマンド（フェーズ 6 デプロイチェーン強化）。
+// doctor.go。`artex doctor` デプロイ事前チェックサブコマンド（フェーズ 6 デプロイチェーン強化）。
 // 読み取り専用チェック：サービスを起動せず、DB にも書き込まない。data ディレクトリの書き込み可否は一時ファイルで確認する（都度削除）。
 // 各項目は OK/WARN/FAIL/SKIP + 1 行の説明を出力し、最後に集計する。FAIL があれば終了コード 1。
 package main
@@ -56,7 +56,7 @@ func runDoctor(args []string) int {
 		return 2
 	}
 
-	fmt.Printf("ARTEX doctor —— デプロイ事前チェック（読み取り専用、サービスを起動せず、DB にも書き込まない）\n\n")
+	fmt.Printf("ARTEX doctor。デプロイ事前チェック（読み取り専用、サービスを起動せず、DB にも書き込まない）\n\n")
 	var items []doctorItem
 	check := func(status doctorStatus, name, note string) {
 		items = append(items, doctorItem{status, name, note})

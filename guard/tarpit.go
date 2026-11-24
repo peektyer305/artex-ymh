@@ -6,7 +6,7 @@ package guard
 // WebFetch の呼び出しを数え、予算超過で一度だけサーキットブレーカーを発動する:
 // Hint コールバック経由で探索グラフに hint ノードを書き込み（planner は毎ターン
 // graph overview で hints を必ず読む。停滞検知 hint の既存チャネルを参照）、
-// この方向への割り当て停止を促す。以降その host への取得は warn で通過させる——
+// この方向への割り当て停止を促す。以降その host への取得は warn で通過させる。
 // ハード block はせず、実在する大規模サイトの誤爆を防ぐ。
 //
 // カウンタはメモリ上（タスクごとに 1 つの Guard。server taskFromPG 参照）。タスク再起動で
@@ -108,12 +108,12 @@ func (g *Guard) checkTarpit(ev hook.Event) {
 		}
 		return
 	}
-	// 発動済みの host は warn で通過させる——ハード block はせず（実在する大規模サイトの誤爆防止）、
+	// 発動済みの host は warn で通過させる。ハード block はせず（実在する大規模サイトの誤爆防止）、
 	// 毎回軽量な監査を 1 行残し、後から「発動後も取得している」動作を復元できるようにする。
-	g.record(ev.ToolName, "allow", "tarpit 熔断后仍抓取 "+host, "")
+	g.record(ev.ToolName, "allow", "tarpit 遮断後もクロールを継続 "+host, "")
 }
 
 // tarpitMessage は発動監査/hint で共用する文言:疑わしい tarpit 迷路（host、回数）。
 func tarpitMessage(host string, count, budget int) string {
-	return "疑似 tarpit 迷宫(" + host + ",抓取 " + strconv.Itoa(count) + " 次,预算 " + strconv.Itoa(budget) + ")"
+	return "tarpit 迷路の疑い(" + host + "、クロール " + strconv.Itoa(count) + " 回、予算 " + strconv.Itoa(budget) + ")"
 }

@@ -1,6 +1,6 @@
 // sessions.go はフットホールドセッションの永続化層（schema.sql §J）。secret（接続パラメータの JSON）は
 // AES-GCM で暗号化して保存する:鍵は jwt.key から派生（SHA-256 ドメイン分離）し、server/auth.go の
-// 鍵管理方式に倣う——master key は keyDir/jwt.key にのみ存在し、DB には平文を残さない。
+// 鍵管理方式に倣う。master key は keyDir/jwt.key にのみ存在し、DB には平文を残さない。
 package db
 
 import (

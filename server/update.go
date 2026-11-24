@@ -54,7 +54,7 @@ func bootUpdateState() selfupdate.State {
 // releaseCache は GitHub の最新バージョン照会結果をキャッシュする。
 //
 // ヘッダーの「新しいバージョンがあります」通知はページ全体の読み込みごとに一度照会し、未認証の GitHub API は
-// IP あたり 1 時間 60 回——キャッシュしないと、タブをいくつか開いたり何度かページを再読み込みするだけでクォータを使い切ってしまい、
+// IP あたり 1 時間 60 回。キャッシュしないと、タブをいくつか開いたり何度かページを再読み込みするだけでクォータを使い切ってしまい、
 // いざ更新したいときに照会できなくなる。ユーザーが明示的に「更新を確認」を押したときは force でキャッシュを迂回できる。
 type releaseCache struct {
 	mu  sync.Mutex
@@ -168,7 +168,7 @@ func (h *updateHub) publish(ph selfupdate.Phase, pct int, msg string) {
 	h.fanout(h.cur)
 }
 
-// fanout は h.mu を保持した状態で呼ぶこと。購読者 channel はバッファ付きで、満杯なら破棄する——
+// fanout は h.mu を保持した状態で呼ぶこと。購読者 channel はバッファ付きで、満杯なら破棄する。
 // 進捗は捨ててよい一過性の情報であり、詰まった SSE 接続がアップグレード自体をブロックしてはならない。
 func (h *updateHub) fanout(p updateProgress) {
 	for ch := range h.subs {

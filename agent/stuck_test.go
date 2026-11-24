@@ -71,7 +71,7 @@ func TestStuckSameSignatureTriggers(t *testing.T) {
 		t.Errorf("イベントのフィールドが一致しない: %+v", ev)
 	}
 	msg, ok := d.Drain()
-	if !ok || !strings.Contains(msg, "【停滞检测】") {
+	if !ok || !strings.Contains(msg, "【停滞検出】") {
 		t.Errorf("発火後は注入待ちメッセージがあるべき: %q, %v", msg, ok)
 	}
 	if _, ok := d.Drain(); ok {
@@ -97,7 +97,7 @@ func TestStuckDifferentSignaturesNoTrigger(t *testing.T) {
 }
 
 func TestStuckSignatureToleratesVolatileFields(t *testing.T) {
-	// R4 のシナリオ：同一のクラッシュ署名で、毎回 PID/アドレスだけが違う —— 同質と認識されるべき。
+	// R4 のシナリオ：同一のクラッシュ署名で、毎回 PID/アドレスだけが違う。同質と認識されるべき。
 	d := NewStuckDetector(testStuckConfig())
 	for i := 1; i <= 3; i++ {
 		out := fmt.Sprintf("malloc(): memory corruption (pid %d)\n[2026-07-01 13:%02d:11] Aborted (core dumped)", 4000+i, i)
@@ -220,7 +220,7 @@ func TestStuckSuccessResetsFailureStreak(t *testing.T) {
 
 func TestStuckInterventionMessage(t *testing.T) {
 	msg := StuckIntervention(StuckEvent{Tool: "Bash", Kind: "same_signature", Count: 12, Signature: "abcd1234", N: 1})
-	for _, want := range []string{"【停滞检测】", "信息梯度为零", "换维度", "榨干", "请求转向", "12", "abcd1234"} {
+	for _, want := range []string{"【停滞検出】", "情報の勾配がゼロ", "次元", "やり尽くした", "方向転換を要求", "12", "abcd1234"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("介入メッセージに %q がない:\n%s", want, msg)
 		}
@@ -238,7 +238,7 @@ func TestStuckPivotHintAppended(t *testing.T) {
 	if !ok {
 		t.Fatal("発火後は注入待ちメッセージがあるべき")
 	}
-	if !strings.Contains(msg, "【停滞检测】") || !strings.Contains(msg, "[web] エンコード/位置/Content-Type を変える") {
+	if !strings.Contains(msg, "【停滞検出】") || !strings.Contains(msg, "[web] エンコード/位置/Content-Type を変える") {
 		t.Errorf("PivotHint は汎用の介入メッセージの後に追加されるべき:\n%s", msg)
 	}
 	// PivotHint が空なら元のまま（汎用の文言のみ）。
@@ -256,7 +256,7 @@ func TestStuckPivotHintAppended(t *testing.T) {
 
 func TestWrapupSelfCheckWorker(t *testing.T) {
 	s := wrapupSettlement("worker", []string{"Bash"})
-	for _, want := range []string{"结束前对照自检", "record_fact", "被墙", "此路不通", "换什么维度"} {
+	for _, want := range []string{"終了前の自己点検", "record_fact", "壁に阻まれている", "この道は通じない", "どの次元"} {
 		if !strings.Contains(s.Prompt, want) {
 			t.Errorf("worker の締めくくり文にセルフチェック内容 %q がない:\n%s", want, s.Prompt)
 		}
@@ -269,7 +269,7 @@ func TestWrapupSelfCheckWorker(t *testing.T) {
 
 func TestWrapupSelfCheckNotForOtherAgents(t *testing.T) {
 	for _, key := range []string{"planner", "mainagent", "custom-x"} {
-		if strings.Contains(wrapupSettlement(key, nil).Prompt, "结束前对照自检") {
+		if strings.Contains(wrapupSettlement(key, nil).Prompt, "終了前の自己点検") {
 			t.Errorf("%s の締めくくり文に worker のセルフチェック段を連結してはならない", key)
 		}
 	}
@@ -280,10 +280,10 @@ func TestWrapupSelfCheckTaskTimeoutVariant(t *testing.T) {
 	if s.PromptByReason == nil {
 		t.Fatal("clamped のときは PromptByReason があるべき")
 	}
-	if !strings.Contains(s.PromptByReason[harness.ReasonTimeout], "结束前对照自检") {
+	if !strings.Contains(s.PromptByReason[harness.ReasonTimeout], "終了前の自己点検") {
 		t.Error("タスクタイムアウト時の締めくくり文にもセルフチェック段が必要")
 	}
-	if !strings.Contains(s.PromptByReason[harness.ReasonMaxTurns], "结束前对照自检") {
+	if !strings.Contains(s.PromptByReason[harness.ReasonMaxTurns], "終了前の自己点検") {
 		t.Error("per-run の締めくくり文にもセルフチェック段が必要")
 	}
 }

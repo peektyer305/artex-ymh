@@ -15,7 +15,7 @@ import (
 //   - ToolResolve フック：実行時に DB の tools 行に従い、組み立て済みのツールへ
 //     「agent 単位の絞り込み + 説明/schema の上書き + パラメータ既定値の注入」を行う。
 //     key/handler はコード層に残り、DB が変えられるのは「説明文と既定値」だけ。
-// handler（Call の挙動）は常にコード由来——DB では変えられず、変えられるのはモデルが
+// handler（Call の挙動）は常にコード由来。DB では変えられず、変えられるのはモデルが
 // 見る説明と省略時の引数だけ。
 
 // ToolSeed は組み込みツールの播種用スナップショット：key は CoreTool.Name()（handler と
@@ -30,7 +30,7 @@ type ToolSeed struct {
 
 // builtinToolsByAgent は「読み取り専用の空シェル」ToolSet（nil stores）で各実行 agent の
 // ドメインツール群を構築する。ツールのコンストラクタはクロージャを Spec に入れるだけで、
-// 構築時に store を参照しないため nil でも安全——ここでは Name()/Description()/
+// 構築時に store を参照しないため nil でも安全。ここでは Name()/Description()/
 // InputSchema() を読むためだけに使い、Call は決してしない。
 //
 // SDK 汎用ツール actool.DefaultTools()（Read/Write/Edit/MultiEdit/LS/Glob/Grep/Bash）は
@@ -64,7 +64,7 @@ func builtinToolsByAgent() map[string][]actool.CoreTool {
 }
 
 // defaultUnbound：これらの system ツールは通常どおりカタログに入り（web 側で見え、agent ごとに
-// 手動でチェックできる）が、既定では【どの agent にも束縛しない】——ToolResolve は空束縛の
+// 手動でチェックできる）が、既定では【どの agent にも束縛しない】。ToolResolve は空束縛の
 // ツールをすべての agent から一律に破棄するため、明示的な opt-in が要る。それでもある agent の
 // base ツール群に残している理由は 2 つ：seed がそれを構築して desc/schema を取れること、
 // ユーザーが手動で束縛し直した後 base に在れば ToolResolve が残せること。

@@ -99,7 +99,7 @@ func skillZipEntries(zr *zip.Reader) []skillZipEntry {
 
 // zipEntryName returns the entry path as UTF-8. Windows 上の 7-Zip / WinRAR / エクスプローラー
 // は UTF-8 フラグを立てずに中国語ファイル名を GBK で zip に書き込むことがあり、Go はそのバイト列をそのまま保つため、
-// 名前は正当な UTF-8 にもならずパス検証も通らない —— ここでは GBK でフォールバックデコードする。
+// 名前は正当な UTF-8 にもならずパス検証も通らない。ここでは GBK でフォールバックデコードする。
 func zipEntryName(f *zip.File) string {
 	if utf8.ValidString(f.Name) {
 		return f.Name

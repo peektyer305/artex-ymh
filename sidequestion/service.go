@@ -58,7 +58,7 @@ func (s SideQuestionService) Answer(ctx context.Context, req llm.CompletionReque
 	}
 	if err == nil && strings.TrimSpace(out.Text) == "" {
 		if out.ToolUse {
-			out.Text = "当前旁路提问不能执行工具操作，请在主会话中发出操作请求。"
+			out.Text = "サイドクエスチョンではツール操作を実行できません。メインセッションで操作リクエストを発行してください。"
 		} else {
 			err = errors.New("モデルから回答が返されませんでした")
 		}

@@ -15,7 +15,7 @@ import (
 // 台帳外の待ち受けポート監査（F13 軽量版、観測のみで対処しない）：worker の Bash は
 // 任意の待ち受けを起動できる（python -m http.server のような孤児サービスはよくある）。
 // プラットフォームは 5 分ごとにローカルの待ち受けを走査し、台帳になく非 loopback に
-// バインドされた待ち受けを WARN で記録する。自動 kill はしない——まず観測のみ。
+// バインドされた待ち受けを WARN で記録する。自動 kill はしない。まず観測のみ。
 // プラットフォームが知らない正当なサービスを誤って殺すほうが、見逃すより悪い。
 
 // knownManagedPorts はプラットフォーム台帳内の待ち受けポート：メインサービス（8787、
@@ -76,7 +76,7 @@ func (m *Manager) startPortAudit() {
 
 // scanUnmanagedListeners は /proc/net/tcp{,6} を読み、「台帳外ポートかつ非 loopback」の
 // 待ち受け記述をすべて返す。ファイルが読めない場合（コンテナでの切り詰めなど）は黙って
-// スキップ——監査の機能低下は主処理に影響しない。
+// スキップ。監査の機能低下は主処理に影響しない。
 func scanUnmanagedListeners() []string {
 	known := knownManagedPorts()
 	var out []string

@@ -81,7 +81,7 @@ func buildZip(t *testing.T, files ...zipFile) []byte {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	zw.RegisterCompressor(zipMethodZstd, zstd.ZipCompressor())
-	// Deflate64 には純 Go のエンコーダがない。ここではそのまま書き込み、項目に method 9 の印を付けるだけ ——
+	// Deflate64 には純 Go のエンコーダがない。ここではそのまま書き込み、項目に method 9 の印を付けるだけ。
 	// 検証するのは「その方式が未対応のときにどんなメッセージを返すか」であり、実際に展開はしない。
 	zw.RegisterCompressor(zipMethodDeflate64, func(w io.Writer) (io.WriteCloser, error) {
 		return nopWriteCloser{w}, nil

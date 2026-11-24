@@ -21,7 +21,7 @@ func TestRenderSystemOverrideAndFallback(t *testing.T) {
 		}
 		return "", false
 	}
-	if got := renderSystem("planner", "DEFAULT", PlannerVars{Goal: "X を攻略", Scope: "*.x.com"}); got != "目標：X を攻略 範囲：*.x.com" {
+	if got := renderSystem("planner", "DEFAULT", PlannerVars{Goal: "X を攻略", Scope: "*.x.com"}); got != "目標:X を攻略 範囲:*.x.com" {
 		t.Fatalf("override render: %q", got)
 	}
 
@@ -38,7 +38,7 @@ func TestRenderSystemOverrideAndFallback(t *testing.T) {
 	if !strings.HasPrefix(got, "PLANNER X を攻略") {
 		t.Fatalf("plannerSystem body not honored: %q", got)
 	}
-	if !strings.Contains(got, "中间产物输出规约") || !strings.Contains(got, "/data") {
+	if !strings.Contains(got, "中間生成物の出力規約") || !strings.Contains(got, "/data") {
 		t.Fatalf("plannerSystem missing code-owned artifact tail: %q", got)
 	}
 
@@ -60,7 +60,7 @@ func TestRenderSystemOverrideAndFallback(t *testing.T) {
 	if strings.Contains(recording, "traffic_refs") {
 		t.Fatalf("worker bypassed shared optional evidence policy: %q", recording)
 	}
-	if !strings.Contains(recording, "中间产物输出规约") {
+	if !strings.Contains(recording, "中間生成物の出力規約") {
 		t.Fatalf("worker missing artifact tail: %q", recording)
 	}
 	// Egress proxy set but capture OFF (no CA): the ProxyAddr template branch still
@@ -89,7 +89,7 @@ func TestWorkerSystemIntranetVariant(t *testing.T) {
 	// DB 上書きなし: worker のデフォルト本文 + イントラネット・レッドラインテールへ戻る。
 	PromptOverride = nil
 	got := workerSystem("", "", "/data", "/data", true)
-	if !strings.Contains(got, "内网红线") {
+	if !strings.Contains(got, "内部ネットワークのレッドライン") {
 		t.Fatalf("intranet run missing code-owned intranet redline tail: %q", got)
 	}
 
@@ -106,7 +106,7 @@ func TestWorkerSystemIntranetVariant(t *testing.T) {
 	if got = workerSystem("", "", "/data", "/data", true); !strings.HasPrefix(got, "イントラネット本文 true") {
 		t.Fatalf("worker.intranet override should win: %q", got)
 	}
-	if !strings.Contains(got, "内网红线") {
+	if !strings.Contains(got, "内部ネットワークのレッドライン") {
 		t.Fatalf("edited variant body must not drop the code-owned intranet redline tail: %q", got)
 	}
 	// 変種がないときは worker 自身の上書きへ戻る。
@@ -120,7 +120,7 @@ func TestWorkerSystemIntranetVariant(t *testing.T) {
 		t.Fatalf("missing variant should fall back to worker key: %q", got)
 	}
 	// intranet=false ではレッドラインテールを追加しない。
-	if got = workerSystem("", "", "/data", "/data", false); strings.Contains(got, "内网红线") {
+	if got = workerSystem("", "", "/data", "/data", false); strings.Contains(got, "内部ネットワークのレッドライン") {
 		t.Fatalf("non-intranet run must not append the intranet redline tail: %q", got)
 	}
 }

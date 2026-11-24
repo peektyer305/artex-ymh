@@ -164,7 +164,7 @@ async function httpInner<T>(path: string, init: RequestInit | undefined, retried
 // with NEXT_PUBLIC_SSE_BASE; set it to "" to force same-origin (e.g. behind a
 // production reverse proxy that flushes SSE correctly).
 // 認証情報(F6):まず POST /api/sse-ticket(/api 代理経由、Authorization ヘッダ付き)で 60s
-// 有効な使い捨て ticket を取り ?ticket= に付ける——access token は URL/アクセスログに出さない。ticket
+// 有効な使い捨て ticket を取り ?ticket= に付ける。access token は URL/アクセスログに出さない。ticket
 // は使用後に失効するので、EventSource の自動再接続は 2 回目のハンドシェイクで 401 になる;呼び出し側は
 // 接続が完全に閉じた(readyState === CLOSED)後に本関数を呼び直して ticket を取り直し再接続する。
 // mockReport returns a canned Markdown report for the demo.
@@ -542,7 +542,7 @@ export const api = {
     return get<FindingGroupsPage>(`/exploration/findings/groups?${p.toString()}`);
   },
   // findingAssetTree は「アセット別」ビューの左ツリーを取る:ファインディングのあるアセットとその祖先のみを含み、
-  // ノードは子孫の集計カウントを持つ。ページングしない——ツリーはナビゲーション構造なので一度に全部取る。
+  // ノードは子孫の集計カウントを持つ。ページングしない。ツリーはナビゲーション構造なので一度に全部取る。
   findingAssetTree: (q: Omit<FindingQuery, "page" | "pageSize">) =>
     get<FindingAssetTree>(`/exploration/findings/asset-tree?${findingFilterParams(q).toString()}`),
   findingStats: () => get<FindingStats>("/exploration/findings/stats"),

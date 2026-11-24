@@ -594,7 +594,7 @@ type LLMProfileDTO struct {
 	// pool_exclude=true ならフェイルオーバー先にはならないが、agent/タスクから明示的に紐付けることは可能。
 	Priority    int  `json:"priority"`
 	PoolExclude bool `json:"pool_exclude"`
-	// 送受信モード：true=ストリーミング（SSE） | false=非ストリーミング。omitempty は付けない——
+	// 送受信モード：true=ストリーミング（SSE） | false=非ストリーミング。omitempty は付けない。
 	// false がレスポンスに出ないとフロントが「非ストリーミング」を読めず、スイッチが既定の
 	// ストリーミングに戻ってしまう。
 	Streaming bool `json:"streaming"`

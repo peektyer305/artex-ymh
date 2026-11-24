@@ -48,7 +48,7 @@ var (
 	AbortWorkPausedByUser = cause("work_paused_by_user", "ユーザーがこの Worker 意図を一時停止しました",
 		"ユーザーが実行中の Worker を一時停止しました。今回の呼び出しは取り消され、意図は paused に変わります。登録済みの意図、事実、脆弱性、アクティビティ記録はすべて保持され、再開後は最初から実行されます")
 	AbortWorkCancelledByUser = cause("work_cancelled_by_user", "ユーザーがこの Worker 意図を削除しました",
-		"ユーザーが実行中の Worker を削除しました。今回の呼び出しは取り消されます。Worker が書き込み区間を抜けた後、サーバはユーザーが選んだ削除モードでこの意図を処理します——論理削除は削除済みと記録して全成果物を保持し、物理削除はその意図と、それだけに支えられた下流ノードを連鎖的に削除します")
+		"ユーザーが実行中の Worker を削除しました。今回の呼び出しは取り消されます。Worker が書き込み区間を抜けた後、サーバはユーザーが選んだ削除モードでこの意図を処理します。論理削除は削除済みと記録して全成果物を保持し、物理削除はその意図と、それだけに支えられた下流ノードを連鎖的に削除します")
 	AbortWorkFinished = cause("work_finished", "Worker が正常終了して context を解放しました",
 		"Worker が正常終了し、エンジンは detachWork でその context 資源を解放しています。実行の中断ではありません。もし中断メッセージに現れたら、取り消しと終了処理のイベントが競合したことを意味します")
 	AbortPausedRaceGuard = cause("paused_race_guard", "タスクの一時停止中は新しい実行の開始を拒否します",

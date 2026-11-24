@@ -1,19 +1,19 @@
-# chains-ad L3 决策骨架(场景→判据→转向;蒸馏自 chains 语料,完整 Q&A 见 skills/chains-ad/refs/)
-- 场景:域内新立足点起手|判据:零主动流量自省(whoami /all、arp、netstat),答出域名/DC/网段/有无域凭据四问再动手;有凭据先LDAP不先扫|转向:被动枯竭转凭据测绘(LSASS/DPAPI)让LDAP合法化
-- 场景:无凭据仅网络可达|判据:先吃广播自曝(LLMNR/NBT-NS)与匿名口子(null session/RID/AXFR),30~60分钟无果再低速主动|转向:Responder毒化收NetNTLMv2,不可PtH只relay/爆破
-- 场景:开喷口令前|判据:先摸lockoutThreshold与观察窗口,每账号每窗口≤threshold−2发、按密码分批;threshold=0可放喷但4771≤10次/分|转向:摸不到策略按threshold=3、每天1~2发
-- 场景:喷洒选型与字典|判据:优先Kerberos AS-REQ(4771比4625安静,兼做存在性判定);协议共享badPwdCount别叠加;字典宁砍到400也要确认存在|转向:AD面全监控转非AD面(本地SAM/数据库)
-- 场景:发现DONT_REQ_PREAUTH账号|判据:直接AS-REQ取可离线爆的AS-REP,零凭据可做、不耗badPwdCount,全域批量roast总有弱口令|转向:一个都没有属常态,转Kerberoast或喷洒
-- 场景:有域账号Kerberoast|判据:只挑用户账号SPN,优先etype=23 RC4+pwdLastSet≥3年+高权组+svc命名;盲扫=送4769画像|转向:AES-only爆不动转AS-REP/委派/ADCS,SPN留作地图
-- 场景:发现非约束委派机(TRUSTED_FOR_DELEGATION)|判据:它缓存来访者TGT,需本机admin+coerce DC来认证收TGT|转向:目标在Protected Users则换不受保护账户
-- 场景:约束委派与RBCD|判据:约束委派(AllowedToDelegateTo)需T2A4D、票可altservice换cifs;RBCD=对目标GenericWrite+MAQ>0自建机器账户|转向:无写权先夺有写权账户
-- 场景:域内有企业CA选ESC|判据:ESC1四条件并列=ClientAuth EKU+ENROLLEE_SUPPLIES_SUBJECT+可enroll+免审批免签名|转向:无enroll权转ESC3代理/ESC4改模板
-- 场景:ESC1不通续选|判据:ESC6=CA级EDITF_ATTRIBUTESUBJECTALTNAME2则任意模板注SAN;ESC8=/certsrv可达+coerce即relay|转向:模板全硬/无CA回roast/委派/relay
-- 场景:做NTLM relay|判据:接收端弱校验才通:SMB看签名、LDAPS看channel binding,cme --gen-relay-list出图|转向:签名全强制转ESC8(/certsrv不吃绑定)
-- 场景:需强制目标认证(coerce)|判据:按DFSCoerce→PetitPotam→PrinterBug轮换触发;被coerce方身份定收益——逼DC$认证=直通DCSync|转向:coerce全被补转mitm6诱捕或委派/ADCS
-- 场景:是否直捣DC(Zerologon类)|判据:三条件齐才打=指纹确认未补丁+时间紧须速通+有机器账户密码还原预案;单DC别赌,不可逆动作放最后|转向:缺一则转凭据慢推;DC硬打周边或蹲域管跳板
-- 场景:已SYSTEM收割凭据|判据:先摸EDR与RunAsPPL再碰LSASS;EDR强走SAM/SYSTEM/SECURITY hive、DPAPI,拖回离线解析|转向:LSASS空=无人登录转coerce;有LAPS则PtH复用死
-- 场景:凭据横向落地|判据:优先network logon(type3)避免RDP留凭据;445关切WinRM5985/DCOM;先查LAPS再定PtH范围|转向:全封转借已有会话偷token,或GPO让目标反连
-- 场景:发起DCSync|判据:域根GetChanges+GetChangesAll两ACE缺一不可;0x00002105=无权立刻停;先定点同步krbtgt不全量|转向:提权DA/接管复制权账户/域根WriteDACL自授后即还原
-- 场景:拿到krbtgt收尾|判据:金票有效期设数小时~几天非默认10年,核对域SID与kvno;flag所需权限<域管就别动DCSync牛刀|转向:EDR抓金票转真hash或Diamond Ticket
-- 场景:受限链路穿隧道|判据:目标已知且少→端口转发,未知且多→SOCKS;RTT秒级即脚本化打包;Kerberos要DNS+时钟差≤5分钟,宜在立足点就近执行|转向:三次退避仍断换通道/协议/立足点
+# chains-ad L3 意思決定チェーン骨格(場面→判定基準→方向転換;chains コーパスから蒸留、完全な Q&A は skills/chains-ad/refs/ 参照)
+- 場面:ドメイン内の新たな足場での着手|判定基準:ゼロ・アクティブ・トラフィックのセルフチェック(whoami /all、arp、netstat)で、ドメイン名/DC/ネットワークセグメント/ドメイン認証情報の有無の四問に答えてから動く。認証情報があればまず LDAP、先にスキャンしない|方向転換:パッシブが尽きたら認証情報の特定(LSASS/DPAPI)に転じて LDAP を正規化する
+- 場面:認証情報なしでネットワーク到達のみ|判定基準:まずブロードキャストの自己暴露(LLMNR/NBT-NS)と匿名の口(null session/RID/AXFR)を利用する。30~60 分で成果がなければ低速のアクティブへ|方向転換:Responder ポイズニングで NetNTLMv2 を収集。PtH 不可なら relay/ブルートフォースのみ
+- 場面:パスワードスプレーを始める前|判定基準:まず lockoutThreshold と観測ウィンドウを把握する。アカウントごとウィンドウごとに ≤threshold−2 発、パスワード単位でバッチ化。threshold=0 なら噴けるが 4771 ≤10 回/分|方向転換:ポリシーが掴めなければ threshold=3、毎日 1~2 発として扱う
+- 場面:スプレーの方式選定と辞書|判定基準:Kerberos AS-REQ を優先(4771 は 4625 より静かで、存在判定も兼ねる)。プロトコル間で badPwdCount を共有するので重ねない。辞書は 400 まで削っても存在確認を優先|方向転換:AD 面が全監視なら非 AD 面(ローカル SAM/データベース)へ
+- 場面:DONT_REQ_PREAUTH のアカウントを発見|判定基準:直接 AS-REQ でオフライン爆発可能な AS-REP を取得。認証情報ゼロで可能、badPwdCount を消費しない。全ドメインを一括 roast すれば必ず弱いパスワードがある|方向転換:一つもないのは平常。Kerberoast かスプレーに転じる
+- 場面:ドメインアカウントありで Kerberoast|判定基準:ユーザーアカウントの SPN のみ選ぶ。etype=23 RC4 + pwdLastSet≥3 年 + 高権限グループ + svc 命名を優先。盲目的スキャン=4769 のプロファイルを差し出すだけ|方向転換:AES-only で爆発できなければ AS-REP/委任/ADCS へ。SPN は地図として残す
+- 場面:非制約委任マシン(TRUSTED_FOR_DELEGATION)を発見|判定基準:訪問者の TGT をキャッシュする。本機 admin が必要 + coerce で DC に認証させて TGT を収集|方向転換:対象が Protected Users なら保護されていないアカウントに切り替える
+- 場面:制約委任と RBCD|判定基準:制約委任(AllowedToDelegateTo)には T2A4D が必要、チケットは altservice で cifs に変換可能。RBCD=対象への GenericWrite + MAQ>0 で自作のマシンアカウント|方向転換:書き込み権がなければ先に書き込み権のあるアカウントを奪う
+- 場面:ドメイン内にエンタープライズ CA があり ESC を選ぶ|判定基準:ESC1 の四条件が並立=ClientAuth EKU + ENROLLEE_SUPPLIES_SUBJECT + enroll 可 + 承認不要・署名不要|方向転換:enroll 権がなければ ESC3 代理/ESC4 テンプレート改変へ
+- 場面:ESC1 が通じないので続けて選ぶ|判定基準:ESC6=CA レベルで EDITF_ATTRIBUTESUBJECTALTNAME2 なら任意テンプレートに SAN を注入。ESC8=/certsrv 到達可 + coerce すれば relay|方向転換:テンプレートが全て固い/CA なしなら roast/委任/relay に戻る
+- 場面:NTLM relay を行う|判定基準:受信側の弱い検証でのみ通る。SMB は署名、LDAPS は channel binding を見る。cme --gen-relay-list でリストを出す|方向転換:署名が全て強制なら ESC8 へ(/certsrv は binding を受けない)
+- 場面:対象に強制認証が必要(coerce)|判定基準:DFSCoerce→PetitPotam→PrinterBug の順にローテーションでトリガー。coerce される側の身分が利益を決める。DC$ に認証させれば DCSync へ直通|方向転換:coerce が全てパッチ済みなら mitm6 による誘引か委任/ADCS へ
+- 場面:DC を直接攻めるか(Zerologon 系)|判定基準:三条件が揃って初めて打つ=フィンガープリントで未パッチ確認 + 時間が逼迫し速通必須 + マシンアカウントパスワードの復元手順がある。単一 DC では賭けない。不可逆アクションは最後に|方向転換:一つ欠ければ認証情報の低速な前進へ。DC が固ければ周辺を攻めるかドメイン管理の踏み台を待つ
+- 場面:既に SYSTEM で認証情報を収穫する|判定基準:先に EDR と RunAsPPL を把握してから LSASS に触る。EDR が強ければ SAM/SYSTEM/SECURITY hive、DPAPI を使い、持ち帰ってオフライン解析|方向転換:LSASS が空=誰もログインしていないので coerce へ。LAPS があれば PtH の再利用は死ぬ
+- 場面:認証情報で横展開して足場を確保する|判定基準:network logon(type3)を優先し RDP で認証情報を残さない。445 が塞がれていれば WinRM 5985/DCOM。先に LAPS を調べて PtH の範囲を決める|方向転換:全て塞がれていれば既存セッションを借りて token を盗む、または GPO で対象に逆接続させる
+- 場面:DCSync を開始する|判定基準:ドメインルートの GetChanges+GetChangesAll の二つの ACE はどちらも欠かせない。0x00002105=権限なし、即停止。先に krbtgt を定点同期し全量はしない|方向転換:DA への権限昇格/複製権アカウントの奪取/ドメインルートの WriteDACL で自己付与した後に即復元
+- 場面:krbtgt を取得しての仕上げ|判定基準:ゴールデンチケットの有効期限は数時間~数日に設定しデフォルトの 10 年にはしない。ドメイン SID と kvno を照合。flag に必要な権限がドメイン管理未満なら大掛かりな DCSync には手を出さない|方向転換:EDR がゴールデンチケットを検知するなら真の hash か Diamond Ticket に転換
+- 場面:制約のある経路でトンネルを通す|判定基準:対象が既知で少ない→ポートフォワーディング、未知で多い→SOCKS。RTT が秒単位ならスクリプト化して一括。Kerberos は DNS + 時計差 ≤5 分が必要で、足場の近くで実行するのが良い|方向転換:三回のバックオフでも切れるならチャネル/プロトコル/足場を変える

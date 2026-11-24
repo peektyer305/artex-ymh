@@ -1,479 +1,479 @@
-# AD内网 · 凭据薅取:mimikatz/SAM/票据
+# ADドメイン内 · 認証情報収集:mimikatz/SAM/チケット
 
-### 拿到本机 SYSTEM,第一步先薅什么
-**Q1**: 已经 SYSTEM 了,LSASS 里可能有域用户/服务账号明文和 NTLM,但我要先做哪一步才不浪费这次权限?
-**A1**: 先做"取样再操作":快照 `whoami /all`、`klist`、当前进程列表、AV/EDR 名字(`Get-MpComputerStatus`、tasklist `/svc`)、以及 LSA Protection 是否开(RunAsPPL 注册表键)。因为一旦触发 EDR,LSASS 落地会被拦、进程会被杀,连观察窗口都没了。先摸清楚防御姿态,再决定用直接 dump 还是绕道。
-**Q2**: 看到有主流 EDR 常驻,直接 minidump LSASS 大概率被杀,怎么办?
-**A2**: 转向"不直接碰 LSASS"这条路:先看有没有其他富矿——SAM+SYSTEM 注册表 hive(reg save)、DPAPI master key + 用户凭据/Chrome/RDP 保存、`cmdkey /list`、任务计划里的账号、IIS applicationHost.config、SQL Server 连接字符串、SYSVOL 里的 cpassword 遗留。这些走 Win32 正常 API,EDR 告警面小得多。
-**Q3**: 判据是什么——什么时候才值得冒险碰 LSASS?
-**A3**: 当"离域控还差一个域用户/域管凭据"、其他富矿都翻过、且能确认 EDR 无内存扫描或 PPL 未开时才值得。否则每次触发一次 LSASS 读都是一次报警。
-**Q4**: 那 dump 出来的产物怎么处理?
-**A4**: 不在目标机上跑 mimikatz,把 minidump 拖回攻击机离线 `sekurlsa::minidump` 解析。目标机上只保留"读文件"这个动作。
-**Q5**: 拿到 hash 后先做什么?
-**A5**: 先分类:本地账号 hash(只对本机+可能横向复用)、域账号 hash(横向+域内查询)、机器账号 hash(可做 S4U/RBCD/DCSync 条件之一)。不同类型走不同下一步,别一股脑全试。
-**Q6**: 如果 LSASS 里啥也没有,只有 SYSTEM 本身的 token?
-**A6**: 说明这台机没人交互登录过——转向"引流":等计划任务/服务/管理员登录、或用 coerce(PetitPotam/PrinterBug)把别的账号骗过来认证。凭据薅取薅不到,就制造凭据流。
+### 本機の SYSTEM を取得したら、最初に何を収集するか
+**Q1**: 既に SYSTEM だ。LSASS にドメインユーザー/サービスアカウントの平文と NTLM があるかもしれないが、今回の権限を無駄にしないために最初に何をすべきか?
+**A1**: まず「採取してから操作」する。`whoami /all`、`klist`、現在のプロセス一覧、AV/EDR 名(`Get-MpComputerStatus`、tasklist `/svc`)、および LSA Protection が有効か(RunAsPPL レジストリキー)をスナップショットする。一度 EDR をトリガーすると、LSASS の着地が遮断され、プロセスが kill され、観察窓まで失われる。まず防御態勢を把握してから、直接 dump か迂回かを決める。
+**Q2**: 主流 EDR が常駐している。直接 minidump で LSASS を取ると高確率で kill される。どうする?
+**A2**: 「LSASS に直接触れない」経路へ転換する。まず他の鉱脈を探す。SAM+SYSTEM レジストリ hive(reg save)、DPAPI master key + ユーザー認証情報/Chrome/RDP 保存、`cmdkey /list`、スケジュールタスク内のアカウント、IIS applicationHost.config、SQL Server 接続文字列、SYSVOL 内の cpassword 遺留。これらは Win32 の正常 API を使うため、EDR のアラート面がはるかに小さい。
+**Q3**: 判定基準は何か。いつ LSASS に触れるリスクを冒す価値があるか?
+**A3**: 「ドメインコントローラまであとひとつのドメインユーザー/ドメイン管理者認証情報」の状態で、他の鉱脈を全て掘り尽くし、かつ EDR にメモリスキャンがない、または PPL が未開と確認できたときだけ価値がある。そうでなければ、LSASS を一度読むたびに一度のアラートになる。
+**Q4**: dump した産物はどう処理する?
+**A4**: 対象機で mimikatz を実行しない。minidump を攻撃機へ持ち帰り、オフラインで `sekurlsa::minidump` を解析する。対象機には「ファイルを読む」という動作だけを残す。
+**Q5**: hash を取得したら最初に何をする?
+**A5**: まず分類する。ローカルアカウント hash(本機のみ+横展開で再利用の可能性)、ドメインアカウント hash(横展開+ドメイン内照会)、マシンアカウント hash(S4U/RBCD/DCSync 条件のひとつ)。種別ごとに次の手が異なる。まとめて全部試さない。
+**Q6**: LSASS に何もなく、SYSTEM 自身の token だけの場合は?
+**A6**: このマシンには誰も対話ログオンしていないことを示す。「誘導」へ転換する。スケジュールタスク/サービス/管理者ログオンを待つか、coerce(PetitPotam/PrinterBug)で他アカウントを騙して認証させる。認証情報収集で取れないなら、認証情報の流れを作る。
 
-### mimikatz 被 AV 秒杀,如何绕
-**Q1**: `mimikatz.exe` 一落地就被杀,connect back 都来不及,先怎么判断卡在哪一层?
-**A1**: 三层判据分开测:①静态特征——换个不含 mimikatz 字符串的 loader/编译版看是否还被杀;②行为——`sekurlsa::logonpasswords` 这个 API 调用序列本身被 hook;③内存——AMSI/ETW 有没有拦。分别用最小样本(比如只做 `version`)去打,看哪一步先炸。
-**Q2**: 只是静态被杀,怎么最小成本绕?
-**A2**: 优先级:①用 BOF/inline .NET 版本(SharpKatz、nanodump)避开 PE 落地;②源码微改字符串+重编译;③加壳/shellcode loader;④白利用侧加载。选一条就别叠 buff,叠多了反而增加 IoC。
-**Q3**: 是 AMSI/ETW 拦的,怎么处理?
-**A3**: 判据:PowerShell 版 Invoke-Mimikatz 一加载就报,但 exe 版能跑 → AMSI;C# 版 Reflection.Load 就死 → CLR AMSI。分别对症:AMSI patch(内存改 AmsiScanBuffer 返回)、ETW patch(NtTraceEvent)。注意这类 patch 也是 EDR 重点监控点,权衡是否值得。
-**Q4**: 全部被拦,LSASS 读不到,这条路要不要放弃?
-**A4**: 放弃"当场解析",转向"取回来离线":用签名工具(procdump、comsvcs.dll MiniDump、任务管理器右键、silent process exit debugger 等)拿到 minidump 或整个 lsass 内存,离线在攻击机跑 pypykatz/mimikatz。EDR 对 procdump 的告警等级通常低于 mimikatz。
-**Q5**: procdump 也被 EDR 判黑了,还有什么招?
-**A5**: 转向"不 dump LSASS 这个进程"这个正交维度——绕过整个 LSASS:走 SAM/SECURITY hive、DPAPI 离线、Kerberoast/AS-REP roast、ADCS 证书滥用拿 PKINIT。凭据不一定非要从内存里来。
-**Q6**: 如果这台机 LSA Protection (RunAsPPL) 开着呢?
-**A6**: 用户态 dump 全废,要么改注册表重启(动静大、可能触发告警和用户察觉),要么用可签名易受攻击驱动(BYOVD)从内核里读——但这条路 IoC 极大,只在最后一步、目标是 DA 或高价值账号时才用。
-**Q7**: 如果时间不够、EDR 强,快速止损策略是什么?
-**A7**: 停止在这台机上继续消耗,转向 SYSVOL/GPP、打印机/CSV 里的老 cpassword、SCCM 网络访问账号、backup 服务账号等"不碰终端也能拿凭据"的路径。
+### mimikatz が AV に即殺される場合の回避
+**Q1**: `mimikatz.exe` が着地と同時に殺され、connect back すら間に合わない。まずどの層で詰まっているかをどう判断する?
+**A1**: 三層の判定基準を分けてテストする。①静的シグネチャ——mimikatz 文字列を含まない loader/コンパイル版に替えてまだ殺されるか。②挙動——`sekurlsa::logonpasswords` という API 呼び出し列自体が hook されているか。③メモリ——AMSI/ETW が遮断していないか。それぞれ最小サンプル(例: `version` だけ)で打ち、どの段階で最初に炸裂するかを見る。
+**Q2**: 静的シグネチャだけなら、最小コストの回避は?
+**A2**: 優先順位:①BOF/inline .NET 版(SharpKatz、nanodump)で PE 着地を回避。②ソースの文字列微変更+再コンパイル。③加殻/shellcode loader。④白利用のサイドローディング。ひとつ選んだらバフを重ねない。重ねすぎると IoC が増える。
+**Q3**: AMSI/ETW に遮断された場合は?
+**A3**: 判定基準:PowerShell 版 Invoke-Mimikatz は読み込み即エラーだが exe 版は動く → AMSI。C# 版は Reflection.Load で即死 → CLR AMSI。それぞれ対症する。AMSI patch(メモリで AmsiScanBuffer の返り値を書き換え)、ETW patch(NtTraceEvent)。この patch も EDR の重点監視点であることに注意し、価値があるかを秤にかける。
+**Q4**: 全て遮断され、LSASS が読めない。この経路を諦めるべきか?
+**A4**: 「その場解析」を諦め、「持ち帰りオフライン」へ転換する。署名済みツール(procdump、comsvcs.dll MiniDump、タスクマネージャ右クリック、silent process exit debugger など)で minidump または lsass メモリ全体を取得し、オフラインで攻撃機の pypykatz/mimikatz で解析する。EDR の procdump に対するアラート等級は通常 mimikatz より低い。
+**Q5**: procdump も EDR にブラック判定された。まだ手はある?
+**A5**: 「LSASS というプロセスを dump しない」という直交次元へ転換する。LSASS 全体を迂回し、SAM/SECURITY hive、DPAPI オフライン、Kerberoast/AS-REP roast、ADCS 証明書悪用で PKINIT を取る。認証情報は必ずしもメモリから来る必要はない。
+**Q6**: このマシンの LSA Protection (RunAsPPL) が有効なら?
+**A6**: ユーザーモード dump は全て無駄。レジストリ変更して再起動(動きが大きく、アラートやユーザー気付きを誘発しうる)か、署名済みの脆弱ドライバ(BYOVD)でカーネルから読む。ただしこの経路は IoC が非常に大きく、最後の一歩で、対象が DA か高価値アカウントのときだけ使う。
+**Q7**: 時間がなく EDR が強い場合、素早く損切りする戦略は?
+**A7**: このマシンでの消費をやめ、SYSVOL/GPP、プリンタ/CSV の古い cpassword、SCCM ネットワークアクセスアカウント、backup サービスアカウントなど「端末に触れずに認証情報を取れる」経路へ転換する。
 
-### SAM/SYSTEM hive 抢救本地凭据
-**Q1**: 有 SYSTEM 但 LSASS 读不到,想走 SAM,怎么最小噪声抓 hive?
-**A1**: `reg save HKLM\SAM ...` + `HKLM\SYSTEM ...` + `HKLM\SECURITY ...`,三个都要:SAM 里是本地账号 NTLM,SYSTEM 是 boot key(解 SAM 用),SECURITY 里是 LSA secrets(服务账号明文/DPAPI 密钥/机器账号 hash 等)。别只 dump SAM。
-**Q2**: 拿回后本地怎么解?
-**A2**: impacket 的 `secretsdump.py -sam -system -security LOCAL`(离线模式),或 pypykatz `registry`。产物:本地账号 NTLM、cached domain logons(DCC2,离线爆破)、LSA secrets(可能有服务明文口令)。
-**Q3**: DCC2 hash 拿到手,值得爆吗?
-**A3**: 判据:hash 类型(mscash2 慢)、密码复杂度先验(域策略、目标企业常见口令风格)、时间成本。DCC2 慢一个量级,只有当这个账号大概率是活跃用户/管理员时才值得排队爆破;否则先把 LSA secrets 里的服务账号明文用了再说。
-**Q4**: SECURITY hive 里没有 LSA secrets 或者全是空的?
-**A4**: 说明这机器没配过服务账号/没启用过 DPAPI 保护的服务。转向:任务计划(schtasks /query /xml 里可能有 `Run As` 的凭据引用)、Windows Credential Manager(cmdkey /list + vaultcmd)、Chrome/Edge/Firefox 密码库(需要用户 DPAPI key)、PuTTY/WinSCP 注册表。
-**Q5**: 只有本地账号 hash,横向能用吗?
-**A5**: 关键判据:本地 Administrator 的 NTLM 是否在多台机器上复用(镜像部署/LAPS 未启用)。用 CrackMapExec/nxc `--local-auth` 拿这个 hash 扫一段 /24,复用率高就是横向金矿;LAPS 启用则单机作废,转向域账号。
-**Q6**: 如果 reg save 被 EDR 告警呢?
-**A6**: 转向卷影副本(vssadmin create shadow → 从 shadow 复制 SAM/SYSTEM 文件),或直接 esentutl 复制被占用文件。也可用 diskshadow 脚本模式。三种手段 IoC 谱不同,轮着试。
+### SAM/SYSTEM hive でローカル認証情報を回収する
+**Q1**: SYSTEM はあるが LSASS が読めない。SAM を狙いたい。最小ノイズで hive を取るには?
+**A1**: `reg save HKLM\SAM ...` + `HKLM\SYSTEM ...` + `HKLM\SECURITY ...` の三つが全て必要。SAM はローカルアカウント NTLM、SYSTEM は boot key(SAM 復号用)、SECURITY は LSA secrets(サービスアカウント平文/DPAPI 鍵/マシンアカウント hash など)。SAM だけ dump しない。
+**Q2**: 持ち帰った後、ローカルでどう復号する?
+**A2**: impacket の `secretsdump.py -sam -system -security LOCAL`(オフラインモード)または pypykatz の `registry`。産物は、ローカルアカウント NTLM、cached domain logons(DCC2、オフラインブルートフォース)、LSA secrets(サービスの平文パスワードの可能性)。
+**Q3**: DCC2 hash を取得した。ブルートフォースする価値はあるか?
+**A3**: 判定基準:hash 種別(mscash2 は遅い)、パスワード複雑度の事前知識(ドメインポリシー、対象企業の一般的なパスワードスタイル)、時間コスト。DCC2 は一桁遅く、そのアカウントがアクティブユーザー/管理者である可能性が高いときだけ並べてブルートフォースする価値がある。そうでなければ先に LSA secrets のサービスアカウント平文を使ってから考える。
+**Q4**: SECURITY hive に LSA secrets がない、または全て空の場合?
+**A4**: このマシンにサービスアカウントが設定されておらず、DPAPI 保護のサービスも有効化されていないことを示す。転換する。スケジュールタスク(schtasks /query /xml に `Run As` の認証情報参照がありうる)、Windows Credential Manager(cmdkey /list + vaultcmd)、Chrome/Edge/Firefox パスワード庫(ユーザー DPAPI key が必要)、PuTTY/WinSCP レジストリ。
+**Q5**: ローカルアカウント hash しかない。横展開に使えるか?
+**A5**: 重要な判定基準は、ローカル Administrator の NTLM が複数マシンで再利用されているか(イメージ展開/LAPS 未有効)。CrackMapExec/nxc の `--local-auth` でこの hash を使って /24 を一段スキャンし、再利用率が高ければ横展開の金鉱。LAPS 有効なら単機で無効となり、ドメインアカウントへ転換する。
+**Q6**: reg save が EDR にアラートされる場合は?
+**A6**: ボリュームシャドウコピー(vssadmin create shadow → shadow から SAM/SYSTEM ファイルをコピー)へ転換するか、esentutl で占有ファイルを直接コピーする。diskshadow スクリプトモードも使える。三手段は IoC スペクトルが異なるので、順に試す。
 
-### DPAPI 全家桶:主密钥、凭据、Chrome
-**Q1**: 想解某用户保存的 Chrome 密码/RDP 保存的凭据,已知用户 SID,下一步?
-**A1**: DPAPI 解密链:用户密码(或 NTLM)→ 用户 master key(在 `%APPDATA%\Microsoft\Protect\<SID>\`)→ blob。所以先看能不能拿到该用户的登录密码/NTLM;拿不到就走域 backup key。
-**Q2**: 拿不到用户密码/NTLM,只能走域 backup key,前置条件是什么?
-**A2**: 需要域管等价权限(通常是 DA)才能从域控用 `lsadump::backupkeys` 导出。判据:如果都已经 DA 了,还需不需要费劲解这个用户的 DPAPI?——需要,因为这可能给你新的凭据面(Azure/云/第三方 SaaS 保存的密码),扩大战果。
-**Q3**: 拿到 master key 后怎么用?
-**A3**: `dpapi::masterkey` 解出明文 master key → `dpapi::chrome` / `dpapi::cred` / `dpapi::rdg` 分别对付不同 blob。注意 Chrome 从 v80 开始还叠了 AES key(local state 里的 encrypted_key,同样用 DPAPI 保护)。
-**Q4**: 目标是离线机器/离职员工桌面,只有硬盘镜像?
-**A4**: DPAPI 完全可离线:从 NTUSER.DAT 拿不到密码,但可以从 SYSTEM/SECURITY hive 拿到域机器账号 secret,再走 domain backup key 路径(需要能碰域控或已缓存);或直接爆用户密码后解 master key。
-**Q5**: 用户是智能卡登录/无本地密码怎么办?
-**A5**: DPAPI 用户 master key 用的是 NTLM 派生 key。如果是 PKINIT 智能卡,可能仍有 NTLM 哈希被缓存(供 SSO 用)。转向 `sekurlsa::pku2u` 或看该用户的 msDS-KeyCredentialLink(Shadow Credentials 攻击路径)。
-**Q6**: 如果 DPAPI 路径整个走不通,凭据还想扩面?
-**A6**: 转向浏览器 cookie(不需要密码,session token 直接用)、SSH known_hosts + 私钥、KeePass/1Password 数据库(需要主密码,但可 keylog 或找缓存)、企业 IM 客户端本地缓存(可能带 OAuth token)。
+### DPAPI 全家:マスターキー、認証情報、Chrome
+**Q1**: あるユーザーが保存した Chrome パスワード/RDP 保存認証情報を解きたい。ユーザー SID は既知だ。次は?
+**A1**: DPAPI 復号チェーンは、ユーザーパスワード(または NTLM)→ ユーザー master key(`%APPDATA%\Microsoft\Protect\<SID>\` 内)→ blob。したがってまずそのユーザーのログオンパスワード/NTLM を取得できるかを見る。取れなければ domain backup key 経路へ進む。
+**Q2**: ユーザーパスワード/NTLM が取れず、domain backup key 経路しかない。前提条件は?
+**A2**: ドメイン管理者相当の権限(通常 DA)が要り、ドメインコントローラから `lsadump::backupkeys` でエクスポートする。判定基準:既に DA なら、このユーザーの DPAPI を苦労して解く必要があるか。必要である。なぜなら新しい認証情報面(Azure/クラウド/サードパーティ SaaS の保存パスワード)を得られ、戦果が拡大するからだ。
+**Q3**: master key を取得した後、どう使う?
+**A3**: `dpapi::masterkey` で平文 master key を解き、`dpapi::chrome` / `dpapi::cred` / `dpapi::rdg` でそれぞれ異なる blob に対処する。Chrome は v80 以降、さらに AES key(local state 内の encrypted_key。同じく DPAPI で保護)を重ねていることに注意。
+**Q4**: 対象がオフラインマシン/退職者デスクトップで、ハードディスクイメージしかない?
+**A4**: DPAPI は完全にオフライン可能。NTUSER.DAT からパスワードは取れないが、SYSTEM/SECURITY hive からドメインマシンアカウント secret を取り、domain backup key 経路へ進む(ドメインコントローラに触れるか、キャッシュ済みが必要)。またはユーザーパスワードを直接ブルートフォースして master key を解く。
+**Q5**: ユーザーがスマートカードログオン/ローカルパスワードなしの場合は?
+**A5**: DPAPI ユーザー master key は NTLM 派生キーを使う。PKINIT スマートカードでも、SSO 用に NTLM ハッシュがキャッシュされていることがある。`sekurlsa::pku2u` へ転換するか、そのユーザーの msDS-KeyCredentialLink(Shadow Credentials 攻撃経路)を見る。
+**Q6**: DPAPI 経路が完全に通らない場合、認証情報面をさらに広げるには?
+**A6**: ブラウザ cookie(パスワード不要で session token を直接使用)、SSH known_hosts + 秘密鍵、KeePass/1Password データベース(マスターパスワードが要るが、keylog やキャッシュから探せる)、企業 IM クライアントのローカルキャッシュ(OAuth token の可能性)へ転換する。
 
-### Kerberoast:什么账号值得打
-**Q1**: 我是普通域用户,想 Kerberoast,先找什么?
-**A1**: 找有 SPN 的用户账号(不是机器账号,机器账号 hash 是 128 位随机,爆不了):`GetUserSPNs.py` 或 LDAP filter `(&(samAccountType=805306368)(servicePrincipalName=*))`。优先看 admincount=1 的、命名带 svc/sql/backup 的。
-**Q2**: SPN 一个没有,怎么办?
-**A2**: 转向"targeted Kerberoast":如果我对某个目标用户对象有 GenericWrite/GenericAll,可以给它临时写一个 SPN,再 roast,完了删掉。这是权限提升链的一环,不是无条件的。
-**Q3**: roast 到票据了,加密类型是 AES256,爆得动吗?
-**A3**: 判据:AES 比 RC4 慢一个数量级,而且需要企业密码策略较弱才有戏。如果目标账号强制 AES(msDS-SupportedEncryptionTypes),先看能不能"降级 roast":某些场景下客户端可以请求 RC4 (etype 23);或者干脆放弃 roast 这条路。
-**Q4**: 全部账号都是 AES 且密码复杂,爆一周没结果?
-**A4**: 放弃"跑字典"这个正交维度,转向"不需要爆破的凭据获取":AS-REP roasting(找 DONT_REQ_PREAUTH 账号)、ADCS ESC1-8(证书就是身份)、Unconstrained Delegation coerce、RBCD。
-**Q5**: 爆出一个明文口令,发现只是低权服务账号,失望怎么办?
-**A5**: 别急,先做三件事:①用这个口令去喷别的账号(密码复用/规律)、②看这个服务账号有没有本地管理员或对其他对象的 ACL、③看能不能滥用它去做 S4U(如果有 SPN)或访问其保护的资源(SQL/共享)。低权凭据也能撬动。
-**Q6**: 判据:什么时候该停 Kerberoast 转别的?
-**A6**: 三个信号任一出现就停:①目标域全 AES 且密码策略强(14+ 复杂);②已经跑 24h+ 无进展;③域内 SPN 账号 <10 个且都爆过。转 AS-REP、证书、DCSync 前置条件收集。
+### Kerberoast:どのアカウントを打つ価値があるか
+**Q1**: 一般ドメインユーザーだ。Kerberoast をしたい。まず何を探す?
+**A1**: SPN を持つユーザーアカウントを探す(マシンアカウントではない。マシンアカウント hash は 128 ビット乱数でブルートフォース不能):`GetUserSPNs.py` または LDAP filter `(&(samAccountType=805306368)(servicePrincipalName=*))`。admincount=1 のもの、命名が svc/sql/backup のものを優先する。
+**Q2**: SPN がひとつもない場合は?
+**A2**: 「targeted Kerberoast」へ転換する。ある対象ユーザーオブジェクトに GenericWrite/GenericAll があるなら、一時的に SPN を書き、roast し、終わったら削除する。これは権限昇格チェーンの一環であり、無条件ではない。
+**Q3**: roast でチケットを取得した。暗号種別が AES256 だ。ブルートフォースできるか?
+**A3**: 判定基準:AES は RC4 より一桁遅く、企業パスワードポリシーが弱くないと勝ち目がない。対象アカウントが AES を強制している(msDS-SupportedEncryptionTypes)なら、まず「降格 roast」ができるかを見る。一部の場面ではクライアントが RC4(etype 23)をリクエストできる。できなければ roast 経路を諦める。
+**Q4**: 全アカウントが AES でパスワードも複雑、一週間ブルートフォースしても結果なし?
+**A4**: 「辞書を回す」という直交次元を諦め、「ブルートフォース不要の認証情報取得」へ転換する。AS-REP roasting(DONT_REQ_PREAUTH アカウントを探す)、ADCS ESC1-8(証明書が身元)、Unconstrained Delegation coerce、RBCD。
+**Q5**: 平文パスワードをひとつブルートフォースできたが、低権限サービスアカウントだった。がっかりした。どうする?
+**A5**: 焦らない。まず三つを行う。①このパスワードで他アカウントをスプレーする(パスワード再利用/規則)。②このサービスアカウントがローカル管理者や他オブジェクトへの ACL を持つかを見る。③S4U に悪用できるか(SPN がある場合)、またはその保護リソース(SQL/共有)へアクセスできるかを見る。低権限認証情報もてこにできる。
+**Q6**: 判定基準:いつ Kerberoast をやめて別へ転換するか?
+**A6**: 三つのシグナルのいずれかが出たら止める。①対象ドメインが全 AES でパスワードポリシーが強い(14 桁以上の複雑)。②既に 24 時間以上進展なし。③ドメイン内 SPN アカウントが 10 未満で全てブルートフォース済み。AS-REP、証明書、DCSync 前提条件収集へ転換する。
 
-### AS-REP Roasting 的判据
-**Q1**: 想 AS-REP roast,不需要有效凭据也能做吗?
-**A1**: 不需要,只要能连 88 端口和知道用户名列表。用 `GetNPUsers.py -no-pass`。所以枚举用户名是前置——先做 RID cycling(null session)、SMB 匿名、LDAP 匿名、Kerberoast 侦察 GetUserSPNs 副产、外网泄漏用户名。
-**Q2**: 打了一圈,所有账号都启用了预认证,哈希拿不到?
-**A2**: 现代 AD 默认开预认证,只有历史遗留/兼容旧应用才会关。判据:这条路是"低成本捡漏",拿不到就直接放弃,不要投入更多时间。转向 Kerberoast 或密码喷洒。
-**Q3**: 拿到一堆 AS-REP hash,先爆哪个?
-**A3**: 排序策略:①命名像人名 > 命名像服务(服务口令通常随机);②admincount=1 的优先;③账号创建时间老的(老账号密码可能更弱);④近期改过密码的(说明账号活跃)。
-**Q4**: 有一个 AS-REP 爆出来了,但用户看起来是普通员工,值得深挖吗?
-**A4**: 值得。第一步:该用户是不是本地管理员(通过组策略/常规部署)、是不是某台工作站的"主用户"(LAPS 前时代常有个人机管理员权限);第二步:BloodHound 里跑他的 outbound path 到 DA 有几跳。
-**Q5**: hash 类型是 etype 17/18 (AES),爆速极慢,怎么办?
-**A5**: 判据同"高强度加密+强口令基本放弃在线爆"的通则(参见 Kerberoast 段的判据),这里额外的正交动作:对拿到 AS-REP hash 的账号做"用户画像"(创建时间/命名习惯/所在 OU),把爆破算力只花在画像上"最有可能是弱口令"的少数账号,别全表跑。
-**Q6**: AS-REP 也失败,还有什么"无凭据"起手?
-**A6**: 转向:LLMNR/NBNS/mDNS 投毒 → Responder 抓 NetNTLMv2;IPv6 mitm6 + ntlmrelay 打 LDAPS/ADCS;Web 端泄漏(Outlook Web Access 用户名验证、Autodiscover)。这些都不需要初始凭据。
+### AS-REP Roasting の判定基準
+**Q1**: AS-REP roast をしたい。有効な認証情報なしでもできるか?
+**A1**: 不要。88 番ポートへ接続でき、ユーザー名リストを知っていればよい。`GetNPUsers.py -no-pass` を使う。したがってユーザー名列挙が前提である。まず RID cycling(null session)、SMB 匿名、LDAP 匿名、Kerberoast 偵察 GetUserSPNs の副産物、外部漏えいユーザー名を行う。
+**Q2**: 一通り打ったが、全アカウントが事前認証を有効化していて hash が取れない?
+**A2**: 現代の AD はデフォルトで事前認証を開く。歴史的遺留/旧アプリ互換でのみオフになる。判定基準:この経路は「低コストの拾い物」であり、取れなければそのまま諦め、時間を増やさない。Kerberoast かパスワードスプレーへ転換する。
+**Q3**: AS-REP hash を大量に取得した。どれからブルートフォースする?
+**A3**: 順序戦略:①人名らしい命名 > サービスらしい命名(サービスパスワードは通常乱数)。②admincount=1 を優先。③作成時刻が古いアカウント(古いアカウントはパスワードが弱い可能性)。④最近パスワード変更したアカウント(アクティブであることを示す)。
+**Q4**: AS-REP がひとつブルートフォースできたが、一般社員らしい。深掘りする価値は?
+**A4**: ある。第一歩:そのユーザーがローカル管理者か(グループポリシー/通常展開)、あるワークステーションの「主ユーザー」か(LAPS 前の時代は個人機管理者権限がよくある)。第二歩:BloodHound で DA への outbound path が何ホップかを確認する。
+**Q5**: hash 種別が etype 17/18 (AES) で、ブルートフォース速度が極端に遅い。どうする?
+**A5**: 判定基準は「高強度暗号+強パスワードはオンラインブルートフォースを基本諦める」という通則と同じ(Kerberoast 節の判定基準を参照)。ここでの追加の直交動作は、AS-REP hash を取ったアカウントを「ユーザープロファイル」(作成時刻/命名習慣/所属 OU)し、ブルートフォース算力を「プロファイル上最も弱いパスワードの可能性が高い」少数アカウントだけに費やす。全テーブルを回さない。
+**Q6**: AS-REP も失敗。他に「無認証情報」で始められる手は?
+**A6**: 転換する。LLMNR/NBNS/mDNS 毒入れ → Responder で NetNTLMv2 を取得、IPv6 mitm6 + ntlmrelay で LDAPS/ADCS を打つ、Web 側漏えい(Outlook Web Access ユーザー名検証、Autodiscover)。これらは初期認証情報を必要としない。
 
-### 无凭据抓 NetNTLMv2:Responder 时机
-**Q1**: 想在同网段抓 NetNTLMv2,先看什么?
-**A1**: 判据三问:①同广播域吗(不同 VLAN 就洗洗睡);②是否有 SMB 签名强制(强制签名 relay 就废,但 hash 抓取仍可);③晚上白天(用户活跃时段 hash 多)。先被动嗅探 10 分钟,看 LLMNR/NBNS 请求量,再决定要不要开污染。
-**Q2**: 请求量很少,毒污没鱼上钩?
-**A2**: 主动"引流":WPAD 相关请求(浏览器代理自动发现)、SMB 空共享路径(Word 里嵌 UNC、邮件里塞图片 UNC)、web 应用里的 SSRF 打自己 SMB。制造流量再钓。
-**Q3**: 抓到 hash,爆不出来,还有什么用?
-**A3**: 转向 relay:ntlmrelayx 打 LDAP(改 ACL、加机器)、打 ADCS Web Enrollment(拿证书)、打 SMB(需要签名未强制)。抓 hash 只是入口,relay 才是杀招。
-**Q4**: 全网 SMB 强制签名 + EPA + LDAP 签名,relay 也废?
-**A4**: 转向"降签名"或换协议维度:MS-DFSCOERCE / PetitPotam / PrinterBug 强制机器账号回连(机器账号回连 LDAP 不带签名限制);或走 HTTP → LDAPS 跨协议(签名协商差异)。
-**Q5**: 判据:什么时候该停止投毒?
-**A5**: 蓝队高度可能装了 Responder-detection(假名毒污请求)。看到自己伪造的 hostname 请求回来了就立刻停,这是蜜罐信号。
-**Q6**: 完全没法抓/毒/relay,还有什么内网无凭据路径?
-**A6**: 转向未认证 CVE:zerologon(补丁看时间线)、PrintNightmare、Exchange ProxyLogon/Shell、SMBGhost、EternalBlue(老网可能有)。凭据薅取跑不通就走漏洞维度。
+### 無認証情報で NetNTLMv2 を取得:Responder のタイミング
+**Q1**: 同一ネットワークセグメントで NetNTLMv2 を取得したい。まず何を見る?
+**A1**: 判定基準の三問:①同一ブロードキャストドメインか(別 VLAN なら諦める)。②SMB 署名強制があるか(強制署名なら relay は無駄だが hash 取得は可能)。③夜か昼か(ユーザーが活発な時間帯は hash が多い)。まず 10 分間パッシブスニッフィングし、LLMNR/NBNS リクエスト量を見てから汚染を開始するか決める。
+**Q2**: リクエスト量が少なく、毒入れしても魚がかからない?
+**A2**: 能動的に「誘導」する。WPAD 関連リクエスト(ブラウザのプロキシ自動発見)、SMB 空共有パス(Word に UNC を埋め込む、メールに UNC 画像を埋め込む)、Web アプリの SSRF で自分の SMB を叩く。トラフィックを作ってから釣る。
+**Q3**: hash を取得したがブルートフォースできない。他に使い道は?
+**A3**: relay へ転換する。ntlmrelayx で LDAP(ACL 変更、マシン追加)、ADCS Web Enrollment(証明書取得)、SMB(署名非強制が必要)を打つ。hash 取得は入口に過ぎず、relay が本命である。
+**Q4**: 全ネットワークで SMB 強制署名 + EPA + LDAP 署名、relay も無駄?
+**A4**: 「署名を下げる」またはプロトコル次元を変える。MS-DFSCOERCE / PetitPotam / PrinterBug でマシンアカウントに逆接続させる(マシンアカウントの逆接続 LDAP は署名制限なし)。または HTTP → LDAPS のクロスプロトコル(署名ネゴシエーションの差異)へ進む。
+**Q5**: 判定基準:いつ毒入れを止めるか?
+**A5**: ブルーチームが Responder-detection(偽名毒入れリクエスト)を仕掛けている可能性が高い。自分の偽造 hostname リクエストが返ってきたら即座に止める。これはハニーポットのシグナルである。
+**Q6**: 取得/毒入れ/relay が全くできない。他に内網無認証情報経路は?
+**A6**: 未認証 CVE へ転換する。zerologon(パッチはタイムラインで確認)、PrintNightmare、Exchange ProxyLogon/Shell、SMBGhost、EternalBlue(古いネットワークにはありうる)。認証情報収集が通らないなら脆弱性次元へ進む。
 
-### 银票 vs 金票:场景怎么选
-**Q1**: 拿到域用户 hash,想用票据类攻击,银票还是金票?
-**A1**: 银票=服务账号 hash 伪造 ST,只对该服务生效,不需要域管;金票=krbtgt hash 伪造 TGT,全域通吃,但需要 DCSync/域管前置。判据:如果只是要访问某台 SQL/CIFS,银票就够;如果要长期后门,金票。
-**Q2**: 银票的隐蔽性和局限性?
-**A2**: 隐蔽性高(不经过 KDC 走 TGS),但一旦服务账号改密码就废;而且 PAC 校验开启的域(2019+)会被 KDC 二次验证——需要 pac 里的用户真实存在或用 S-1-5-21-...-500 这类。
-**Q3**: 金票拿到 krbtgt hash,是否立刻打?
-**A3**: 别立刻打。金票是"核弹级"IoC,一旦用就意味着被检测风险陡增。先想:是要一次性用、还是留后门?留后门就把 hash 保存好,退出场景,不留活动;要用就配合正常业务时间、正常主机、正常账号名做伪装。
-**Q4**: krbtgt hash 拿不到,想做类似效果?
-**A4**: 转向"钻石票据"/"蓝宝石票据"(diamond/sapphire ticket)——不需要 krbtgt hash,通过修改 KDC 返回的合法 TGT 里的 PAC,伪造权限,检测面比金票小。前置:需要能拦截或伪装 KDC 通信 + 有效账号。
-**Q5**: 服务账号 hash 有了但 PAC 校验拦了银票怎么办?
-**A5**: 转向 S4U2self + S4U2proxy(如果账号可约束委派)伪造为任意用户访问该服务;或直接用该服务账号本身的权限访问(可能就够)。
-**Q6**: 票据类都被检测/失败,回到根本怎么办?
-**A6**: 换维度到 ACL 滥用:GenericAll/WriteDACL/AddMember on 高权组、Shadow Credentials(msDS-KeyCredentialLink 写)、RBCD (msDS-AllowedToActOnBehalfOfOtherIdentity)。不用票据也能拿域。
+### シルバーチケット vs ゴールデンチケット:場面の選び方
+**Q1**: ドメインユーザー hash を取得した。チケット系攻撃をしたい。シルバーかゴールデンか?
+**A1**: シルバーチケット = サービスアカウント hash で ST を偽造。そのサービスのみに有効で、ドメイン管理者不要。ゴールデンチケット = krbtgt hash で TGT を偽造。全域を制覇するが、DCSync/ドメイン管理者の前提が必要。判定基準:特定の SQL/CIFS へのアクセスだけでよければシルバーで十分。長期バックドアが要るならゴールデン。
+**Q2**: シルバーチケットの隠密性と限界は?
+**A2**: 隠密性は高い(KDC を経由せず TGS を出す)。しかしサービスアカウントのパスワードが変われば無効。また PAC 検証が有効なドメイン(2019+)では KDC の二次検証を受けるため、pac 内のユーザーが実在するか、S-1-5-21-...-500 のようなものを使う必要がある。
+**Q3**: ゴールデンチケットの krbtgt hash を取得した。即座に打つべきか?
+**A3**: 即座に打たない。ゴールデンチケットは「核弾頭級」IoC で、一度使えば検知リスクが急上昇する。まず考える:一度きりで使うか、バックドアを残すか。バックドアなら hash を保存して場面から退出し、活動を残さない。使うなら正常な業務時間・正常なホスト・正常なアカウント名で偽装する。
+**Q4**: krbtgt hash が取れない。同様の効果が欲しい場合は?
+**A4**: 「ダイヤモンドチケット」/「サファイアチケット」(diamond/sapphire ticket)へ転換する。krbtgt hash が不要で、KDC が返した正当な TGT 内の PAC を改変して権限を偽造する。検知面はゴールデンより小さい。前提は、KDC 通信を遮断または偽装できること + 有効アカウント。
+**Q5**: サービスアカウント hash はあるが PAC 検証がシルバーチケットを遮断する?
+**A5**: S4U2self + S4U2proxy(アカウントが制約付き委任できる場合)で任意ユーザーとしてそのサービスへアクセスする形へ転換する。またはそのサービスアカウント自身の権限でアクセスする(それで十分な場合もある)。
+**Q6**: チケット系が全て検知/失敗した。根本に戻るには?
+**A6**: 次元を ACL 悪用へ変える。高権限グループへの GenericAll/WriteDACL/AddMember、Shadow Credentials(msDS-KeyCredentialLink 書き込み)、RBCD(msDS-AllowedToActOnBehalfOfOtherIdentity)。チケットなしでもドメインを取れる。
 
-### DCSync 前置权限判据
-**Q1**: 想 DCSync 拿 krbtgt,当前账号够格吗?
-**A1**: 需要 DS-Replication-Get-Changes 和 DS-Replication-Get-Changes-All 两个扩展权限。默认拥有:Domain Admins、Enterprise Admins、Administrators、Domain Controllers、Read-Only Domain Controllers 部分权限。用 BloodHound 或 `dsacls` 查当前身份是否 inherited 或 explicit 有这两个权限。
-**Q2**: 没有 DCSync 权限,能提到吗?
-**A2**: 找中间跳板:①对域根对象有 WriteDACL 的账号(能给自己加权限);②对某组有 AddMember 的账号(加到高权组);③某遗忘的服务账号历史上被授权过。BloodHound 的 shortest path to DA 就是找这个。
-**Q3**: 拿到 krbtgt hash 后立即 DCSync 更多账号吗?
-**A3**: 不要在 DC 上重复动作。一次连接 dump 全部关注账号:krbtgt、Administrator、DA 组成员、目标业务账号、机器账号(高价值服务器)。批量一次,减少 4662 日志次数。
-**Q4**: DCSync 被 SACL 监控/被 4662 告警怎么办?
-**A4**: 转向"离线抓"——如果能触及 DC 磁盘(vSphere 快照、备份文件、shadow copy),直接 dump `ntds.dit` + SYSTEM hive,离线 secretsdump。无网络流量。
-**Q5**: DC 全部有 EDR + LSA Protection + 备份加密?
-**A5**: 转向不 dump DC 也拿域权:ADCS ESC 系列直接伪造证书当 DA、Golden SAML(如果域联邦到 ADFS 且拿到 token 签名密钥)、Azure AD Connect Sync 账号(如果 hybrid)。凭据薅取有域外路径。
-**Q6**: 拿到 krbtgt 但发现是 read-only DC(RODC)?
-**A6**: RODC 的 krbtgt 是独立的、只能签发 RODC 缓存过的用户 TGT。判据:如果 RODC 缓存策略允许某高价值账号,就伪造那个用户;否则这个 hash 价值有限,转向找可写 DC。
+### DCSync 前提権限の判定基準
+**Q1**: DCSync で krbtgt を取りたい。現在のアカウントは十分か?
+**A1**: DS-Replication-Get-Changes と DS-Replication-Get-Changes-All の二つの拡張権限が必要。デフォルトでは Domain Admins、Enterprise Admins、Administrators、Domain Controllers、Read-Only Domain Controllers の一部権限が持つ。BloodHound または `dsacls` で現在の身元がこの二権限を継承または明示的に持つかを調べる。
+**Q2**: DCSync 権限がない。昇格できるか?
+**A2**: 中間の踏み台を探す。①ドメインルートオブジェクトに WriteDACL を持つアカウント(自分に権限を追加できる)。②あるグループに AddMember を持つアカウント(高権限グループへ追加)。③忘れられたサービスアカウントが過去に認可されていたケース。BloodHound の shortest path to DA がこれを探す。
+**Q3**: krbtgt hash を取得後、即座に DCSync でさらにアカウントを取るべきか?
+**A3**: DC 上で動作を繰り返さない。一度の接続で関心対象をまとめて dump する。krbtgt、Administrator、DA グループメンバー、対象業務アカウント、マシンアカウント(高価値サーバー)。まとめて一度で行い、4662 ログ回数を減らす。
+**Q4**: DCSync が SACL 監視されている、または 4662 でアラートされる?
+**A4**: 「オフラインで取る」へ転換する。DC ディスクに触れられるなら(vSphere スナップショット、バックアップファイル、shadow copy)、`ntds.dit` + SYSTEM hive を直接 dump し、オフライン secretsdump する。ネットワークトラフィックなし。
+**Q5**: DC 全てに EDR + LSA Protection + バックアップ暗号化がある?
+**A5**: DC を dump せずにドメイン権を取る方向へ転換する。ADCS ESC 系で証明書を直接偽造して DA になる、Golden SAML(ドメインが ADFS に連携し token 署名鍵を取得した場合)、Azure AD Connect Sync アカウント(hybrid の場合)。認証情報収集にはドメイン外経路がある。
+**Q6**: krbtgt を取得したが read-only DC(RODC)だと判明した?
+**A6**: RODC の krbtgt は独立しており、RODC がキャッシュしたユーザー TGT しか発行できない。判定基準:RODC キャッシュポリシーがある高価値アカウントを許可していればそのユーザーを偽造する。そうでなければこの hash の価値は限定的で、書き込み可能 DC を探す方向へ転換する。
 
-### ntds.dit 离线导出的三条路
-**Q1**: 已在 DC 上,想拿 ntds.dit,选哪条最安静?
-**A1**: 三选一:①`ntdsutil "ac i ntds" "ifm" "create full C:\temp"`(创建 IFM 备份,官方工具,IoC 低);②卷影副本 vssadmin/diskshadow 复制;③直接 esentutl copy 加载中的 ntds.dit。都需要 SYSTEM hive 一起才能解密。判据:ntdsutil 最白但事件 ID 明显;shadow 中等;esentutl 直接 copy 有时会失败。
-**Q2**: ntdsutil 触发 4104/事件日志怎么办?
-**A2**: 转 diskshadow 脚本模式:`create` → `add volume` → `expose` → `copy`,配合 `-tempfolder` 隐藏路径。或者用 WMI 远程 shadow,不在 DC 上落 shell。
-**Q3**: 拿回 ntds.dit + SYSTEM,怎么解?
-**A3**: `secretsdump.py -ntds ntds.dit -system SYSTEM LOCAL`,输出所有域账号 NTLM + Kerberos key。海量,别都爆——按 admincount、组、命名过滤。
-**Q4**: DC 上没管理员权限,只是有对某备份系统的访问?
-**A4**: 转向"从备份里抢":Veeam/Commvault/NetBackup 备份存储里几乎必有近期 DC 系统状态备份,拿到备份 = 拿到 ntds.dit。这是绕过 DC 直连的经典路径。
-**Q5**: 备份也拿不到、DC 也上不去?
-**A5**: 转向"不需要 ntds.dit 也拿域"路径:ADCS 证书打全域(ESC1/6/8 尤其致命)、Coerce+relay 到 LDAP 改 ACL、找 tier-0 服务(SCCM、Exchange、Azure AD Connect)间接拿 DA。
-**Q6**: 拿到 ntds.dit 后长期利用的姿势?
-**A6**: 记录 krbtgt hash 生成金票(备用后门,但慎用),记录所有高权 hash 做未来重放,并注意 krbtgt 密码轮换周期——一旦目标 rotate 两次(需要两次因为兼容),金票失效。
+### ntds.dit オフライン抽出の三経路
+**Q1**: 既に DC 上だ。ntds.dit を取りたい。どれが最も静かか?
+**A1**: 三択。①`ntdsutil "ac i ntds" "ifm" "create full C:\temp"`(IFM バックアップ作成。公式ツールで IoC が低い)。②ボリュームシャドウコピー vssadmin/diskshadow でコピー。③esentutl でロード中の ntds.dit を直接コピー。いずれも復号には SYSTEM hive が一緒に必要。判定基準:ntdsutil が最もホワイトだがイベント ID が明確。shadow は中程度。esentutl の直接コピーは失敗することがある。
+**Q2**: ntdsutil が 4104/イベントログをトリガーする?
+**A2**: diskshadow スクリプトモードへ転換する。`create` → `add volume` → `expose` → `copy` を `-tempfolder` の隠しパスと組み合わせる。または WMI リモート shadow で DC 上にシェルを落とさない。
+**Q3**: ntds.dit + SYSTEM を持ち帰った。どう復号する?
+**A3**: `secretsdump.py -ntds ntds.dit -system SYSTEM LOCAL` で全ドメインアカウントの NTLM + Kerberos key を出力する。膨大なので全てブルートフォースせず、admincount、グループ、命名でフィルタする。
+**Q4**: DC 上の管理者権限はないが、あるバックアップシステムへのアクセスだけある?
+**A4**: 「バックアップから奪う」へ転換する。Veeam/Commvault/NetBackup のバックアップストレージにはほぼ確実に DC のシステム状態バックアップが直近にある。バックアップ取得 = ntds.dit 取得。これは DC 直結を迂回する古典経路である。
+**Q5**: バックアップも取れず、DC にも入れない?
+**A5**: 「ntds.dit なしでドメインを取る」経路へ転換する。ADCS 証明書で全域を打つ(ESC1/6/8 が特に致命的)、Coerce+relay で LDAP の ACL を変更、tier-0 サービス(SCCM、Exchange、Azure AD Connect)を探して間接的に DA を取る。
+**Q6**: ntds.dit を取得後の長期利用の姿勢は?
+**A6**: krbtgt hash を記録してゴールデンチケットを生成する(予備バックドアだが慎重に使用)、全高権限 hash を記録して将来のリプレイに使う、krbtgt パスワード輪換周期に注意する。対象が二度ローテートすると(互換性のため二度必要)、ゴールデンチケットは無効になる。
 
-### 机器账号 hash 的价值挖掘
-**Q1**: LSASS 里翻到本机 `<HOSTNAME>$` 的 hash,能干啥?
-**A1**: 机器账号 hash 天生不能爆(128 字节随机),但可以:①做该机器的银票(伪造访问自己上的服务)、②S4U/RBCD 相关攻击、③PKINIT UnPAC-the-hash 反查、④直接 pass-the-hash 认证到本机的服务。别丢。
-**Q2**: 机器账号能不能加入到其他机器的 RBCD?
-**A2**: 关键:每个域用户/机器默认能创建 10 个机器账号(ms-DS-MachineAccountQuota),即使不是 DA,拿到普通域凭据就能造一个新机器账号 → 配置 RBCD 到目标机器 → S4U 成任意用户到目标机器。经典权限提升链。
-**Q3**: MachineAccountQuota=0(锁死)怎么办?
-**A3**: 转向"劫持已有机器账号"这个维度:如果对某机器对象有 GenericWrite/GenericAll(如某维护组),写 msDS-AllowedToActOnBehalfOfOtherIdentity 或 msDS-KeyCredentialLink,达到同等效果,不需要造新账号。
-**Q4**: 机器账号 hash 能横向吗?
-**A4**: 可以但受限:pass-the-hash 用 `<HOST>$` 认证到其他机器,通常权限是 Authenticated Users,除非该机器账号本身在其他机器的本地管理员组(罕见但存在,尤其 SCCM/集群场景)。
-**Q5**: 拿到 DC 的机器账号 hash 呢?
-**A5**: 等价于 DCSync 权限——因为 DC 机器账号有复制权限。所以 dump DC 上 LSASS 或 SAM 拿到自己的机器账号 hash 就能 DCSync,不需要"域管"这个身份标签。
-**Q6**: 机器账号 hash 突然认证失败?
-**A6**: 机器账号会自动轮换密码(默认 30 天),hash 有保鲜期。判据:如果距离 pwdLastSet 快到 30 天,立刻用,别囤。或者用 Delegate2Thyself 等技巧拿新 hash。
+### マシンアカウント hash の価値掘り起こし
+**Q1**: LSASS に本機 `<HOSTNAME>$` の hash を見つけた。何ができる?
+**A1**: マシンアカウント hash は本来ブルートフォース不能(128 バイト乱数)だが、①そのマシンのシルバーチケットを作る(自分のサービスへのアクセスを偽造)、②S4U/RBCD 関連攻撃、③PKINIT UnPAC-the-hash 逆照会、④本機サービスへの直接 pass-the-hash 認証ができる。捨てない。
+**Q2**: マシンアカウントを他マシンの RBCD に追加できるか?
+**A2**: 重要:各ドメインユーザー/マシンはデフォルトで 10 個のマシンアカウントを作成できる(ms-DS-MachineAccountQuota)。DA でなくても、一般ドメイン認証情報を取得すれば新マシンアカウントを作成できる → 対象マシンへ RBCD を設定 → S4U で任意ユーザーとして対象マシンへ到達。古典的な権限昇格チェーン。
+**Q3**: MachineAccountQuota=0(ロック)の場合は?
+**A3**: 「既存マシンアカウントの乗っ取り」次元へ転換する。あるマシンオブジェクトに GenericWrite/GenericAll がある場合(例: ある保守グループ)、msDS-AllowedToActOnBehalfOfOtherIdentity または msDS-KeyCredentialLink を書き、同等の効果を得る。新アカウント作成は不要。
+**Q4**: マシンアカウント hash で横展開できるか?
+**A4**: できるが限定的。pass-the-hash で `<HOST>$` として他マシンへ認証しても、通常は Authenticated Users の権限。ただしそのマシンアカウント自身が他マシンのローカル管理者グループにいる場合は別(SCCM/クラスタ場面で稀に存在)。
+**Q5**: DC のマシンアカウント hash を取得した場合は?
+**A5**: DCSync 権限と同等。DC マシンアカウントは複製権限を持つからだ。したがって DC 上の LSASS または SAM を dump して自分のマシンアカウント hash を取得すれば DCSync できる。「ドメイン管理者」という身元ラベルは不要。
+**Q6**: マシンアカウント hash が突然認証失敗する?
+**A6**: マシンアカウントはパスワードを自動ローテーションする(デフォルト 30 日)。hash には鮮度期間がある。判定基準:pwdLastSet から 30 日近いなら即座に使う。溜め込まない。または Delegate2Thyself などのテクニックで新しい hash を取る。
 
-### GPP cpassword:老矿脉的价值判据
-**Q1**: 值不值得翻 SYSVOL 找 GPP cpassword?
-**A1**: 值得,零权限即可访问(只需域用户读 SYSVOL 权限),5 分钟成本:`findstr /S /I cpassword \\<domain>\sysvol\<domain>\policies\*.xml`。命中的话 AES key 是公开的,直接解。
-**Q2**: 没命中?
-**A2**: 老矿脉一般 2014 补丁后就清了,但还有一些遗留位置:登录脚本 (.bat/.vbs) 里硬编码密码、Group Policy Preferences 除 cpassword 外的 Drives.xml/ScheduledTasks.xml、GPP 的 Registry.xml、SYSVOL 里的部署脚本、DFS 共享里遗留部署包。
-**Q3**: SYSVOL 翻完,还想低权限找口令?
-**A3**: 转向 LDAP `description`/`info` 字段:老 AD 里管理员爱把密码写在这里当便签。`Get-ADUser -Filter * -Properties description | ? { $_.description -match 'pass|pwd|密码' }`。
-**Q4**: LDAP 描述也没有?
-**A4**: 转向"共享文件级":网络共享匿名/域用户可读的目录,搜 config/xml/ini/txt 里的密码字段,或 `\\<fs>\backup\` 里的历史配置。SMB search 工具:snaffler / manspider。
-**Q5**: 什么时候该停止找"文件里的密码"?
-**A5**: 判据:已经 grep 覆盖了域用户可访问的 SYSVOL + 至少 3 个大共享 + 关键服务器的 C$/Admin$(如果有权),仍没结果 → 转向凭据源(浏览器/终端/服务)。
-**Q6**: 找到一个明文口令但账号早离职?
-**A6**: 别丢:①测密码复用(在职账号是否用了相似规律);②看这个账号有没有被禁用而只是密码过期(可能 NoPassExp 属性);③记录该企业的密码构造习惯(公司名+年份+特殊符号)喂给密码生成器。
+### GPP cpassword:古い鉱脈の価値判定
+**Q1**: SYSVOL を探して GPP cpassword を探す価値はあるか?
+**A1**: ある。ゼロ権限でアクセスできる(ドメインユーザーの SYSVOL 読み取り権限だけでよい)。5 分のコスト:`findstr /S /I cpassword \\<domain>\sysvol\<domain>\policies\*.xml`。ヒットすれば AES キーは公開されているので直接復号できる。
+**Q2**: ヒットしない?
+**A2**: 古い鉱脈は通常 2014 年パッチ後には掃除されているが、遺留箇所がある。ログオンスクリプト(.bat/.vbs)内のハードコードパスワード、Group Policy Preferences の cpassword 以外の Drives.xml/ScheduledTasks.xml、GPP の Registry.xml、SYSVOL の展開スクリプト、DFS 共有の遺留展開パッケージ。
+**Q3**: SYSVOL を掘り終えた。低権限でまだパスワードを探したい?
+**A3**: LDAP の `description`/`info` フィールドへ転換する。古い AD では管理者がここにパスワードをメモとして書くことがある。`Get-ADUser -Filter * -Properties description | ? { $_.description -match 'pass|pwd|パスワード' }`。
+**Q4**: LDAP 説明にもない?
+**A4**: 「共有ファイル単位」へ転換する。ネットワーク共有で匿名/ドメインユーザーが読めるディレクトリから config/xml/ini/txt のパスワードフィールド、または `\\<fs>\backup\` の履歴設定を検索する。SMB 検索ツール:snaffler / manspider。
+**Q5**: いつ「ファイル内のパスワード」探しをやめるか?
+**A5**: 判定基準:ドメインユーザーがアクセスできる SYSVOL + 最低 3 つの大共有 + 重要サーバーの C$/Admin$(権限があれば)を grep で網羅したのに結果なし → 認証情報源(ブラウザ/端末/サービス)へ転換する。
+**Q6**: 平文パスワードをひとつ見つけたが、アカウントは既に退職済み?
+**A6**: 捨てない。①パスワード再利用をテストする(現職アカウントが同様の規則を使っていないか)。②このアカウントが無効化されておらず、パスワード期限切れだけかを見る(NoPassExp 属性の可能性)。③この企業のパスワード構成習慣(会社名+年+特殊記号)を記録し、パスワード生成器に与える。
 
-### 浏览器凭据薅取
-**Q1**: 用户机上有 Chrome,想抓保存的密码,前置是什么?
-**A1**: 必须以该用户身份运行(或有其 DPAPI master key),因为 Chrome v80+ 的 encrypted_key 用 DPAPI 加密。SYSTEM 也不行,得 impersonate 用户 token 或走域备份 key。
-**Q2**: 用户没登录,只有磁盘怎么办?
-**A2**: 走离线 DPAPI 链:需要 master key + 用户密码/NTLM 或域 backup key。所以先解决"怎么拿这个用户的凭据",转个圈回来。
-**Q3**: 抓到密码,但发现是同步过的 Google 账号密码?
-**A3**: 高价值——Google 账号通常关联工作邮箱、企业 SSO(SAML)、云资源。看是否在企业 Google Workspace 里能横向到 GCP/Gmail/Drive。凭据薅取的目的不止是内网。
-**Q4**: Chrome cookie 呢?
-**A4**: 更有价值——cookie 直接免密登录,绕过 MFA。目标 cookie:企业 SSO(Okta/Auth0/AzureAD)、云控制台(AWS/Azure/GCP)、代码仓库(GitHub/GitLab)、内部管理台。同样需要 DPAPI 解 encrypted_value。
-**Q5**: Edge/Firefox 呢?
-**A5**: Edge 同 Chrome (DPAPI + AES-GCM)。Firefox 用 key4.db + logins.json,主密码可能未设(默认无主密码),用 firefox_decrypt 之类工具直接解。
-**Q6**: 浏览器都没有保存凭据?
-**A6**: 转向"其他保存凭据源":WSL 里的 .git-credentials、~/.aws/credentials、~/.ssh/、%APPDATA% 下各种 IM/开发工具、注册表 HKCU\Software 遍历 password 字段、Outlook 缓存邮件搜索"password/账号"关键字。
+### ブラウザ認証情報の収集
+**Q1**: ユーザー機に Chrome がある。保存パスワードを取る前提は?
+**A1**: そのユーザーとして実行する必要がある(または DPAPI master key を持つ)。Chrome v80+ の encrypted_key は DPAPI 暗号化のため。SYSTEM でもだめで、ユーザー token を impersonate するか domain backup key 経由へ進む。
+**Q2**: ユーザーが未ログオンでディスクだけの場合は?
+**A2**: オフライン DPAPI チェーンへ進む。master key + ユーザーパスワード/NTLM または domain backup key が必要。したがってまず「このユーザーの認証情報をどう取るか」を解決し、一周して戻る。
+**Q3**: パスワードを取得したが、同期済み Google アカウントのパスワードだと判明した?
+**A3**: 高価値。Google アカウントは通常、仕事用メール、企業 SSO(SAML)、クラウドリソースに関連する。企業 Google Workspace 内で GCP/Gmail/Drive へ横展開できるかを見る。認証情報収集の目的は内網だけではない。
+**Q4**: Chrome cookie は?
+**A4**: より価値が高い。cookie はパスワードなしで直接ログオンでき、MFA を迂回する。対象 cookie:企業 SSO(Okta/Auth0/AzureAD)、クラウドコンソール(AWS/Azure/GCP)、コードリポジトリ(GitHub/GitLab)、内部管理コンソール。同じく DPAPI で encrypted_value を復号する必要がある。
+**Q5**: Edge/Firefox は?
+**A5**: Edge は Chrome と同じ(DPAPI + AES-GCM)。Firefox は key4.db + logins.json を使い、マスターパスワードが未設定のことがある(デフォルトはマスターパスワードなし)。firefox_decrypt などのツールで直接復号する。
+**Q6**: ブラウザに保存認証情報がない?
+**A6**: 「他の保存認証情報源」へ転換する。WSL の .git-credentials、~/.aws/credentials、~/.ssh/、%APPDATA% 配下の各種 IM/開発ツール、レジストリ HKCU\Software を辿って password フィールド、Outlook キャッシュメールから "password/アカウント" キーワード検索。
 
-### token impersonation 的路子
-**Q1**: 有 SYSTEM,想借用某域管的 token,他刚登录过这台机器,怎么做?
-**A1**: 枚举当前进程的 token 所有者:`token::list`(mimikatz)、`incognito`(Meterpreter)、`SharpToken`。找有 SeImpersonatePrivilege 且属于目标用户的进程,`token::impersonate` 或 `steal_token <pid>`。
-**Q2**: 他登录过但已注销,token 还在吗?
-**A2**: 不在 process token 层了,但可能在 LSASS 缓存里(logon session)——转 mimikatz `sekurlsa::logonpasswords` 或 `sekurlsa::tickets` 拿他残留的 TGT/hash,而不是 token。
-**Q3**: token 拿到了,但只能本地用,想远程?
-**A3**: token 是本地进程属性,不能带走。要远程用:①从 token 关联的 logon session 里抠出 TGT(`sekurlsa::tickets /export`),然后 pass-the-ticket;②或从 LSASS 里挖 NTLM/明文,pass-the-hash/明文认证到其他机器。
-**Q4**: SeImpersonatePrivilege 我没有,怎么办?
-**A4**: 转向"提到有 impersonate":Potato 系列(Rogue/Juicy/Print/Rotten)本质是把网络服务的 NTLM auth 反射回来给自己,前提是有 SeImpersonate(服务账号常有)或某些 COM/DCOM 触发条件。没 impersonate 就要先 SYSTEM。
-**Q5**: 用了 token 之后忘记 revert,会有什么后果?
-**A5**: 后续操作以该用户身份被审计,可能"背锅"或触发行为异常告警(该用户从不该登录的机器发起动作)。用完立刻 `rev2self`。
-**Q6**: 目标机器上一个高权用户都没登过,token 无鱼可钓?
-**A6**: 转向"制造登录":引诱管理员登录(伪造工单/系统故障)、hijack RDP session (query session + tscon,需要 SYSTEM,能接管断开的会话拿到该用户 token 全套)、劫持服务让高权账号跑我的进程。
+### token impersonation の手法
+**Q1**: SYSTEM がある。あるドメイン管理者の token を借りたい。彼がこのマシンにさっきログオンした。どうする?
+**A1**: 現在のプロセスの token 所有者を列挙する。`token::list`(mimikatz)、`incognito`(Meterpreter)、`SharpToken`。SeImpersonatePrivilege を持ち、対象ユーザーに属するプロセスを探し、`token::impersonate` または `steal_token <pid>`。
+**Q2**: 彼がログオンしたが既にログオフした。token は残っているか?
+**A2**: process token 層にはないが、LSASS キャッシュに残っている可能性がある(logon session)。mimikatz の `sekurlsa::logonpasswords` または `sekurlsa::tickets` へ転換し、彼の残留 TGT/hash を取る。token ではなく。
+**Q3**: token を取得したがローカルでしか使えない。リモートで使いたい?
+**A3**: token はローカルプロセスの属性であり持ち出せない。リモートで使うには:①token に紐づく logon session から TGT を抜き(`sekurlsa::tickets /export`)、pass-the-ticket する。②または LSASS から NTLM/平文を掘り、pass-the-hash/平文で他マシンへ認証する。
+**Q4**: SeImpersonatePrivilege がない場合は?
+**A4**: 「impersonate を持てるように権限昇格」へ転換する。Potato 系(Rogue/Juicy/Print/Rotten)の本質はネットワークサービスの NTLM auth を反射して自分に戻すことで、前提は SeImpersonate(サービスアカウントによくある)または一部の COM/DCOM トリガー条件。impersonate がなければ先に SYSTEM へ。
+**Q5**: token を使った後に revert を忘れると、どんな結果になる?
+**A5**: 後続操作がそのユーザーとして監査され、「濡れ衣」になるか、異常挙動アラート(そのユーザーが本来ログオンしないマシンからの動作)を誘発する。使い終わったら即座に `rev2self`。
+**Q6**: 対象マシンに高権限ユーザーが誰もログオンしたことがない。token に釣れる魚がいない?
+**A6**: 「ログオンを作り出す」へ転換する。管理者ログオンを誘導する(偽チケット/システム障害)、RDP セッションをハイジャックする(query session + tscon。SYSTEM が必要。切断されたセッションを乗っ取り、そのユーザー token 一式を取得)、サービスを乗っ取り高権限アカウントに自分のプロセスを実行させる。
 
-### RDP 会话劫持
-**Q1**: 看到 `query user` 里有断开的管理员 RDP 会话,想劫持,怎么做?
-**A1**: SYSTEM 权限下 `tscon <sessionid> /dest:<mysession>`——直接接管,不需要该用户密码。这是 Windows 特性不是漏洞,但极其致命。判据:必须 SYSTEM(不是管理员),所以先提到 SYSTEM。
-**Q2**: 会不会被察觉?
-**A2**: 会——原会话用户如果重连会发现异常,而且日志里有 4779/4778(session reconnected)。用之前先 `logoff` 我自己 session,再劫持,尽量在下班后。
-**Q3**: 只有活跃(active)会话没有断开的?
-**A3**: 转向"等断开"——可以监控 `query session`,或制造断开(RDP disconnect 有专门 API,或强断该用户网络)。也可以劫持活跃会话,但会立刻踢掉原用户 → 立刻被发现。
-**Q4**: 目标机不允许多会话/tscon 被组策略禁?
-**A4**: 转向不需要 tscon 的方案:用该用户已登录事实,直接 impersonate 其 token(前面链)、mimikatz 从 LSASS 抠他的凭据、进程注入到该用户 explorer.exe 拿身份。
-**Q5**: 劫持后我在他的桌面,他重登进来了怎么办?
-**A5**: 提前准备:进程注入 explorer 后立刻退出被劫持会话,让身份 impersonation 或凭据保留在 background;或者立即启动一个隐蔽持久化(计划任务/服务)确保退出后仍能回来。
-**Q6**: 完全没 RDP 用户?
-**A6**: 换 pipe hijack(命名管道模拟)、smb impersonation、或者干脆钓鱼路线让高权用户主动登录目标机(社工/伪造运维需求)。
+### RDP セッションハイジャック
+**Q1**: `query user` に切断された管理者 RDP セッションがある。ハイジャックしたい。どうする?
+**A1**: SYSTEM 権限で `tscon <sessionid> /dest:<mysession>`。直接乗っ取り、そのユーザーのパスワードは不要。これは Windows の仕様であり脆弱性ではないが、極めて致命的。判定基準:SYSTEM でなければならない(管理者ではない)。したがって先に SYSTEM へ権限昇格する。
+**Q2**: 気付かれるか?
+**A2**: 気付かれる。元セッションのユーザーが再接続すれば異常に気付き、ログに 4779/4778(session reconnected)が残る。使う前に自分の session を `logoff` し、その後ハイジャックする。できるだけ退勤後に行う。
+**Q3**: アクティブ(active)セッションしかなく、切断されたものがない?
+**A3**: 「切断を待つ」へ転換する。`query session` を監視するか、切断を作り出す(RDP disconnect の専用 API、またはそのユーザーのネットワークを強制切断)。アクティブセッションもハイジャックできるが、元ユーザーを即座に蹴り出すため即座に発覚する。
+**Q4**: 対象マシンが複数セッションを許可しない、または tscon がグループポリシーで無効?
+**A4**: tscon 不要の方式へ転換する。そのユーザーがログオン済みという事実を使い、直接 token を impersonate する(前述のチェーン)、mimikatz で LSASS から彼の認証情報を抜く、彼の explorer.exe へプロセス注入して身元を取る。
+**Q5**: ハイジャック後、彼のデスクトップにいる状態で彼が再ログオンしてきたら?
+**A5**: 事前に準備する。explorer へプロセス注入後、即座にハイジャックセッションを抜け、身元 impersonation または認証情報を background に保持する。または即座に隠密な永続化(スケジュールタスク/サービス)を仕込み、退出後も戻れるようにする。
+**Q6**: RDP ユーザーがまったくいない?
+**A6**: pipe hijack(名前付きパイプのなりすまし)、smb impersonation、またはフィッシング経路で高権限ユーザーに自発的に対象機へログオンさせる(ソーシャルエンジニアリング/偽の運用ニーズ)へ転換する。
 
-### coerce 强制回连:PetitPotam 家族
-**Q1**: 拿到普通域凭据,想让某台机器/DC 主动认证到我,怎么选 coerce 方法?
-**A1**: 家族:PetitPotam (MS-EFSR)、PrinterBug (MS-RPRN)、DFSCoerce (MS-DFSNM)、ShadowCoerce (MS-FSRVP)。判据:目标补丁状况不同,依次尝试,一个失败换下一个。DFSCoerce 补丁面较小,优先。
-**Q2**: coerce 成功,收到 NTLM 认证,拿去干嘛?
-**A2**: 三个方向:①relay 到 LDAP/LDAPS(改 ACL、给自己加 DCSync);②relay 到 ADCS Web Enrollment(拿机器证书,再 UnPAC hash);③relay 到 SMB(如果签名未强制)。ADCS relay (ESC8) 是重头戏。
-**Q3**: 目标是 DC,但 DC 有补丁+签名强制?
-**A3**: 补丁堵一个洞,别的可能还开着(补丁体系不完整)。逐个 API 测。签名强制堵 SMB relay 但不堵 LDAPS relay(需要 EPA 才能堵)。ADCS Web 默认不启 EPA,是 ESC8 的经典 sink。
-**Q4**: 没有 ADCS 环境?
-**A4**: 转向 LDAP/LDAPS relay + 添加 msDS-AllowedToActOnBehalfOfOtherIdentity 到目标机器(RBCD 攻击链),然后 S4U 拿目标机器的 admin ticket。
-**Q5**: coerce API 全被堵,MS-EFSRPC/MS-RPRN 都返回 access denied?
-**A5**: 转向"WebDAV coerce"(如 WebClient 服务开着,可以让机器走 HTTP 认证,而 HTTP relay 到 LDAPS 不受签名限制);或者放弃 coerce 转向凭据窃取路径。
-**Q6**: 判据:什么时候放弃 relay 转其他?
-**A6**: 已经尝试 3+ coerce API × 3+ relay target 都失败 → 说明目标环境防御完整,转向漏洞维度(ADCS ESC1/ESC7/CVE)、或者社工/物理。
+### coerce 強制逆接続:PetitPotam ファミリー
+**Q1**: 一般ドメイン認証情報を取得した。あるマシン/DC に自分へ能動認証させたい。coerce 手法をどう選ぶ?
+**A1**: ファミリー:PetitPotam (MS-EFSR)、PrinterBug (MS-RPRN)、DFSCoerce (MS-DFSNM)、ShadowCoerce (MS-FSRVP)。判定基準:対象のパッチ状態が異なるため、順に試し、失敗したら次へ。DFSCoerce はパッチ面が小さく、優先する。
+**Q2**: coerce 成功、NTLM 認証を受信した。何に使う?
+**A2**: 三方向。①LDAP/LDAPS へ relay(ACL 変更、自分に DCSync 追加)。②ADCS Web Enrollment へ relay(マシン証明書を取得し、UnPAC hash)。③SMB へ relay(署名非強制の場合)。ADCS relay(ESC8)が主役である。
+**Q3**: 対象が DC で、パッチ+署名強制がある?
+**A3**: パッチは一穴を塞ぐが、他はまだ開いている可能性がある(パッチ体系は不完全)。API を個別にテストする。署名強制は SMB relay を塞ぐが LDAPS relay は塞がない(EPA が要る)。ADCS Web はデフォルトで EPA を有効化しないため、ESC8 の古典的シンクである。
+**Q4**: ADCS 環境がない?
+**A4**: LDAP/LDAPS relay + 対象マシンへの msDS-AllowedToActOnBehalfOfOtherIdentity 追加(RBCD 攻撃チェーン)へ転換し、その後 S4U で対象マシンの admin チケットを取る。
+**Q5**: coerce API が全て塞がれ、MS-EFSRPC/MS-RPRN が access denied を返す?
+**A5**: 「WebDAV coerce」へ転換する(WebClient サービスが開いていれば、マシンに HTTP 認証させられる。HTTP relay から LDAPS は署名制限を受けない)。または coerce を諦めて認証情報窃取経路へ転換する。
+**Q6**: 判定基準:いつ relay を諦めて他へ転換するか?
+**A6**: 3+ の coerce API × 3+ の relay 先を全て試して失敗 → 対象環境の防御が完全であることを示す。脆弱性次元(ADCS ESC1/ESC7/CVE)、またはソーシャルエンジニアリング/物理へ転換する。
 
-### Kerberos 委派滥用的选择树
-**Q1**: BloodHound 显示某账号有 unconstrained delegation,怎么用?
-**A1**: 引诱域管到该机器认证,LSASS 里就会有 DA 的 TGT。coerce DC 认证过来(PrinterBug 到 DC),然后从我们控制的 unconstrained 机器上 sekurlsa::tickets 拿 DC$ TGT → DCSync。
-**Q2**: 只有 constrained delegation (with protocol transition) 呢?
-**A2**: S4U2self + S4U2proxy 组合:先给自己签一个"任意用户"到该账号自己的 ticket,再用它 S4U2proxy 到委派允许的目标服务。判据:允许的服务清单在 msDS-AllowedToDelegateTo。
-**Q3**: 目标账号是 Protected Users 组成员,S4U 失败?
-**A3**: Protected Users 禁止委派、禁止 NTLM、禁止 DES/RC4。S4U 目标是这类账号直接废。转向:攻击可以委派到该用户的对象(反向找)、或者不走委派走别的(ADCS)。
-**Q4**: RBCD 场景,前提是什么?
-**A4**: 需要:①对目标机器有 GenericAll/GenericWrite 或 WriteProperty on msDS-AllowedToActOnBehalfOfOtherIdentity;②有一个能创建的 SPN 账号(自己造机器账号或已控账号)。前提缺就补前提(找 ACL 路径)。
-**Q5**: 委派全部关闭/被 Authentication Silo 隔离?
-**A5**: Authentication Policy Silo 会限制 tier-0 账号只能从 tier-0 机器登录,委派也受限。转向 ADCS(证书身份不走 Kerberos 委派限制)、或者拿 tier-0 主机再说。
-**Q6**: 委派拿到的 ticket 只对某一个服务有效,想扩?
-**A6**: 用委派拿到 CIFS/HOST ticket 就等价该机器完整访问 → 从该机器再拿 LSASS/凭据 → 继续横向。ticket 是入口不是终点。
+### Kerberos 委任悪用の選択ツリー
+**Q1**: BloodHound があるアカウントに unconstrained delegation があると表示した。どう使う?
+**A1**: ドメイン管理者をそのマシンへ認証させ、LSASS に DA の TGT を持たせる。coerce で DC を認証させ(PrinterBug から DC へ)、制御下の unconstrained マシン上で sekurlsa::tickets から DC$ TGT を取得 → DCSync。
+**Q2**: constrained delegation (with protocol transition) だけの場合は?
+**A2**: S4U2self + S4U2proxy の組み合わせ。まず自分に「任意ユーザー」からそのアカウント自身へのチケットを署名し、それで S4U2proxy により委任先サービスへ行く。判定基準:許可サービスリストは msDS-AllowedToDelegateTo にある。
+**Q3**: 対象アカウントが Protected Users グループメンバーで S4U が失敗する?
+**A3**: Protected Users は委任、NTLM、DES/RC4 を禁止する。S4U の対象がこの種のアカウントならそのまま無効。転換:そのユーザーへ委任できるオブジェクトを逆に探すか、委任をやめて別(ADCS)へ進む。
+**Q4**: RBCD の場面で前提は何か?
+**A4**: ①対象マシンへの GenericAll/GenericWrite または msDS-AllowedToActOnBehalfOfOtherIdentity への WriteProperty が必要。②作成できる SPN アカウントがある(自分でマシンアカウントを作るか、制御済みアカウント)。前提が欠ければ前提を補う(ACL 経路を探す)。
+**Q5**: 委任が全て無効、または Authentication Silo で隔離されている?
+**A5**: Authentication Policy Silo は tier-0 アカウントを tier-0 マシンからのみログオン可能に制限し、委任も制限される。ADCS(証明書身元は Kerberos 委任制限を通らない)へ転換するか、tier-0 ホストを取ってから考える。
+**Q6**: 委任で取ったチケットがあるサービスにしか有効でない。拡大したい?
+**A6**: 委任で CIFS/HOST チケットを取ればそのマシンへの完全アクセスと同等 → そのマシンから LSASS/認証情報を取る → 横展開を続ける。チケットは入口であり終点ではない。
 
 ### Shadow Credentials (msDS-KeyCredentialLink)
-**Q1**: 对某目标账号有 GenericWrite,除了改密码还能做什么?
-**A1**: 改密码会破坏账号功能(用户会发现)。转向 Shadow Credentials:写 msDS-KeyCredentialLink 一个我的公钥 → PKINIT 用私钥换该账号的 TGT + NT hash(UnPAC)。零破坏,极隐蔽。
-**Q2**: 前置条件是什么?
-**A2**: 域内有 KDC 支持 PKINIT(基本都有)+ AD Schema >= 2016(WHfBTools 场景)。工具 pyWhisker / Whisker / ShadowSpray。
-**Q3**: 打完想清理痕迹?
-**A3**: 从 msDS-KeyCredentialLink 里移除我的 KeyCredential,还原属性。因为默认账号可能就一个也可能有多个(TPM/生物识别),别误删原有的。
-**Q4**: 目标账号 msDS-KeyCredentialLink 属性写入被拒?
-**A4**: 可能 schema 不支持或者 KRBTGT 相关保护。转向经典 RBCD、targeted Kerberoast(改密码/加 SPN)、或直接改密码(破坏性但有效)。
-**Q5**: 全域用户都可以对自己写 msDS-KeyCredentialLink?
-**A5**: 是的——ShadowSpray 场景:如果发现"authenticated users"或"self"对该属性有写权限(某些 misconfig),任何域用户都能给自己后门。批量喷检查环境是否弱配。
-**Q6**: 打完 UnPAC 拿到 NT hash 之后?
-**A6**: 就是标准 hash 后续 → PtH 或再滚一轮:如果是高权账号,拿去 DCSync;如果是服务账号,访问其服务;如果是普通用户,BloodHound outbound path。
+**Q1**: ある対象アカウントに GenericWrite がある。パスワード変更以外に何ができる?
+**A1**: パスワード変更はアカウント機能を壊す(ユーザーが気付く)。Shadow Credentials へ転換する。msDS-KeyCredentialLink に自分の公開鍵を書き → PKINIT で秘密鍵からそのアカウントの TGT + NT hash を交換する(UnPAC)。ゼロ破壊、極めて隠密。
+**Q2**: 前提条件は?
+**A2**: ドメインに KDC が PKINIT をサポートしている(ほぼ常にある)+ AD Schema が 2016 以上(WHfBTools 場面)。ツールは pyWhisker / Whisker / ShadowSpray。
+**Q3**: 打ち終わって痕跡を消したい?
+**A3**: msDS-KeyCredentialLink から自分の KeyCredential を削除し、属性を復元する。デフォルトのアカウントはひとつか複数の可能性があるため(TPM/生体認証)、元のものを誤って消さない。
+**Q4**: 対象アカウントの msDS-KeyCredentialLink 属性書き込みが拒否される?
+**A4**: schema 非対応または KRBTGT 関連保護の可能性。古典的 RBCD、targeted Kerberoast(パスワード変更/SPN 追加)、または直接パスワード変更(破壊的だが有効)へ転換する。
+**Q5**: 全域ユーザーが自分自身に msDS-KeyCredentialLink を書ける?
+**A5**: その通り。ShadowSpray の場面:ある misconfig で "authenticated users" や "self" がその属性に書き込み権限を持つなら、任意のドメインユーザーが自分にバックドアを仕込める。環境が弱設定かどうかを一括スプレーで確認する。
+**Q6**: 打ち終わって UnPAC で NT hash を取得した後は?
+**A6**: 標準の hash 後続 → PtH またはもう一周。高権限アカウントなら DCSync に持っていく。サービスアカウントならそのサービスへアクセス。一般ユーザーなら BloodHound の outbound path。
 
-### 密码喷洒的节奏和判据
-**Q1**: 手上有用户名列表想 spray,首先看什么?
-**A1**: 三件事:①域锁定策略(通过 `net accounts` 或 rpcclient/samr 查 lockout threshold/duration/observation window);②当前是否已被锁的账号(避免继续戳);③域业务时间(工作时间喷,登录失败混在正常噪声里)。
-**Q2**: 密码怎么选?
-**A2**: 三档:①公司/品牌相关(组织缩写+年份/数字后缀、缩写+特殊符号)、②季节/季度相关(季节/季度+当年份+符号)、③行业通用弱口令模式(通用词+数字/符号,来自常见公开字典)。每轮换一个,周期长于 observation window。具体值按目标 OSINT 结果生成,不预设。
-**Q3**: 喷了一轮都不中,继续吗?
-**A3**: 判据:如果密码策略 lockout=5,observation=30min,一天最多 4~5 轮 × 用户数。喷 3 轮无果 → 密码列表策略错误(公司文化偏离常识)、或者用户名列表污染 → 停下重新收集情报。
-**Q4**: 一个账号突然全部尝试都锁,别的正常?
-**A4**: 蜜罐账号信号(honey user)——这个账号是蓝队故意留的诱饵,任何认证都告警。立刻从列表移除,并且反思是否已被追溯。
-**Q5**: 喷到一个凭据,是低权用户,继续喷还是深入?
-**A5**: 深入优先:用这个凭据做 LDAP 完整枚举、BloodHound 收集、shares 探测、Kerberoast/AS-REP roast(现在有凭据了)。喷是入口,不是终点。
-**Q6**: 密码策略强 + lockout 严 + 蜜罐,完全喷不动?
-**A6**: 转向"无认证攻击":coerce、责任者协议欺骗、未认证 CVE、ADCS ESC8(HTTP relay)。或者用少量已知信息发起 targeted phishing 换真凭据。
+### パスワードスプレーのテンポと判定基準
+**Q1**: ユーザー名リストを手にスプレーしたい。まず何を見る?
+**A1**: 三つ。①ドメインのロックアウトポリシー(`net accounts` または rpcclient/samr で lockout threshold/duration/observation window を調べる)。②既にロックされているアカウント(突き続けるのを避ける)。③ドメインの業務時間(勤務時間にスプレーし、ログオン失敗を正常ノイズに混ぜる)。
+**Q2**: パスワードをどう選ぶ?
+**A2**: 三階層。①会社/ブランド関連(組織略称+年/数字サフィックス、略称+特殊記号)。②季節/四半期関連(季節/四半期+当年+記号)。③業界共通の弱いパスワードパターン(一般語+数字/記号。公開辞書由来)。毎ラウンドひとつ変え、周期を observation window より長くする。具体的な値は対象の OSINT 結果で生成し、事前に固定しない。
+**Q3**: 一ラウンドスプレーして全滅。続ける?
+**A3**: 判定基準:パスワードポリシー lockout=5、observation=30min なら、一日最大 4〜5 ラウンド × ユーザー数。3 ラウンド無効 → パスワードリスト戦略が誤り(企業文化が常識からずれている)、またはユーザー名リストが汚染されている → 止めてインテリジェンスを集め直す。
+**Q4**: あるアカウントだけ突然全試行がロックされ、他は正常?
+**A4**: ハニーポットアカウントのシグナル(honey user)。このアカウントはブルーチームが意図的に残した囮で、どんな認証もアラートされる。即座にリストから外し、追跡されていないか振り返る。
+**Q5**: 認証情報をひとつスプレーできたが低権限ユーザーだ。スプレーを続けるか深掘りするか?
+**A5**: 深掘りを優先する。この認証情報で LDAP 完全列挙、BloodHound 収集、shares 探索、Kerberoast/AS-REP roast(今は認証情報がある)を行う。スプレーは入口であり終点ではない。
+**Q6**: パスワードポリシー強 + lockout 厳格 + ハニーポット、全くスプレーできない?
+**A6**: 「無認証攻撃」へ転換する。coerce、責任者プロトコル詐称、未認証 CVE、ADCS ESC8(HTTP relay)。または少量の既知情報で targeted phishing を仕掛けて本物の認証情報と交換する。
 
-### LSA secrets 的宝藏
-**Q1**: SECURITY hive 里 LSA secrets 具体能挖什么?
-**A1**: 服务账号明文(如果服务配了域账号 run-as)、DPAPI SYSTEM key、DefaultPassword(自动登录时写这里)、机器账号缓存密码(NL$KM 等前缀)。impacket secretsdump 会自动分类输出。
-**Q2**: 看到 `_SC_服务名` 开头的,值得吗?
-**A2**: 极值得——这是"服务运行身份"的密码明文。命名带 svc/backup/sql 的都要关注,可能就是域内服务账号,权限往往在多台机器上有本地管理员。
-**Q3**: 看到 `NL$KM` 只有二进制?
-**A3**: 那是 domain cached credentials 的加密 key,配合 `$MACHINE.ACC` 使用。secretsdump 会自动整理输出 cached DCC2 hash 用于离线爆破。
-**Q4**: 一个 LSA secret 都没有?
-**A4**: 说明该机没配任何"以域身份运行"的服务,是纯客户端机。转向用户 profile 层的凭据(浏览器/Credential Manager/RDP 保存)、或该机器上文件系统里的配置文件。
-**Q5**: 拿到服务账号明文,直接横向?
-**A5**: 先枚举:该账号在域里的 memberOf、servicePrincipalName、AdminCount。看它是不是关键权限持有者;然后测本地管理员复用面(spray 到关键服务器)。
-**Q6**: 服务账号被禁用了,明文还有用吗?
-**A6**: 有——测试是不是"禁用但可用"(某些老配置)、测试历史密码是否被别的账号沿用、作为密码模式样本喂给字典生成器。
+### LSA secrets の宝
+**Q1**: SECURITY hive の LSA secrets から具体的に何を掘れる?
+**A1**: サービスアカウント平文(サービスがドメインアカウント run-as の場合)、DPAPI SYSTEM key、DefaultPassword(自動ログオン時にここに書かれる)、マシンアカウントキャッシュパスワード(NL$KM などの接頭辞)。impacket secretsdump が自動分類出力する。
+**Q2**: `_SC_サービス名` で始まるものを見た。価値は?
+**A2**: 極めて価値が高い。「サービス実行身元」のパスワード平文である。命名に svc/backup/sql を含むものは全て注目。ドメイン内サービスアカウントである可能性が高く、多くのマシンでローカル管理者権限を持つことが多い。
+**Q3**: `NL$KM` がバイナリだけ?
+**A3**: それは domain cached credentials の暗号化キーで、`$MACHINE.ACC` と併用する。secretsdump が cached DCC2 hash を自動整理出力してオフラインブルートフォースに使う。
+**Q4**: LSA secret がひとつもない?
+**A4**: このマシンに「ドメイン身元で実行する」サービスが何も設定されていないことを示す。純粋なクライアント機である。ユーザープロファイル層の認証情報(ブラウザ/Credential Manager/RDP 保存)、またはそのマシンのファイルシステム内の設定ファイルへ転換する。
+**Q5**: サービスアカウント平文を取得した。直接横展開?
+**A5**: まず列挙する。そのアカウントのドメイン内 memberOf、servicePrincipalName、AdminCount。重要権限保持者かを見る。その後、ローカル管理者の再利用面をテストする(重要サーバーへスプレー)。
+**Q6**: サービスアカウントが無効化されている。平文にまだ価値は?
+**A6**: ある。「無効だが使える」かをテスト(古い設定)、履歴パスワードが他アカウントに踏襲されていないかをテスト、パスワードパターンサンプルとして辞書生成器に与える。
 
-### Windows Credential Manager 的低垂果实
-**Q1**: 普通用户会话下,想快速看有没有保存凭据?
-**A1**: `cmdkey /list` 列出 Windows Vault + Credential Manager 条目,`vaultcmd /list` 看 web/generic 类。有 target 是内部服务器名/邮箱域名的都值得关注。
-**Q2**: 看到有条目但拿不到明文,怎么办?
-**A2**: 转 mimikatz `vault::cred /patch` + `dpapi::cred`,需要该用户 DPAPI master key(在其登录会话里可直接解;离线则前面 DPAPI 链)。
-**Q3**: 有 RDP 保存的凭据(TERMSRV/...)?
-**A3**: 直接 mimikatz `dpapi::rdg` 或者在该用户会话下直接 mstsc 用保存凭据登录,不需要解 → 直接横向到目标机(该目标机通常是他常用的服务器,大概率高权)。
-**Q4**: cmdkey list 完全空?
-**A4**: 转向浏览器/其他应用的密码存储:VS Code (Git credentials)、SSMS(SQL server 连接)、Outlook (mapi profile)、企业 VPN 客户端(通常存 %APPDATA%)。
-**Q5**: 有条目但都是 web 凭据不是网络凭据,能用吗?
-**A5**: 有用——这些通常是内部 SharePoint、Confluence、Jira、GitLab 的账号密码,拿到后横向到内部代码/文档平台,可能翻到更多凭据或敏感数据(源代码里的硬编码 key)。
-**Q6**: 想批量抓所有已登录用户的 Vault?
-**A6**: 需要 SYSTEM + 逐个 impersonate 每个 logon session 的 token 去解 Vault(用户绑定)。或者夜里等一夜看多少不同用户登录过、批量收。
+### Windows Credential Manager の低い垂れ下がった果実
+**Q1**: 一般ユーザーセッションで、保存認証情報が素早く見える方法は?
+**A1**: `cmdkey /list` で Windows Vault + Credential Manager 項目を一覧し、`vaultcmd /list` で web/generic 類を見る。target が内部サーバー名/メールドメインのものは全て注目に値する。
+**Q2**: 項目はあるが平文が取れない。どうする?
+**A2**: mimikatz の `vault::cred /patch` + `dpapi::cred` へ転換する。そのユーザーの DPAPI master key が必要(ログオンセッション内で直接復号、オフラインなら前述の DPAPI チェーン)。
+**Q3**: RDP 保存認証情報(TERMSRV/...)がある?
+**A3**: 直接 mimikatz の `dpapi::rdg` を使うか、そのユーザーセッション下で mstsc から保存認証情報でログオンする。復号不要 → 直接対象機へ横展開(その対象機は通常、彼がよく使うサーバーで、高確率で高権限)。
+**Q4**: cmdkey list が完全に空?
+**A4**: ブラウザ/他アプリのパスワードストレージへ転換する。VS Code(Git credentials)、SSMS(SQL server 接続)、Outlook(mapi profile)、企業 VPN クライアント(通常 %APPDATA% に保存)。
+**Q5**: 項目はあるが全て web 認証情報でネットワーク認証情報ではない。使えるか?
+**A5**: 有用。これらは通常、内部 SharePoint、Confluence、Jira、GitLab のアカウントパスワード。取得後、内部コード/ドキュメントプラットフォームへ横展開し、さらに認証情報や機微なデータ(ソースコード内のハードコードキー)を掘れる可能性がある。
+**Q6**: ログオン済み全ユーザーの Vault を一括取得したい?
+**A6**: SYSTEM + 各 logon session の token を逐次 impersonate して Vault を復号する(ユーザー紐付け)必要がある。または夜まで待ち、どれだけの異なるユーザーがログオンしたかを確認して一括取得する。
 
-### SCCM/MECM 网络访问账号
-**Q1**: 发现目标有 SCCM(MECM)客户端(`ccmexec.exe`),意味着什么?
-**A1**: 巨大宝藏。SCCM 有几个高价值凭据:Network Access Account(NAA)、Task Sequence 凭据、Client Push Installation Account、Site System Installation Account。NAA 尤其常见,存在 WMI 里可提取。
-**Q2**: 怎么抓 NAA?
-**A2**: 从 CCM WMI 类里读加密的 NAA blob,配合本机 DPAPI 解密。工具:SharpSCCM、cmloot。必须在装了 SCCM 客户端的机器上跑,DPAPI 依赖本机 SYSTEM。
-**Q3**: 拿到 NAA 后?
-**A3**: NAA 通常是配来给客户端从 DP(分发点)拉部署包的域账号,权限有限但——大概率在多台机器有,是横向面广的账号;而且如果配错了权限,可能是本地管理员/域管。
-**Q4**: SCCM 服务器本身有更多可玩的?
-**A4**: 有。SCCM Site Server 数据库(MSSQL)里有加密的 client push 账号、有 policy 里的敏感数据。走 SQL 认证 or 域权限访问,配合 SCCMHunter/misconfig-manager。
-**Q5**: 目标环境没 SCCM,类似的可挖?
-**A5**: MDT(部署共享里的 CustomSettings.ini/Bootstrap.ini 有凭据)、Intune、Ansible Tower / AWX、Chef/Puppet、Jenkins 凭据管理器、Vault(如果 misconfig)、GPP。企业运维基础设施都是凭据聚集地。
-**Q6**: SCCM 客户端在,但 WMI/DPAPI 抓不到 NAA?
-**A6**: 可能没配 NAA(现代 SCCM 推荐用 Enhanced HTTP + 客户端证书代替 NAA)。转向抓 SCCM 客户端证书本身,或 relay SCCM Web 端点。
+### SCCM/MECM ネットワークアクセスアカウント
+**Q1**: 対象に SCCM(MECM)クライアント(`ccmexec.exe`)があるのを発見した。何を意味する?
+**A1**: 巨大な宝。SCCM には高価値認証情報が複数ある。Network Access Account(NAA)、Task Sequence 認証情報、Client Push Installation Account、Site System Installation Account。NAA は特に一般的で、WMI に存在し抽出できる。
+**Q2**: NAA をどう取る?
+**A2**: CCM WMI クラスから暗号化 NAA blob を読み、本機 DPAPI で復号する。ツール:SharpSCCM、cmloot。SCCM クライアントが入ったマシン上で実行する必要があり、DPAPI は本機 SYSTEM に依存する。
+**Q3**: NAA を取得した後は?
+**A3**: NAA は通常、クライアントが DP(配布ポイント)から展開パッケージを取得するためのドメインアカウントで、権限は限定的。しかし多くのマシンに存在する可能性が高く、横展開面が広いアカウント。また権限設定を誤っていればローカル管理者/ドメイン管理者の可能性もある。
+**Q4**: SCCM サーバー自体にもっと遊べるものがある?
+**A4**: ある。SCCM Site Server データベース(MSSQL)に暗号化 client push アカウント、policy 内の機微データがある。SQL 認証またはドメイン権限でアクセスし、SCCMHunter/misconfig-manager と併用する。
+**Q5**: 対象環境に SCCM がない。似たものは?
+**A5**: MDT(展開共有の CustomSettings.ini/Bootstrap.ini に認証情報)、Intune、Ansible Tower / AWX、Chef/Puppet、Jenkins 認証情報マネージャ、Vault(misconfig の場合)、GPP。企業の運用インフラはすべて認証情報の集積地である。
+**Q6**: SCCM クライアントはあるが、WMI/DPAPI で NAA が取れない?
+**A6**: NAA が設定されていない可能性(現代の SCCM は Enhanced HTTP + クライアント証明書で NAA を代替することを推奨)。SCCM クライアント証明書自体を取るか、SCCM Web エンドポイントへ relay する方向へ転換する。
 
-### AdminSDHolder 与 sIDHistory
-**Q1**: 想长期后门域,除了金票还有什么方式?
-**A1**: 几种:①AdminSDHolder 加 ACE(SDProp 每 60min 反向下推到所有 protected group,难清除);②sIDHistory 塞进域管 SID(需要 DA 一次,后续该账号永远 elevated);③修改 KRBTGT 密码(限制金票范围)但同时植入 backup 账号。
-**Q2**: sIDHistory 具体怎么做?
-**A2**: 已 DA 时,给某低权账号写 sIDHistory 属性包含 DA 组 SID(需要用 DSInternals/mimikatz `misc::addsid`)。之后该账号即便不在 DA 组,Kerberos ticket 里也带 DA SID。
-**Q3**: 会被检测吗?
-**A3**: 现代 EDR/AD audit 有 sIDHistory 修改事件(4738)。判据:如果是要极隐蔽长期后门,风险高;短期利用即可,不要留。或者利用合法信任域场景下的 SIDHistory,混在正常之中。
-**Q4**: 想用 sIDHistory 提权(不是持久化)可行吗?
-**A4**: 需要 DA 权限才能写自己或别人的 sIDHistory → 已经 DA 了没必要用它提权。sIDHistory 通常是持久化用。
-**Q5**: 目标域启了 SID Filtering(信任域间)?
-**A5**: 跨域 sIDHistory 攻击(经典 golden ticket + external trust)被 SID filter quarantine 阻挡。转向 forest trust attack(如果是同 forest 不同 domain,SID filter 弱)。
-**Q6**: 长期后门被安全评估会翻出来吗?
-**A6**: 大概率会——现代 AD 健康检查工具(PingCastle/BloodHound Enterprise)会扫 AdminSDHolder ACL 异常、sIDHistory 异常。判据:留后门就要能承受被清算的风险,或者做得足够像"合法遗留配置"。
+### AdminSDHolder と sIDHistory
+**Q1**: ドメインを長期バックドアしたい。ゴールデンチケット以外の方式は?
+**A1**: いくつか。①AdminSDHolder に ACE を追加(SDProp が 60 分ごとに全 protected group へ逆伝播し、削除が難しい)。②sIDHistory にドメイン管理者 SID を埋める(DA が一度必要。その後そのアカウントは恒久的に elevated)。③KRBTGT パスワードを変更(ゴールデンチケットの範囲を制限)しつつ backup アカウントを植える。
+**Q2**: sIDHistory は具体的にどうやる?
+**A2**: 既に DA のとき、ある低権限アカウントの sIDHistory 属性に DA グループ SID を書く(DSInternals/mimikatz の `misc::addsid`)。その後そのアカウントは DA グループにいなくても、Kerberos ticket に DA SID を持つ。
+**Q3**: 検知されるか?
+**A3**: 現代の EDR/AD audit は sIDHistory 変更イベント(4738)を持つ。判定基準:極めて隠密な長期バックドアが要るならリスクが高い。短期利用ならよく、残さない。または正当な信頼ドメイン場面の SIDHistory を利用し、正常に紛れる。
+**Q4**: sIDHistory を権限昇格(永続化ではなく)に使えるか?
+**A4**: 自分や他者の sIDHistory を書くには DA 権限が要る → 既に DA ならそれで権限昇格する必要はない。sIDHistory は通常永続化用である。
+**Q5**: 対象ドメインが SID Filtering(信頼ドメイン間)を有効化している?
+**A5**: クロスドメイン sIDHistory 攻撃(古典的 golden ticket + external trust)は SID filter quarantine に遮られる。forest trust attack へ転換する(同一 forest の別ドメインなら SID filter は弱い)。
+**Q6**: 長期バックドアはセキュリティ評価で掘り出されるか?
+**A6**: 高確率で掘り出される。現代の AD ヘルスチェックツール(PingCastle/BloodHound Enterprise)は AdminSDHolder ACL 異常、sIDHistory 異常をスキャンする。判定基準:バックドアを残すなら清算リスクを耐えられるか、「合法な遺留設定」に十分見せかけられるか。
 
-### 卷影副本(VSS)的多用途
-**Q1**: 想抓被锁定的 SAM/ntds.dit 但直接 copy 失败,VSS 怎么用?
-**A1**: `vssadmin create shadow /for=C:` 创建 → 记下 shadow copy 路径(GLOBALROOT\Device\HarddiskVolumeShadowCopy1) → 从这个只读快照复制文件。绕过独占锁。
-**Q2**: vssadmin 需要管理员,SYSTEM 可以吗?
-**A2**: SYSTEM 可以创建 shadow,但会有 8193/8194 事件日志。判据:如果目标已有其他 shadow(备份任务遗留),优先复用已有 shadow 避免创建新事件。
-**Q3**: 想 stealth,能用什么替代?
-**A3**: `diskshadow` 脚本模式(交互工具但可自动化),wbadmin(某些场景可 dump ntds 到备份文件),或 PowerShell WMI Win32_ShadowCopy.Create。选噪声最小的。
-**Q4**: 打完想清理 shadow?
-**A4**: `vssadmin delete shadows /shadow=<id>`。注意:删 shadow 也是勒索软件常见动作,可能触发 EDR ransomware 保护规则。判据:如果删 shadow 触发告警,不如留着装作系统正常快照。
-**Q5**: VSS 服务被禁?
-**A5**: 转向直接读硬盘扇区(需要驱动或特殊工具:libguestfs/RawCopy),或者把机器加入现有备份系统看备份产物。
-**Q6**: shadow 里的文件时间戳会暴露我?
-**A6**: shadow 快照有独立时间点,访问 shadow 里的文件不改主卷时间戳;但创建 shadow 本身的时间是可见的。判据:在业务快照时段附近创建可以混淆。
+### ボリュームシャドウコピー(VSS)の多用途
+**Q1**: ロックされた SAM/ntds.dit を取ろうとしたが直接コピーが失敗。VSS をどう使う?
+**A1**: `vssadmin create shadow /for=C:` で作成 → shadow copy パス(GLOBALROOT\Device\HarddiskVolumeShadowCopy1)を記録 → この読み取り専用スナップショットからファイルをコピー。排他ロックを迂回する。
+**Q2**: vssadmin は管理者が要る。SYSTEM でできるか?
+**A2**: SYSTEM は shadow を作成できるが、8193/8194 イベントログが残る。判定基準:対象に既に別の shadow があるなら(バックアップタスクの遺留)、既存 shadow を再利用して新イベント作成を避ける。
+**Q3**: 隠密にしたい。代替は?
+**A3**: `diskshadow` スクリプトモード(対話ツールだが自動化可能)、wbadmin(一部の場面で ntds をバックアップファイルへ dump できる)、PowerShell WMI Win32_ShadowCopy.Create。ノイズ最小のものを選ぶ。
+**Q4**: 打ち終わって shadow を消したい?
+**A4**: `vssadmin delete shadows /shadow=<id>`。注意:shadow 削除もランサムウェアの常套動作であり、EDR のランサムウェア保護ルールを誘発しうる。判定基準:shadow 削除がアラートを誘発するなら、消さずにシステムの正常スナップショットとして放置する方がよい。
+**Q5**: VSS サービスが無効?
+**A5**: ハードディスクセクタを直接読む(ドライバか特殊ツール:libguestfs/RawCopy)へ転換するか、マシンを既存バックアップシステムに加入させてバックアップ産物を見る。
+**Q6**: shadow 内のファイルタイムスタンプで露見しないか?
+**A6**: shadow スナップショットは独立した時点を持つ。shadow 内ファイルへのアクセスは主ボリュームのタイムスタンプを変更しない。ただし shadow 作成自体の時刻は見える。判定基準:業務スナップショット時刻付近に作成すれば混淆できる。
 
-### 打印机凭据宝库
-**Q1**: 网络里发现多台打印机(网络扫到 631/9100/515),值得看吗?
-**A1**: 极值得——多功能打印机(MFP)常配 LDAP 集成(扫描到邮箱/文件夹),存了域账号明文口令。管理界面通常 admin/admin 或 default。
-**Q2**: 具体怎么抓?
-**A2**: 登 Web 管理界面 → 找 "Scan to Email" / "LDAP settings" / "Address Book",通常有密码字段(有的直接明文显示,有的星号但表单里可见,有的需要 firmware 特定漏洞 dump 配置文件)。
-**Q3**: 打印机存的账号有什么权限?
-**A3**: 通常是"扫描到共享"账号,权限有限,但——常常是域账号且不常 rotate,而且配置到多台打印机(密码复用面广)。作为初始入口极佳。
-**Q4**: 打印机管理界面需要认证进不去?
-**A4**: 三条路:①默认凭据大字典(各厂商公开的出厂默认账号/口令);②厂商漏洞(SNMP OID 读配置、未认证接口 dump);③物理接触(打印机后面贴纸常有默认账号)。
-**Q5**: SNMP 打印机 community=public 也是宝?
-**A5**: 是——很多打印机 SNMP 直接暴露 LDAP 配置和密码。`snmpwalk -c public <ip>` 扫遍 OID。
-**Q6**: 全部打印机都在独立管理 VLAN,进不去?
-**A6**: 转向其他 IoT 类设备:VoIP 电话(常配 LDAP)、视频会议(Polycom/Cisco)、门禁系统、UPS 管理卡、iLO/iDRAC/IPMI(前面几个都可能有域集成凭据)。
+### プリンタ認証情報の宝庫
+**Q1**: ネットワークに複数のプリンタを発見(ネットワークスキャンで 631/9100/515)。見る価値は?
+**A1**: 極めて価値が高い。複合機(MFP)はしばしば LDAP 統合(スキャンからメール/フォルダ)を設定し、ドメインアカウントの平文パスワードを保存する。管理画面は通常 admin/admin またはデフォルト。
+**Q2**: 具体的にどう取る?
+**A2**: Web 管理画面にログイン → "Scan to Email" / "LDAP settings" / "Address Book" を探す。パスワードフィールドがある(平文表示のもの、アスタリスクだがフォーム内で見えるもの、firmware 固有の脆弱性で設定ファイルを dump する必要があるもの)。
+**Q3**: プリンタ保存アカウントの権限は?
+**A3**: 通常「スキャンから共有」アカウントで権限は限定的。しかしドメインアカウントであることが多く、あまりローテーションされず、複数のプリンタに設定されている(パスワード再利用面が広い)。初期入口として極めて良い。
+**Q4**: プリンタ管理画面が認証必須で入れない?
+**A4**: 三経路。①デフォルト認証情報の大辞書(各ベンダー公開の工場出荷時アカウント/パスワード)。②ベンダー脆弱性(SNMP OID 設定読み取り、未認証インターフェース dump)。③物理接触(プリンタ背面のシールにデフォルトアカウントがよくある)。
+**Q5**: SNMP プリンタ community=public も宝か?
+**A5**: 宝。多くのプリンタ SNMP が LDAP 設定とパスワードを直接露出する。`snmpwalk -c public <ip>` で OID を網羅する。
+**Q6**: 全プリンタが独立管理 VLAN にあり、入れない?
+**A6**: 他の IoT 系デバイスへ転換する。VoIP 電話(LDAP 設定が多い)、ビデオ会議(Polycom/Cisco)、入退室システム、UPS 管理カード、iLO/iDRAC/IPMI(いずれもドメイン統合認証情報の可能性)。
 
-### Azure/Entra 混合环境的凭据面
-**Q1**: 目标域有 Azure AD Connect(hybrid identity),额外凭据面在哪?
-**A1**: Azure AD Connect 服务器本身是一个 tier-0 目标——上面运行的 MSOL_ 账号在 AD 里有 DCSync 权限;而且服务器上有 ADSync 数据库(LocalDB),里面有解 hybrid 密码的密钥。
-**Q2**: 具体怎么薅?
-**A2**: 在 AAD Connect 服务器上(需 SYSTEM),用 AADInternals 或手动 dump LocalDB 里的 keyset,配合 DPAPI 解出 MSOL_ 账号明文 + Azure Service Account (Sync_) 凭据。
-**Q3**: MSOL_ 有什么用?
-**A3**: 域内 DCSync 权限——等价拿到 DA。而且很多环境把 AAD Connect 服务器忘了纳入 tier-0 保护,是个大漏。
-**Q4**: Sync_@<tenant>.onmicrosoft.com 呢?
-**A4**: 云端权限——通常有 Directory Synchronization Accounts role,可以改用户密码、加 admin。是从 on-prem 打到 云 的经典跳板。
-**Q5**: 目标是 pass-through auth 或 federated,不用 password hash sync?
-**A5**: 转向 PTA agent 服务器(有 credential harvesting 攻击可拦截认证);或 ADFS server 上的 token signing certificate(Golden SAML)。
-**Q6**: 想直接从 on-prem 用户 hash 打云?
-**A6**: PHS 场景下 on-prem hash 不能直接登云(hash of hash),但拿到 hash 后离线爆破 → 用明文登云。或者用 Seamless SSO 的 AZUREADSSOACC$ 机器账号 hash 做 silver ticket → 云 SSO。
+### Azure/Entra ハイブリッド環境の認証情報面
+**Q1**: 対象ドメインに Azure AD Connect(hybrid identity)がある。追加の認証情報面はどこ?
+**A1**: Azure AD Connect サーバー自体が tier-0 対象である。その上で動く MSOL_ アカウントは AD に DCSync 権限を持つ。またサーバーに ADSync データベース(LocalDB)があり、hybrid パスワードを復号する鍵が入っている。
+**Q2**: 具体的にどう収集する?
+**A2**: AAD Connect サーバー上で(SYSTEM が必要)、AADInternals または手動で LocalDB の keyset を dump し、DPAPI と併用して MSOL_ アカウント平文 + Azure Service Account (Sync_) 認証情報を復号する。
+**Q3**: MSOL_ の使い道は?
+**A3**: ドメイン内 DCSync 権限。DA 取得と同等。また多くの環境が AAD Connect サーバーを tier-0 保護に含め忘れており、大きな穴である。
+**Q4**: Sync_@<tenant>.onmicrosoft.com は?
+**A4**: クラウド側権限。通常 Directory Synchronization Accounts ロールを持ち、ユーザーパスワード変更や admin 追加ができる。on-prem からクラウドへ攻める古典的踏み台。
+**Q5**: 対象が pass-through auth または federated で、password hash sync を使っていない?
+**A5**: PTA agent サーバー(credential harvesting 攻撃で認証を遮断できる)へ転換する。または ADFS サーバーの token signing certificate(Golden SAML)。
+**Q6**: on-prem ユーザー hash から直接クラウドを攻めたい?
+**A6**: PHS 場面では on-prem hash で直接クラウドへログオンできない(hash of hash)。ただし hash を取得後オフラインブルートフォース → 平文でクラウドログオン。または Seamless SSO の AZUREADSSOACC$ マシンアカウント hash でシルバーチケット → クラウド SSO。
 
-### MSSQL 链接服务器与 xp_cmdshell 拿凭据
-**Q1**: 内网发现 MSSQL 且能用某个域账号连,怎么挖凭据面?
-**A1**: 三步:①`SELECT SYSTEM_USER, IS_SRVROLEMEMBER('sysadmin')` 看权限;②`EXEC sp_linkedservers` 看有没有 linked server 到其他 SQL(常见 misconfig:linked 用 sa 或高权账号,可以跳过去);③如果 sysadmin,`xp_cmdshell` 直接命令执行拿 LSASS。
-**Q2**: 不是 sysadmin,只有 public,还能挖啥?
-**A2**: 转向:①UNC 路径回连——`xp_dirtree \\<my>\a` 强制 MSSQL 服务账号 NetNTLMv2 回连,抓 hash;②TRUSTWORTHY + db_owner 提到 sysadmin(经典 misconfig);③impersonate 其他登录(`EXECUTE AS LOGIN='sa'` 如果被授权)。
-**Q3**: MSSQL 跑的账号是什么?
-**A3**: 默认可能 NT Service\MSSQLSERVER(SYSTEM 等价 on host)或域账号(如 svc_sql)。如果域账号 + 多台 SQL 复用 = 横向到多台;如果 SYSTEM 且服务器有 unconstrained delegation = 天选跳板。
-**Q4**: linked server 链接到别的 SQL 走的什么身份?
-**A4**: 看 sysservers 里的 self-mapping:如果是"current context"就走当前用户;如果配了固定登录(常见 sa/远程管理员),就等价拿到远端权限。`SELECT * FROM OPENQUERY(<linked>, 'SELECT SYSTEM_USER, IS_SRVROLEMEMBER(''sysadmin'')')` 试。
-**Q5**: xp_cmdshell 被禁,还有命令执行路径吗?
-**A5**: `sp_configure` 打开(需 sysadmin)、CLR 存储过程加载 .NET assembly、Ole Automation Procedures、代理作业(SQL Agent job with cmdexec type)。多条路。
-**Q6**: MSSQL 完全打不动怎么办?
-**A6**: 转向其他数据库服务面:Oracle(默认 dbsnmp/system 弱口令)、MySQL(root 无密/低权文件读)、PostgreSQL(信任认证 misconfig),各有凭据/命令执行路径;或者转向应用配置文件(web.config 里的连接字符串)。
+### MSSQL リンクサーバーと xp_cmdshell で認証情報を取る
+**Q1**: 内網に MSSQL を発見し、あるドメインアカウントで接続できる。認証情報面をどう掘る?
+**A1**: 三手。①`SELECT SYSTEM_USER, IS_SRVROLEMEMBER('sysadmin')` で権限を見る。②`EXEC sp_linkedservers` で他の SQL への linked server があるかを見る(一般的な misconfig:linked が sa または高権限アカウントを使用しており、飛び移れる)。③sysadmin なら `xp_cmdshell` で直接コマンド実行して LSASS を取る。
+**Q2**: sysadmin でなく public だけ。まだ掘れる?
+**A2**: 転換する。①UNC パス逆接続 — `xp_dirtree \\<my>\a` で MSSQL サービスアカウントの NetNTLMv2 逆接続を強制し、hash を取る。②TRUSTWORTHY + db_owner で sysadmin へ権限昇格(古典的 misconfig)。③他ログインを impersonate(`EXECUTE AS LOGIN='sa'` が認可されている場合)。
+**Q3**: MSSQL が動くアカウントは何か?
+**A3**: デフォルトは NT Service\MSSQLSERVER(ホスト上では SYSTEM 相当)またはドメインアカウント(例: svc_sql)。ドメインアカウント + 複数 SQL で再利用 = 複数マシンへ横展開。SYSTEM かつサーバーに unconstrained delegation があれば = 天与の踏み台。
+**Q4**: linked server が別 SQL へリンクする際の身元は?
+**A4**: sysservers の self-mapping を見る。"current context" なら現在のユーザー。固定ログイン(一般的な sa/リモート管理者)が設定されていれば遠隔権限取得と同等。`SELECT * FROM OPENQUERY(<linked>, 'SELECT SYSTEM_USER, IS_SRVROLEMEMBER(''sysadmin'')')` を試す。
+**Q5**: xp_cmdshell が無効。他にコマンド実行経路は?
+**A5**: `sp_configure` で開く(sysadmin が必要)、CLR ストアドプロシージャで .NET assembly を読み込む、Ole Automation Procedures、代理ジョブ(cmdexec 型の SQL Agent job)。複数経路がある。
+**Q6**: MSSQL が完全に打てない?
+**A6**: 他のデータベースサービス面へ転換する。Oracle(デフォルト dbsnmp/system 弱いパスワード)、MySQL(root パスワードなし/低権限ファイル読み取り)、PostgreSQL(信頼認証 misconfig)。それぞれ認証情報/コマンド実行経路がある。またはアプリ設定ファイル(web.config の接続文字列)へ転換する。
 
-### 邮件服务器上的凭据洞
-**Q1**: 目标环境有 Exchange,凭据薅取面在哪?
-**A1**: 多层:①Exchange 服务器本身 tier-0 前时代常被忽略,上面 LSASS 有大量交互登录;②Exchange 服务账号 EWS/Autodiscover 认证可 relay;③邮箱内容本身(搜索 password/账号 等关键字);④OAB 里可能有旧密码文件。
-**Q2**: 拿到某用户邮箱访问权,怎么快速挖凭据?
-**A2**: 搜索规则:`password / pwd / 密码 / 口令 / vpn / 账号 / credentials / .kdbx / .rdp`,以及附件 zip/rar/xlsx 里的账号本。IT 运维/HR 邮箱尤其肥。
-**Q3**: 通过 EWS/OWA/Graph 只有普通用户权限,能扩吗?
-**A3**: 看 ApplicationImpersonation RBAC role(如果目标账号有,一号打全公司邮箱)、看 mailbox delegate 权限(某助理 delegate 到 CEO)、Autodiscover 泄漏用户列表用于喷洒。
-**Q4**: Exchange 有历史 CVE 可利用(ProxyLogon/ProxyShell/ProxyNotShell)?
-**A4**: 判据:先看外部资产是否可达 + Exchange 版本 build 号 + 补丁时间。如果不能利用,转向 Exchange 服务账号 relay:HTTP 认证 push 到 LDAPS。
-**Q5**: 无 Exchange 但有其他邮件系统(Zimbra/Mailu/腾讯企业邮/飞书邮箱)?
-**A5**: 转向对应的洞和凭据点:Zimbra 有大量历史 CVE;云邮件走 API token(内部管理台可能能签发 impersonation token)。凭据薅取的通用道理是"人的凭据都在邮箱里出现过一次"。
-**Q6**: 邮箱访问不到,能不能通过 SMTP relay 钓?
-**A6**: 转向"发内部钓鱼邮":内部 SMTP 常允许免认证发信,发一封伪装为 IT 部门的密码重置邮件,链接指向自己搭的 fake OWA/SSO,采到明文。凭据薅取有社工侧路径。
+### メールサーバーの認証情報の穴
+**Q1**: 対象環境に Exchange がある。認証情報収集面はどこ?
+**A1**: 多層。①Exchange サーバー自体は tier-0 前時代にはよく無視され、その上の LSASS に大量の対話ログオンがある。②Exchange サービスアカウント EWS/Autodiscover 認証を relay できる。③メールボックス内容自体(パスワード/アカウントなどのキーワード検索)。④OAB に古いパスワードファイルがある可能性。
+**Q2**: あるユーザーのメールボックスアクセス権を取得した。素早く認証情報を掘るには?
+**A2**: 検索ルール:`password / pwd / パスワード / パスワード / vpn / アカウント / credentials / .kdbx / .rdp`、および添付の zip/rar/xlsx 内のアカウント帳。IT 運用/HR メールボックスは特に豊富。
+**Q3**: EWS/OWA/Graph で一般ユーザー権限しかない。拡大できるか?
+**A3**: ApplicationImpersonation RBAC ロール(対象アカウントがあれば、ワンクリックで全社メールボックスを打てる)、mailbox delegate 権限(あるアシスタントが CEO へ delegate)、Autodiscover のユーザーリスト漏えいをスプレーに使う。
+**Q4**: Exchange に利用可能な歴史 CVE がある(ProxyLogon/ProxyShell/ProxyNotShell)?
+**A4**: 判定基準:まず外部アセットが到達可能か + Exchange バージョン build 番号 + パッチ時刻を見る。利用できなければ、Exchange サービスアカウント relay(HTTP 認証を LDAPS へ push)へ転換する。
+**Q5**: Exchange はないが他メールシステム(Zimbra/Mailu/テンセント企業メール/飛書メール)がある?
+**A5**: 対応する穴と認証情報ポイントへ転換する。Zimbra には大量の歴史 CVE。クラウドメールは API token(内部管理コンソールが impersonation token を発行できる可能性)。認証情報収集の通則は「人の認証情報はメールボックスに一度は現れる」である。
+**Q6**: メールボックスにアクセスできない。SMTP relay で釣れるか?
+**A6**: 「内部フィッシングメールを送る」へ転換する。内部 SMTP はしばしば無認証送信を許可する。IT 部門を装ったパスワードリセットメールを送り、リンクを自分の fake OWA/SSO へ向けて平文を採る。認証情報収集にはソーシャルエンジニアリング側の経路がある。
 
-### Kerberos AS-REQ 用户名枚举 + 加密降级
-**Q1**: 想枚举有效用户名(为后续 spray/AS-REP roast),什么最快?
-**A1**: Kerberos AS-REQ 用户名枚举:发不带预认证的 AS-REQ,KDC 对存在/不存在/需要预认证的用户返回不同错误码(KDC_ERR_C_PRINCIPAL_UNKNOWN vs KDC_ERR_PREAUTH_REQUIRED)。工具 kerbrute。快而且不产生锁定。
-**Q2**: 用户名从哪来?
-**A2**: OSINT 公司邮件格式(领英/官网)、内网 LDAP 匿名或已知凭据枚举、SMB null session RID cycling、GPO 相关文件里出现的用户名、邮件签名。
-**Q3**: 枚举出用户名后,除了 spray 还能干嘛?
-**A3**: ①AS-REP roast 那些没预认证的;②timeroast(Windows 特有,老 KDC 允许 unauth 请求某些 principal 的 ticket 探测存在性);③精准 targeted phishing(有真实工号)。
-**Q4**: 枚举完发现所有账号 msDS-SupportedEncryptionTypes 只允许 AES,爆破成本高,怎么处理?
-**A4**: 判据:当加密策略统一收紧(2019+ / 安全基线),说明这是有意加固的环境 → 放弃"AS-REQ 侧优化"这个正交维度,把用户名情报转到"非爆破路径"(证书类攻击、委派滥用、ACL 提权、精准 phishing)。降级已在别处讨论过,不重复。
-**Q5**: 用户名列表拿到后,想立刻做"低成本试错组合"?
-**A5**: 组合矩阵:枚举出的用户名 × (无预认证 → AS-REP roast) × (spray 极低轮次 → 抓 admin 邮箱前缀式弱口令) × (kerbrute password auth 判断存活但不锁定的边界)。每步都要对齐 lockout 策略,别把枚举成果反过来锁死账号。
-**Q6**: 想在网上抓 Kerberos 流量做离线分析?
-**A6**: MITM(ARP spoof/DHCPv6 mitm6)拦 88 端口流量;或从 pcap 里翻已抓到的 AS-REP 里 encrypted timestamp 做爆破(但需要该账号错配无预认证 or 弱口令)。这条路 ROI 低,通常放弃。
+### Kerberos AS-REQ ユーザー名列挙 + 暗号降格
+**Q1**: 有効なユーザー名を列挙したい(後続のスプレー/AS-REP roast 用)。最速は?
+**A1**: Kerberos AS-REQ ユーザー名列挙。事前認証なしの AS-REQ を送ると、KDC は存在/不存在/事前認証必要のユーザーごとに異なるエラーコードを返す(KDC_ERR_C_PRINCIPAL_UNKNOWN vs KDC_ERR_PREAUTH_REQUIRED)。ツールは kerbrute。速く、ロックを発生させない。
+**Q2**: ユーザー名はどこから?
+**A2**: OSINT の会社メール形式(LinkedIn/公式サイト)、内網 LDAP 匿名または既知認証情報での列挙、SMB null session RID cycling、GPO 関連ファイル内のユーザー名、メール署名。
+**Q3**: ユーザー名を列挙した後、スプレー以外にできること?
+**A3**: ①AS-REP roast で事前認証なしのもの。②timeroast(Windows 固有。古い KDC は一部 principal のチケットを unauth リクエストで存在性探索できる)。③精確な targeted phishing(実在する社員番号がある)。
+**Q4**: 列挙後、全アカウントの msDS-SupportedEncryptionTypes が AES のみ許可で、ブルートフォースコストが高い。どうする?
+**A4**: 判定基準:暗号ポリシーが統一的に締められている(2019+/セキュリティベースライン)なら、意図的な強化環境を示す → 「AS-REQ 側の最適化」という直交次元を諦め、ユーザー名インテリジェンスを「非ブルートフォース経路」(証明書系攻撃、委任悪用、ACL 権限昇格、精確なフィッシング)へ転換する。降格は別所で議論済みなので繰り返さない。
+**Q5**: ユーザー名リストを取得したら、すぐ「低コストの試行錯誤の組み合わせ」をしたい?
+**A5**: 組み合わせ行列:列挙したユーザー名 × (事前認証なし → AS-REP roast) × (極低ラウンドのスプレー → admin メールプレフィックス式の弱いパスワード) × (kerbrute password auth でロックしない境界で生存判断)。各手順を lockout ポリシーに合わせ、列挙の成果で逆にアカウントをロックしない。
+**Q6**: ネットワーク上の Kerberos トラフィックを取得してオフライン分析したい?
+**A6**: MITM(ARP spoof/DHCPv6 mitm6)で 88 番ポートのトラフィックを遮断するか、pcap から既に取得済み AS-REP 内の暗号化 timestamp をブルートフォースする(そのアカウントが事前認証なしの誤設定または弱いパスワードの場合)。この経路は ROI が低く、通常諦める。
 
-### FIDO2/Passkey/WHfB 时代的应对
-**Q1**: 目标用户用 Windows Hello for Business (PIN + TPM) 登录,LSASS 里没 NTLM 怎么办?
-**A1**: WHfB 是证书+TPM,用户 NTLM 不在内存里(除非 SSO 需要),但 TGT 有——转向 sekurlsa::tickets 拿 TGT 做 pass-the-ticket。或者用户 msDS-KeyCredentialLink 里的证书是自己的公钥,不能直接反向拿密钥(在 TPM 里)。
-**Q2**: 想拿该用户 NT hash(为 PtH 到不支持 Kerberos 的服务)?
-**A2**: UnPAC-the-hash:用 WHfB 证书走 PKINIT 拿 TGT,TGT 的 PAC 里的 PAC_CREDENTIAL_INFO 包含 NTLM。前提:自己得有该证书(通常你没有,除非你控 CA)。或用 kekeo 的相关模块。
-**Q3**: 用户是纯 FIDO2 硬件 key 登录,连 TPM 都没,可乘之机?
-**A3**: 转向"用户登录后的 downstream":TGT 在,session cookie 在,DPAPI master key 已解锁在内存 → 从内存/进程角度,还是能薅到用户身份的操作能力,只是不能"拿密码本身"。
-**Q4**: 应用只认 Kerberos + PKINIT,不认 NTLM?
-**A4**: 现代趋势(Disable NTLM 已开始铺开)。判据:接受这个现实,主打 Kerberos 手法(PtT、S4U、certificate abuse)。NTLM 相关技术(relay/PtH)前景递减。
-**Q5**: passkey/SSO 环境下,还有什么低垂果实?
-**A5**: 转向 session token / refresh token(浏览器 cookie、Windows PRT/Primary Refresh Token)、Azure AD Broker Plugin cookies(在 Windows 上抓 PRT 就能免密登云所有 SSO 应用)。
-**Q6**: PRT 怎么抓?
-**A6**: `dsregcmd /status` 看是否加入 AzureAD;用 ROADtools/AADInternals/dirkjanm 的 pipe 相关技巧,SYSTEM 权限下从 LSASS 抠 PRT + session key,加密带走登云。这是"云凭据薅取"的核心。
+### FIDO2/Passkey/WHfB 時代の対応
+**Q1**: 対象ユーザーが Windows Hello for Business(PIN + TPM)でログオンする。LSASS に NTLM がない。どうする?
+**A1**: WHfB は証明書+TPM で、ユーザー NTLM はメモリにない(SSO が必要な場合を除く)。ただし TGT はある。sekurlsa::tickets へ転換して TGT を取り、pass-the-ticket する。またはユーザー msDS-KeyCredentialLink の証明書は自分の公開鍵であり、鍵を直接逆に取ることはできない(TPM 内)。
+**Q2**: そのユーザーの NT hash を取りたい(Kerberos 非対応サービスへの PtH 用)?
+**A2**: UnPAC-the-hash。WHfB 証明書で PKINIT して TGT を取ると、TGT の PAC 内 PAC_CREDENTIAL_INFO に NTLM が含まれる。前提:その証明書を自分が持つ必要がある(通常ない。CA を制御していない限り)。または kekeo の関連モジュールを使う。
+**Q3**: ユーザーが純粋な FIDO2 ハードウェアキーでログオンし、TPM すらない。付け入る隙は?
+**A3**: 「ユーザーログオン後の downstream」へ転換する。TGT がある、session cookie がある、DPAPI master key がメモリで解錠済み → メモリ/プロセスの角度から、やはりユーザー身元の操作能力を収集できる。「パスワード自体」は取れないだけ。
+**Q4**: アプリが Kerberos + PKINIT のみ認識し、NTLM を認識しない?
+**A4**: 現代の趨勢(Disable NTLM の展開開始)。判定基準:この現実を受け入れ、Kerberos 手法(PtT、S4U、certificate abuse)を主軸にする。NTLM 関連技術(relay/PtH)の将来性は減退する。
+**Q5**: passkey/SSO 環境で、他に低い垂れ下がった果実は?
+**A5**: session token / refresh token(ブラウザ cookie、Windows PRT/Primary Refresh Token)、Azure AD Broker Plugin cookies(Windows 上で PRT を取れば、クラウドの全 SSO アプリへパスワードなしでログオンできる)へ転換する。
+**Q6**: PRT をどう取る?
+**A6**: `dsregcmd /status` で AzureAD 加入かを見る。ROADtools/AADInternals/dirkjanm の pipe 関連テクニックで、SYSTEM 権限で LSASS から PRT + session key を抜き、暗号化して持ち出してクラウドへログオンする。これが「クラウド認証情報収集」の核心である。
 
-### 备份系统:被遗忘的凭据金矿
-**Q1**: 目标环境有 Veeam/CommVault/NetBackup/Rubrik 之一,值得优先打吗?
-**A1**: 极值得——备份系统天然需要"能访问所有资产"的权限,通常持有 DA 或域备份账号 hash;而且往往被排除在 EDR 之外(避免影响备份性能)。是横向和凭据薅取双料矿。
-**Q2**: Veeam 具体怎么薅?
-**A2**: Veeam Backup 服务器有 SQL/PostgreSQL 后端存储凭据,加密 key 在注册表(Veeam 有历史 CVE 让未认证读凭据)。另外 Veeam 用一个 backup account,常是 DA 或本地管理员。
-**Q3**: 拿到备份账号 hash 后,除了当域凭据用,还能做什么?
-**A3**: 用备份账号去请求"恢复"任意机器的最新备份 → 恢复到备份服务器可挂载的位置 → 从恢复的镜像里离线抓 SAM/ntds.dit/LSASS 转储。零触碰目标机。
-**Q4**: 备份存储在磁带/离线介质,没法直接恢复?
-**A4**: 转向近期在线的增量备份/快照——大多数环境保留最近 7-30 天的在线快照(RPO 要求)。
-**Q5**: 备份系统在独立管理网,进不去?
-**A5**: 转向"备份代理"(agent):被备份的机器上装了 agent,通常和备份服务器双向认证,agent 服务账号常有横向能力。或者攻击"备份配置存储库"(可能是文件共享)。
-**Q6**: 完全无备份系统 access?
-**A6**: 转向类似"横向面广"的角色:监控系统(Zabbix/Nagios/PRTG 常配管理员 agent)、部署系统(Ansible/SCCM)、AV/EDR 管理台(SentinelOne/CrowdStrike 管理员账号可以推任意 payload)。
+### バックアップシステム:忘れられた認証情報の金鉱
+**Q1**: 対象環境に Veeam/CommVault/NetBackup/Rubrik のいずれかがある。優先して打つ価値は?
+**A1**: 極めて価値が高い。バックアップシステムは本質的に「全アセットへアクセスできる」権限を必要とし、通常 DA またはドメインバックアップアカウント hash を保持する。また EDR から除外されていることが多い(バックアップ性能への影響を避けるため)。横展開と認証情報収集の両面の鉱脈である。
+**Q2**: Veeam は具体的にどう収集する?
+**A2**: Veeam Backup サーバーには SQL/PostgreSQL バックエンドが認証情報を保存し、暗号化キーはレジストリにある(Veeam には未認証で認証情報を読める歴史 CVE がある)。また Veeam は backup account を使い、それはしばしば DA またはローカル管理者である。
+**Q3**: バックアップアカウント hash を取得した後、ドメイン認証情報として使う以外に何ができる?
+**A3**: バックアップアカウントで任意マシンの最新バックアップの「復元」を要求 → バックアップサーバーがマウント可能な位置へ復元 → 復元イメージからオフラインで SAM/ntds.dit/LSASS ダンプを取る。対象機に一切触れない。
+**Q4**: バックアップがテープ/オフライン媒体にあり、直接復元できない?
+**A4**: 直近のオンライン増分バックアップ/スナップショットへ転換する。多くの環境は直近 7〜30 日のオンラインスナップショットを保持する(RPO 要件)。
+**Q5**: バックアップシステムが独立管理ネットワークにあり、入れない?
+**A5**: 「バックアップエージェント」(agent)へ転換する。バックアップ対象マシンには agent が入り、通常バックアップサーバーと双方向認証する。agent サービスアカウントは横展開能力を持つことが多い。または「バックアップ設定ストレージ」(ファイル共有の可能性)を攻める。
+**Q6**: バックアップシステムへの access が完全にない?
+**A6**: 「横展開面が広い」似たロールへ転換する。監視システム(Zabbix/Nagios/PRTG は管理者 agent をよく設定)、デプロイシステム(Ansible/SCCM)、AV/EDR 管理コンソール(SentinelOne/CrowdStrike の管理者アカウントは任意 payload を配布できる)。
 
-### GMSA/sMSA 与 KDS root key
-**Q1**: 域里有 GMSA (Group Managed Service Account),怎么用?
-**A1**: GMSA 密码由 KDC 每 30 天自动 rotate,存在 msDS-ManagedPassword blob 里,只有 msDS-GroupMSAMembership 允许的主体能读。判据:如果我控制的账号在允许列表里,可以在线读 GMSA 密码。
-**Q2**: 具体怎么读?
-**A2**: `Get-ADServiceAccount -Identity <gmsa> -Properties msDS-ManagedPassword` 或 GMSApasswordReader / gMSADumper。返回二进制,解出 current + previous NTLM。
-**Q3**: 不在允许读的列表里,能提到吗?
-**A3**: 找对 GMSA 对象有 WriteProperty on msDS-GroupMSAMembership 的账号(把自己加进去),或者对该属性的 ACE 有 WriteDACL。
-**Q4**: 更狠的:拿到 KDS root key 之后?
-**A4**: KDS root key 存在 DC 上,DA 可读。有它就能离线计算任何时刻的任何 GMSA 密码(不需要一直有读权限)。工具 GoldenGMSA。
-**Q5**: GMSA 用来跑什么服务?
-**A5**: 通常是集群/负载均衡的关键服务:IIS 应用池、SQL Server、SharePoint、Exchange DAG。拿到 GMSA hash 等于该服务的最高身份。
-**Q6**: 没有 GMSA,只有 sMSA(单机 MSA)呢?
-**A6**: sMSA 密码存本机 LSA secrets,加密方式和普通 MSA 一样 → 本机 SYSTEM 就能 dump。转向前面"LSA secrets"那一链。
+### GMSA/sMSA と KDS root key
+**Q1**: ドメインに GMSA (Group Managed Service Account) がある。どう使う?
+**A1**: GMSA パスワードは KDC が 30 日ごとに自動ローテーションし、msDS-ManagedPassword blob に保存される。msDS-GroupMSAMembership で許可された主体だけが読める。判定基準:制御下アカウントが許可リストにあれば、GMSA パスワードをオンラインで読める。
+**Q2**: 具体的にどう読む?
+**A2**: `Get-ADServiceAccount -Identity <gmsa> -Properties msDS-ManagedPassword` または GMSApasswordReader / gMSADumper。バイナリが返り、current + previous NTLM を解く。
+**Q3**: 読み取り許可リストにいない。昇格できるか?
+**A3**: GMSA オブジェクトに msDS-GroupMSAMembership への WriteProperty を持つアカウントを探す(自分を追加する)、またはその属性の ACE に WriteDACL を持つ。
+**Q4**: さらに強いのは、KDS root key を取得した後?
+**A4**: KDS root key は DC 上にあり、DA が読める。それがあれば、任意の時刻の任意の GMSA パスワードをオフラインで計算できる(常時読み取り権限は不要)。ツールは GoldenGMSA。
+**Q5**: GMSA は何のサービスを動かすのに使われる?
+**A5**: 通常はクラスタ/ロードバランサの重要サービス。IIS アプリケーションプール、SQL Server、SharePoint、Exchange DAG。GMSA hash を取ればそのサービスの最高身元に相当する。
+**Q6**: GMSA がなく sMSA(単機 MSA)だけの場合?
+**A6**: sMSA パスワードは本機 LSA secrets にあり、暗号化方式は通常の MSA と同じ → 本機 SYSTEM で dump できる。前述の「LSA secrets」チェーンへ転換する。
 
-### 云上凭据:云控制台 metadata 的类比
-**Q1**: 内网机器如果是"IaaS 虚机"(比如自建 vSphere 但接了 Terraform,或者跑在私有云),有类似云 metadata 的凭据入口吗?
-**A1**: 有——检查 `~/.vmware/`、cloud-init logs、启动脚本里可能有引导凭据(bootstrap key、agent token)。私有云也会用 config drive/nocloud 挂载配置。
-**Q2**: 目标机器是 Azure/AWS/GCP VM(即使是"混合"AD 场景)?
-**A2**: 打云 metadata:AWS IMDSv1 (v2 需 token) `169.254.169.254`、Azure IMDS `169.254.169.254/metadata/`、GCP `metadata.google.internal`。返回临时 STS credential,配合 SSRF/命令执行也能远程打。
-**Q3**: 拿到云 credential 后,如何与 AD 凭据串起来?
-**A3**: 看 AD 里有没有"云管理员账号"——SSO 到云的账号;或者相反,云上 SSM/SecretsManager 里可能存了 AD 服务账号密码(用来跑 domain join 之类)。
-**Q4**: 云 VM 上的 managed identity 可以读 KeyVault?
-**A4**: 如果目标 VM 的 managed identity 有 KeyVault 权限,`az keyvault secret list` 一把,里面可能有 domain admin/service accounts 明文。
-**Q5**: 完全隔离,内网机器无法访问 metadata endpoint?
-**A5**: 转向机器上的 CLI 配置:`~/.aws/credentials`、`~/.azure/`、`~/.config/gcloud/` 常有长效 access key/refresh token。
-**Q6**: 想从 on-prem 打到云凭据面,起点是什么?
-**A6**: 前面 Azure AD Connect 那链 + Golden SAML + PRT 抓取。凭据薅取到云端就是攻击面从"内网"扩到"租户"。
+### クラウド上の認証情報:クラウドコンソール metadata の類推
+**Q1**: 内網マシンが「IaaS 仮想マシン」(例: 自前 vSphere だが Terraform 接続、またはプライベートクラウド上)の場合、クラウド metadata に似た認証情報入口はあるか?
+**A1**: ある。`~/.vmware/`、cloud-init logs、起動スクリプトにブートストラップ認証情報(bootstrap key、agent token)がありうる。プライベートクラウドも config drive/nocloud で設定をマウントする。
+**Q2**: 対象マシンが Azure/AWS/GCP VM(「ハイブリッド」AD 場面でも)の場合?
+**A2**: クラウド metadata を打つ。AWS IMDSv1(v2 は token が必要)`169.254.169.254`、Azure IMDS `169.254.169.254/metadata/`、GCP `metadata.google.internal`。一時 STS credential を返し、SSRF/コマンド実行と併用してリモートでも打てる。
+**Q3**: クラウド credential を取得後、AD 認証情報とどう連結する?
+**A3**: AD に「クラウド管理者アカウント」(クラウドへ SSO するアカウント)があるかを見る。または逆に、クラウド上の SSM/SecretsManager に AD サービスアカウントパスワードが保存されている(domain join などを実行するために使われる)。
+**Q4**: クラウド VM の managed identity で KeyVault を読める?
+**A4**: 対象 VM の managed identity が KeyVault 権限を持つなら、`az keyvault secret list` で一括取得できる。中に domain admin/service accounts の平文がある可能性。
+**Q5**: 完全に隔離され、内網マシンが metadata endpoint へアクセスできない?
+**A5**: マシン上の CLI 設定へ転換する。`~/.aws/credentials`、`~/.azure/`、`~/.config/gcloud/` に長期 access key/refresh token がよくある。
+**Q6**: on-prem からクラウド認証情報面を攻めたい。起点は?
+**A6**: 前述の Azure AD Connect チェーン + Golden SAML + PRT 取得。認証情報収集がクラウドまで届けば、攻撃面は「内網」から「テナント」へ拡大する。
 
-### 记录与撤退:凭据薅到后的自律
-**Q1**: 一次行动薅到几十个 hash + 一些明文,怎么整理?
-**A1**: 结构化:账号名 / 类型(用户/机器/服务)/ hash 类型(NTLM/DCC2/AES)/ 来源(哪台机)/ 该账号已知权限 / 时间戳。避免混乱重复利用,也避免遗漏高价值账号。
-**Q2**: 什么时候该停止继续横向,先撤?
-**A2**: 判据:①目标达成(拿到指定资产/DA);②检测风险陡增(EDR 告警可能已发出);③凭据面已经饱和(继续挖收益递减)。三种任一 → 记录+撤+持久化。
-**Q3**: 撤之前做什么?
-**A3**: 清理:删除 dump 文件、清 event 日志(注意清日志本身告警)、恢复注册表改动、移除持久化以外的植入。别贪。
-**Q4**: 持久化用什么账号?
-**A4**: 别用最高权账号做持久化——用一个不起眼的服务账号或次高权账号做定期 beacon 回来,DA 留作"关键时刻用一次"的核弹。分层。
-**Q5**: 万一凭据被 rotate 了怎么快速恢复访问?
-**A5**: 至少两条独立入口:①凭据(可能失效);②Shadow Credentials / KeyCredentialLink(基于公钥,不受密码 rotate 影响,一次配置长期有效);③计划任务/服务持久化(不依赖凭据)。
-**Q6**: 判据:什么时候承认"这次凭据薅取失败"?
-**A6**: 尝试了 LSASS + SAM + LSA secrets + DPAPI + 浏览器 + 服务账号 + 文件系统搜 + coerce/relay + spray 全维度 → 都无进展 → 转"凭据薅取"为"漏洞路径"(未认证 CVE、web 应用)、或者社工路径(钓鱼、水坑)。不要在一个维度死磕。
+### 記録と撤退:認証情報収集後の自律
+**Q1**: 一度の行動で数十の hash + 一部平文を収集した。どう整理する?
+**A1**: 構造化する。アカウント名 / 種別(ユーザー/マシン/サービス)/ hash 種別(NTLM/DCC2/AES)/ 出所(どのマシン)/ そのアカウントの既知権限 / タイムスタンプ。混乱して重複利用するのを避け、高価値アカウントの見落としも避ける。
+**Q2**: いつ横展開をやめて撤退すべきか?
+**A2**: 判定基準:①目標達成(指定アセット/DA を取得)。②検知リスク急上昇(EDR アラートが既に発せられた可能性)。③認証情報面が飽和(掘り続けても収益逓減)。いずれか → 記録+撤退+永続化。
+**Q3**: 撤退前に何をする?
+**A3**: 清掃する。dump ファイル削除、event ログ消去(ログ消去自体がアラートになる点に注意)、レジストリ変更の復元、永続化以外の埋め込み削除。欲張らない。
+**Q4**: 永続化にはどのアカウントを使う?
+**A4**: 最高権限アカウントを永続化に使わない。目立たないサービスアカウントまたは次高権限アカウントで定期 beacon して戻る。DA は「重要なときに一度使う」核弾頭として残す。階層化する。
+**Q5**: 万一認証情報がローテーションされたら、素早くアクセスを回復するには?
+**A5**: 最低二つの独立入口:①認証情報(失効しうる)。②Shadow Credentials / KeyCredentialLink(公開鍵ベースで、パスワードローテーションの影響を受けず、一度設定すれば長期有効)。③スケジュールタスク/サービス永続化(認証情報に依存しない)。
+**Q6**: 判定基準:いつ「今回の認証情報収集は失敗」と認めるか?
+**A6**: LSASS + SAM + LSA secrets + DPAPI + ブラウザ + サービスアカウント + ファイルシステム検索 + coerce/relay + spray の全次元を試した → すべて進展なし → 「認証情報収集」を「脆弱性経路」(未認証 CVE、Web アプリ)、またはソーシャルエンジニアリング経路(フィッシング、水飲み場)へ転換する。ひとつの次元に固執しない。

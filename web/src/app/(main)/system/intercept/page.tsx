@@ -227,7 +227,7 @@ function JudgeCard() {
 
   return (
     <div className="space-y-4">
-      {/* 有効化スイッチ —— 独立したハイライトバー */}
+      {/* 有効化スイッチ。独立したハイライトバー */}
       <div
         className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 ${
           cfg.enabled ? "border-violet-400/50 bg-violet-50/40 dark:bg-violet-950/20" : "bg-muted/40"

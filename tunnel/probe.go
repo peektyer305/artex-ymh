@@ -4,7 +4,7 @@
 // 級の説明；全断→フォワード/webshell チャネルを提案）。解析と段階分けはどちらも純粋関数。
 //
 // TCP プローブは 3 状態判定で、「接続できたときだけ通」ではない：connect 成功 = reachable；即時 RST/接続拒否
-// （refused）= reachable（経路は通っており、接続先に待受がないだけ——RST はパケットが届く証拠で、トンネルがその口を
+// （refused）= reachable（経路は通っており、接続先に待受がないだけ。RST はパケットが届く証拠で、トンネルがその口を
 // 待ち受ければコールバックできる）；タイムアウト/無応答 = filtered（本当にフィルタされている）。プローブ対象は常用口 443/80/53 のほか、
 // トンネルポートプールのサンプル（ProbeAddrs：開始と終端を各 1 個）も含む。トンネルが実際に使うポートは必ずプローブ対象にする。
 package tunnel
@@ -24,7 +24,7 @@ import (
 const probeTimeout = 20 * time.Second
 
 // TCPState は TCP プローブの 3 状態の結論。判定を「接続できたときだけ通」から経路のエビデンスの区別に変える：
-// 認可されたイントラネットの現場では、ファイアウォール上の「未待受」と「パケット破棄によるフィルタ」はまったく異なる挙動——
+// 認可されたイントラネットの現場では、ファイアウォール上の「未待受」と「パケット破棄によるフィルタ」はまったく異なる挙動。
 // RST（refused）はパケットが接続先に届く証拠で、経路は通っており、トンネルがその口を待ち受ければコールバックできる；
 // タイムアウトのときはパケットがフィルタされており、経路が本当に通らないと判断できる。
 type TCPState string
@@ -139,7 +139,7 @@ func ParseTCPOutput(tag, out string) (state TCPState, found bool) {
 }
 
 // ProbeAddrs は TCP プローブ対象を組み立てる：常用コールバック口 443/80/53 + トンネルポートプールのサンプル（開始と終端
-// を各 1 個、例えば 20000 と 21000）——トンネルが実際に使うポートは必ずプローブ対象にする。そうしないと「常用口がフィルタされている」
+// を各 1 個、例えば 20000 と 21000）。トンネルが実際に使うポートは必ずプローブ対象にする。そうしないと「常用口がフィルタされている」
 // ことが「トンネルポートプールは実は到達可能」を覆い隠す。poolRange が不正ならプールのサンプルは無視し、基本のプローブは止めない；
 // 常用口と重複するプールポートは重複除去する。純粋関数。
 func ProbeAddrs(host, poolRange string) []string {
@@ -185,7 +185,7 @@ func Probe(ctx context.Context, sess session.Session, attackAddrs []string, icmp
 			state, found := ParseTCPOutput(tag, stdout)
 			res.State = string(state)
 			// refused も通とみなす：認可されたイントラネットの現場では「未待受」と「パケット破棄によるフィルタ」は別の挙動で、
-			// RST はパケットが接続先に届く証拠——トンネル server がその口を待ち受ければコールバックできる。
+			// RST はパケットが接続先に届く証拠。トンネル server がその口を待ち受ければコールバックできる。
 			res.OK = state == TCPConnected || state == TCPRefused
 			res.Detail = detailOf(stdout)
 			if !found {
@@ -247,7 +247,7 @@ type Conclusion struct {
 //   - いずれかの TCP ターゲットが reachable（refused を含む：RST はパケットが届く証拠で、接続先に待受がないだけ。
 //     トンネル server がその口を待ち受ければコールバックできる）→ tcp_egress、リバース socks（chisel --reverse）、
 //     待受口は最初に通った口を取る；
-//   - すべて filtered（タイムアウトで破棄）だが HTTP は通る → http_only：HTTP で運ぶ——suo5 は受信方向の
+//   - すべて filtered（タイムアウトで破棄）だが HTTP は通る → http_only：HTTP で運ぶ。suo5 は受信方向の
 //     HTTP を使い、外向き通信に依存しないため優先；または chisel を WebSocket over 443 で通して特徴を変える；
 //   - すべて filtered だが DNS は通る → dns_only：コマンドチャネル級（KB/s 以下）。データトンネルを張らない；
 //   - ICMP のみ → icmp_only：制御シグナリング級；
@@ -260,7 +260,7 @@ func Conclude(rep *ProbeReport) Conclusion {
 			Feasible:         true,
 			SuggestedPort:    rep.FirstOKPort(),
 			SuggestedAdapter: AdapterChisel,
-			Recommendation: "ターゲットは TCP で外向き通信できる（connect 成功も refused 接続拒否も通とみなす——RST は経路が到達可能な証拠で、" +
+			Recommendation: "ターゲットは TCP で外向き通信できる（connect 成功も refused 接続拒否も通とみなす。RST は経路が到達可能な証拠で、" +
 				"接続先に待受がないだけ）：リバース socks トンネルを直接張る（tunnel_deploy adapter=chisel kind=socks）。" +
 				"プラットフォームの chisel server 待受口は最初に通ったコールバックポート（トンネルポートプールのサンプル口を含む）を優先する；チャネルポートは 443>80>53 を優先し、4444/8888 を避ける。",
 		}
@@ -298,7 +298,7 @@ func Conclude(rep *ProbeReport) Conclusion {
 		Feasible:         false,
 		SuggestedAdapter: AdapterSuo5,
 		Recommendation: "4 種類のプローブが全断し、ターゲットに外向き通信がない：リバーストンネル（chisel）は不可。ただし本プローブは webshell セッション経由で完了しており、" +
-			"webshell は必ず使える——tunnel_deploy adapter=suo5 を推奨（payload を webshell と同じディレクトリに配信し、" +
+			"webshell は必ず使える。tunnel_deploy adapter=suo5 を推奨（payload を webshell と同じディレクトリに配信し、" +
 			"プラットフォームが受信方向の HTTP で socks5 を張る。外向き通信のない状況をカバー）。その他の方向転換：① ターゲットの受信方向に穴があればフォワードトンネルを張る；" +
 			"② webshell セッションのチャネルを続けて使う（session_exec がイントラネットの実行面）、③ 許可リストのドメインを定期的に pull して指令を取る。",
 	}

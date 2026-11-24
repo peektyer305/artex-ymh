@@ -1,7 +1,7 @@
 // intranet.go は「イントラネット作戦ページ」の手動操作 API（フェーズ 1-3 の機能の Web 公開面）:
 // セッション台帳/手動 exec/ファイルの一覧・読み書き・削除、トンネル台帳/teardown、認証情報のマスク済み一覧、トポロジ組み立て。
 // すべて /api 配下の requireAuth の後ろ（JWT）にあり、agent の host ツール（session.go/
-// tunnel.go/credentials.go）とは完全に分離されている——あちらはモデルが guard 承認を経るチャネル、こちらは
+// tunnel.go/credentials.go）とは完全に分離されている。あちらはモデルが guard 承認を経るチャネル、こちらは
 // ログイン済み操作者の手動チャネルで、監査はサーバーログ（[intranet] プレフィックス、操作者/セッション/コマンドを含む）で行う。
 package server
 

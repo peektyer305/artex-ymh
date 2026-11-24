@@ -42,7 +42,7 @@ type Manifest struct {
 //
 //	env ARTEX_TOOLS_MANIFEST  >  BaseDir()/packaging/tools-manifest.json
 //
-// 返るパスは存在しない場合がある（開発時/簡易デプロイ）——呼び出し側は os.IsNotExist で判定して黙ってスキップする。
+// 返るパスは存在しない場合がある（開発時/簡易デプロイ）。呼び出し側は os.IsNotExist で判定して黙ってスキップする。
 func ManifestPath() string {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_TOOLS_MANIFEST")); v != "" {
 		return v

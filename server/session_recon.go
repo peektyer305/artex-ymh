@@ -64,7 +64,7 @@ func (s *Server) sessionReconTool() actool.CoreTool {
 			if err != nil {
 				return actool.Errorf(err.Error()), nil
 			}
-			// 1 件ずつ実行:各コマンドの出力を個別に取得し(64KB の切り詰めを回避)、失敗しても全体を止めない——
+			// 1 件ずつ実行:各コマンドの出力を個別に取得し(64KB の切り詰めを回避)、失敗しても全体を止めない。
 			// パッシブ偵察の原則は「取れたものだけで判断する」であり、1 つのコマンドが落ちても残りは通常どおり実行する。
 			outputs := map[string]string{}
 			cmdErrs := map[string]string{}

@@ -52,7 +52,7 @@ func TestUAPickStable(t *testing.T) {
 	}
 }
 
-// バッチ 5 B4: BashEnv への注入——ua が非空なら ARTEX_UA を追加し、空ならそのまま返す。
+// バッチ 5 B4: BashEnv への注入。ua が非空なら ARTEX_UA を追加し、空ならそのまま返す。
 func TestUAEnv(t *testing.T) {
 	env := uaEnv(nil, "UA-X")
 	if len(env) != 1 || env[0] != "ARTEX_UA=UA-X" {

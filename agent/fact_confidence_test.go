@@ -33,11 +33,11 @@ func TestNormalizeFactConfidence(t *testing.T) {
 
 func TestIsNegativeConclusion(t *testing.T) {
 	negative := []string{
-		"目标 445 端口被封死",
-		"该服务不可用",
-		"参数 id 不存在",
-		"服务器无响应",
-		"目标不支持该协议",
+		"対象の 445 ポートが封鎖されている",
+		"そのサービスは利用不可",
+		"パラメータ id が存在しない",
+		"サーバーから応答なし",
+		"対象はこのプロトコルに非対応",
 		"Connection blocked by firewall",
 		"host UNREACHABLE",
 		"no response from target",
@@ -106,7 +106,7 @@ func TestRecordFactNegativeDowngrade(t *testing.T) {
 	ts := factTestRig(t)
 
 	// 1) 陰性の結論 + observed の自己申告 → 自動で inferred に降格し、戻り値で通知する
-	text := callFactTool(t, ts.recordFact(), `{"summary":"目标 445 端口被封死,无法直连","confidence":"observed"}`)
+	text := callFactTool(t, ts.recordFact(), `{"summary":"対象の 445 ポートが封鎖され、直接接続できない","confidence":"observed"}`)
 	var id int64
 	if _, err := fmt.Sscanf(text, "fact recorded: %d", &id); err != nil || id <= 0 {
 		t.Fatalf("record_fact return: %q", text)
@@ -169,7 +169,7 @@ func TestConfirmFact(t *testing.T) {
 	ts := factTestRig(t)
 
 	// inferred の事実 → confirm_fact で confirmed へ昇格し、監査フィールドも付く
-	text := callFactTool(t, ts.recordFact(), `{"summary":"445 被封","confidence":"observed"}`)
+	text := callFactTool(t, ts.recordFact(), `{"summary":"445 が封鎖されている","confidence":"observed"}`)
 	var id int64
 	_, _ = fmt.Sscanf(text, "fact recorded: %d", &id)
 	if got := factPayload(t, ts, id)["confidence"]; got != FactConfidenceInferred {
@@ -212,7 +212,7 @@ func TestConfirmFact(t *testing.T) {
 
 func TestGraphOverviewMarksInferredFact(t *testing.T) {
 	ts := factTestRig(t)
-	text := callFactTool(t, ts.recordFact(), `{"summary":"端口无响应","confidence":"observed"}`)
+	text := callFactTool(t, ts.recordFact(), `{"summary":"ポートから応答なし","confidence":"observed"}`)
 	var id int64
 	_, _ = fmt.Sscanf(text, "fact recorded: %d", &id)
 

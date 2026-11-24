@@ -12,11 +12,11 @@ func TestValidateChainTags(t *testing.T) {
 		tags    []string
 		wantErr bool
 	}{
-		{"nil 合法", nil, false},
-		{"单个合法", []string{"web"}, false},
-		{"两个合法", []string{"web", "pivot"}, false},
-		{"非法取值", []string{"web", "cloud"}, true},
-		{"超过两个", []string{"web", "ad", "priv"}, true},
+		{"nil は有効", nil, false},
+		{"単一で有効", []string{"web"}, false},
+		{"2 つで有効", []string{"web", "pivot"}, false},
+		{"不正な値", []string{"web", "cloud"}, true},
+		{"3 つ以上", []string{"web", "ad", "priv"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -44,18 +44,18 @@ func TestNormalizeChainTags(t *testing.T) {
 func TestMatch(t *testing.T) {
 	cases := []struct {
 		text string
-		want []string // nil 表示期望无命中
+		want []string // nil はヒット無しを表す
 	}{
-		{"对 /api/user?id=1 做 sql 注入测试", []string{"web"}},
-		{"域内 kerberos 委派滥用摸底", []string{"ad"}},
-		{" webshell 落地后搭隧道做内网横向 ", []string{"pivot"}},
-		{"Linux 提权:先查 suid 与内核漏洞", []string{"priv"}},
-		{"ctf pwn 题,栈溢出 + rop", []string{"pwn"}},
-		{"子域收集与指纹识别等侦察工作", []string{"recon"}},
-		{"逆向该样本,先脱壳再静态分析", []string{"rev"}},
-		{"apk 抓包受阻,上 frida hook", []string{"app"}},
-		{"对该接口做 sql 注入,拿到后提权", []string{"web", "priv"}}, // 多命中,按规则表顺序取前 2
-		{"常规巡检,无明确攻击面", nil},
+		{"/api/user?id=1 に対して sql インジェクションのテスト", []string{"web"}},
+		{"ドメイン内で kerberos 委任の悪用を調査", []string{"ad"}},
+		{"webshell で足場を確保し、トンネルを張って内部ネットワークを横展開", []string{"pivot"}},
+		{"Linux の権限昇格:まず suid とカーネル脆弱性を調べる", []string{"priv"}},
+		{"ctf pwn の問題、スタックオーバーフロー + rop", []string{"pwn"}},
+		{"サブドメイン収集とフィンガープリント識別などの偵察作業", []string{"recon"}},
+		{"そのサンプルをリバースエンジニアリングし、まずアンパックしてから静的解析", []string{"rev"}},
+		{"apk のパケットキャプチャが阻まれたので frida で hook", []string{"app"}},
+		{"このインターフェースに sql インジェクション、取れた後に権限昇格", []string{"web", "priv"}}, // 複数ヒット。ルール表の順で先頭 2 つを取る
+		{"通常の巡回、明確な攻撃面はなし", nil},
 		{"", nil},
 	}
 	for _, c := range cases {
@@ -75,14 +75,14 @@ func TestSkeletonEmbedded(t *testing.T) {
 	for _, c := range Categories {
 		sk, ok := Skeleton(c)
 		if !ok {
-			t.Fatalf("类别 %s 骨架缺失(go:embed 应保证 9 类全在)", c)
+			t.Fatalf("カテゴリ %s のスケルトンが欠落(go:embed が 9 カテゴリ全てを保証すべき)", c)
 		}
-		if !strings.Contains(sk, "场景") || !strings.Contains(sk, "判据") {
-			t.Fatalf("类别 %s 骨架不含 场景/判据 字段,疑似内容错误", c)
+		if !strings.Contains(sk, "場面") || !strings.Contains(sk, "判定基準") {
+			t.Fatalf("カテゴリ %s のスケルトンに 場面/判定基準 フィールドが無い。内容が誤っている疑い", c)
 		}
 	}
 	if _, ok := Skeleton("nope"); ok {
-		t.Fatal("非法类别应返回 ok=false")
+		t.Fatal("不正なカテゴリは ok=false を返すべき")
 	}
 }
 
@@ -96,77 +96,77 @@ func payload(t *testing.T, m map[string]any) json.RawMessage {
 }
 
 func TestForIntentByTags(t *testing.T) {
-	out := ForIntent(payload(t, map[string]any{"summary": "打某站", "chain_tags": []string{"web"}}))
+	out := ForIntent(payload(t, map[string]any{"summary": "あるサイトを攻撃", "chain_tags": []string{"web"}}))
 	if !strings.Contains(out, `<chains-skeleton source="chains-skeleton" category="web">`) {
-		t.Fatalf("按 chain_tags 注入失败:\n%s", out)
+		t.Fatalf("chain_tags による注入に失敗:\n%s", out)
 	}
 	if strings.Contains(out, "untrusted-data") {
-		t.Fatal("骨架分区不得复用 untrusted 语义标签")
+		t.Fatal("スケルトン区画は untrusted の意味ラベルを再利用してはならない")
 	}
 }
 
 func TestForIntentMultiTagCap2(t *testing.T) {
 	out := ForIntent(payload(t, map[string]any{"summary": "x", "chain_tags": []string{"web", "ad", "pivot"}}))
 	if !strings.Contains(out, `category="web"`) || !strings.Contains(out, `category="ad"`) {
-		t.Fatalf("前 2 个 tag 应注入:\n%s", out)
+		t.Fatalf("先頭 2 つの tag が注入されるべき:\n%s", out)
 	}
 	if strings.Contains(out, `category="pivot"`) {
-		t.Fatal("第 3 个 tag 超出 MaxTagsPerIntent,不应注入")
+		t.Fatal("3 つ目の tag は MaxTagsPerIntent を超えるため注入されない")
 	}
 }
 
 func TestForIntentInvalidTagFallsBack(t *testing.T) {
-	// 非法 tag 被忽略;剩余无合法 tag 时回退到 summary 关键词匹配。
-	out := ForIntent(payload(t, map[string]any{"summary": "做 sql 注入测试", "chain_tags": []string{"bogus"}}))
+	// 不正な tag は無視。残りに有効な tag が無ければ summary のキーワードマッチへフォールバック。
+	out := ForIntent(payload(t, map[string]any{"summary": "sql インジェクションのテスト", "chain_tags": []string{"bogus"}}))
 	if !strings.Contains(out, `category="web"`) {
-		t.Fatalf("非法 tag 应回退关键词匹配注入 web:\n%s", out)
+		t.Fatalf("不正な tag はキーワードマッチへフォールバックして web を注入するべき:\n%s", out)
 	}
 }
 
 func TestForIntentNoTagKeywordFallback(t *testing.T) {
-	out := ForIntent(payload(t, map[string]any{"summary": "内网隧道选型与横向"}))
+	out := ForIntent(payload(t, map[string]any{"summary": "内部ネットワークのトンネル選定と横展開"}))
 	if !strings.Contains(out, `category="pivot"`) {
-		t.Fatalf("无 tags 应关键词回退注入 pivot:\n%s", out)
+		t.Fatalf("tags が無ければキーワードフォールバックで pivot を注入するべき:\n%s", out)
 	}
 }
 
 func TestForIntentNoMatchSilent(t *testing.T) {
-	if out := ForIntent(payload(t, map[string]any{"summary": "随便看看"})); out != "" {
-		t.Fatalf("匹配不中应静默不注入, got:\n%s", out)
+	if out := ForIntent(payload(t, map[string]any{"summary": "適当に見る"})); out != "" {
+		t.Fatalf("マッチしなければ静かに非注入にすべき。got:\n%s", out)
 	}
 	if out := ForIntent(json.RawMessage(`{bad json`)); out != "" {
-		t.Fatal("payload 解析失败应静默不注入")
+		t.Fatal("payload の解析失敗は静かに非注入にすべき")
 	}
 	if out := ForIntent(payload(t, map[string]any{"chain_tags": []string{"bogus"}})); out != "" {
-		t.Fatal("tags 全非法且 summary 无关键词应静默不注入")
+		t.Fatal("tags が全て不正で summary にキーワードが無ければ静かに非注入にすべき")
 	}
 }
 
 func TestSectionTruncation(t *testing.T) {
 	defer func(orig int) { sectionCapRunes = orig }(sectionCapRunes)
-	sectionCapRunes = 600 // 调小上限,强制截断
+	sectionCapRunes = 600 // 上限を小さくして切り詰めを強制
 	out := Section([]string{"web", "ad"})
 	if out == "" {
-		t.Fatal("截断后仍应有内容")
+		t.Fatal("切り詰め後も内容があるべき")
 	}
-	if !strings.Contains(out, "已截断") {
-		t.Fatalf("超出 cap 应有截断标注:\n%s", out)
+	if !strings.Contains(out, "切り詰め") {
+		t.Fatalf("cap 超過で切り詰め注記があるべき:\n%s", out)
 	}
 	if n := len([]rune(out)); n > sectionCapRunes+80 { // 标注本身另算,给足余量
-		t.Fatalf("截断后总长 %d 远超 cap %d", n, sectionCapRunes)
+		t.Fatalf("切り詰め後の総長 %d 远超 cap %d", n, sectionCapRunes)
 	}
 }
 
 func TestSectionMissingCategoryDegrades(t *testing.T) {
-	// 非法类别(骨架必缺失)被静默跳过;有效类别仍注入。
+	// 不正なカテゴリ(スケルトンが必ず欠落)は静かにスキップ。有効なカテゴリはそのまま注入。
 	out := Section([]string{"nope", "web"})
 	if !strings.Contains(out, `category="web"`) {
-		t.Fatalf("缺失类别应跳过、有效类别照常注入:\n%s", out)
+		t.Fatalf("欠落カテゴリはスキップし、有効カテゴリは通常どおり注入:\n%s", out)
 	}
 	if strings.Contains(out, "nope") {
-		t.Fatal("缺失类别不应出现在输出里")
+		t.Fatal("欠落カテゴリは出力に現れない")
 	}
 	if Section([]string{"nope"}) != "" {
-		t.Fatal("全部缺失应返回空串(不注入)")
+		t.Fatal("全て欠落なら空文字列を返す(非注入)")
 	}
 }

@@ -5,7 +5,7 @@
 // コンパイル時定数でない href は必ずこの検証を通し、undefined なら呼び出し側はプレーンテキストで描画する。
 //
 // 注意：URL コンストラクタは相対文字列(例 "/path" やスキーム相対の "//host")に base を要求するが、
-// ここではあえて base を渡さない —— 相対/不正な入力はすべて信頼できないものとして undefined を返す。
+// ここではあえて base を渡さない。相対/不正な入力はすべて信頼できないものとして undefined を返す。
 export function safeHref(raw: string | null | undefined): string | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();

@@ -235,7 +235,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 	// bashInteractiveShellNote is appended to Bash's description ONLY for agents whose
 	// interactive_shell is on, so Bash points at shell_open for interactive programs
 	// without ever referencing a tool that isn't injected (§14.1/§14.2).
-	const bashInteractiveShellNote = "\n\n需要【交互输入】的程序（msfconsole / ssh 交互登录 / mysql、psql、python 等 REPL / 密码或 yes/no 提示 / nc 反弹 shell）不要用 Bash（它没有 stdin、会卡住），改用 shell_open 开交互会话（用完 shell_close）。一次性、非交互命令仍用 Bash。"
+	const bashInteractiveShellNote = "\n\n対話入力を必要とするプログラム（msfconsole / ssh の対話ログイン / mysql、psql、python などの REPL / パスワードや yes/no のプロンプト / nc のリバースシェル）には Bash を使わないでください。Bash には stdin がなく、ハングしてしまいます。代わりに shell_open で対話セッションを開いてください（使い終わったら shell_close）。一度きりの非対話コマンドは引き続き Bash を使ってください。"
 	agent.ToolResolve = func(ctx context.Context, agentKey string, tools []actool.CoreTool) []actool.CoreTool {
 		rows, err := pg.ListTools()
 		if err != nil {
@@ -297,7 +297,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 			}
 		}
 		if len(shellHints) > 0 {
-			note := "\n\n以下工具已安装在此 bash 环境中，可直接通过 Bash 调用：\n" + strings.Join(shellHints, "\n")
+			note := "\n\n以下のツールはこの bash 環境にインストール済みで、Bash から直接呼び出せます：\n" + strings.Join(shellHints, "\n")
 			for i, t := range out {
 				if t.Name() == "Bash" {
 					out[i] = agent.DecorateTool(t, t.Description()+note, t.InputSchema())
@@ -308,7 +308,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 		// interactive shell: gated purely by the agent's interactive_shell flag (like
 		// web_search), NOT by tools-table binding. When on, inject the 5 shell_* tools
 		// and COUPLE the Bash description addendum so it points at shell_open — and never
-		// dangles when off. See docs/交互式shell设计.md §14.2.
+		// dangles when off. See docs/インタラクティブシェル設計.md §14.2.
 		if !actool.InteractiveShellDisabled() {
 			if a, err := pg.GetAgentByKey(agentKey); err == nil && a != nil && a.InteractiveShell {
 				out = append(out, actool.ShellSessionTools()...)
@@ -336,7 +336,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 
 // bashUANote はバッチ 5 B4 で worker の Bash 説明に追加された UA 使用規律(実際は
 // bashInteractiveShellNote と同じくコードで固定追加する方式で、DB の説明では上書きできない)。
-const bashUANote = "\n\nHTTP 客户端(curl/httpx 等)统一使用 $ARTEX_UA 作为 User-Agent(本任务稳定分配,任务内不要更换);禁止裸 Chrome UA+库 TLS 之外的组合伪装(UA/TLS 指纹失配正是反 AI 蜜罐的触发器);疑似反 AI 陷阱的目标改用 browser MCP 访问。"
+const bashUANote = "\n\nHTTP クライアント(curl/httpx など)は $ARTEX_UA を User-Agent として統一して使用してください(本タスクに安定して割り当てられ、タスク内で変更しない)。素の Chrome UA とライブラリ TLS 以外の組み合わせによる偽装は禁止します(UA/TLS フィンガープリントの不一致こそが反 AI ハニーポットのトリガーです)。反 AI トラップが疑われる対象には browser MCP でのアクセスに切り替えてください。"
 
 func contains(ss []string, v string) bool {
 	for _, s := range ss {

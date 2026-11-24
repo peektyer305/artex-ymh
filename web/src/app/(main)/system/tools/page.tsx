@@ -201,7 +201,7 @@ function ToolEditor({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
         {trafficGated && (
           <div className="border-amber-500/40 bg-amber-500/10 text-muted-foreground rounded-md border px-3 py-2 text-xs">
-            该ツールは<b>トラフィックキャプチャ</b>に依存します。「システム設定」でトラフィックキャプチャをオンにすると、Agent にバインドして有効化できます。
+            このツールは<b>トラフィックキャプチャ</b>に依存します。「システム設定」でトラフィックキャプチャをオンにすると、Agent にバインドして有効化できます。
           </div>
         )}
         {/* binding + switch */}

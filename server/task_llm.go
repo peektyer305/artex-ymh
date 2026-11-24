@@ -105,7 +105,7 @@ type taskLLMStreamHooks struct {
 // Agent バインディング → タスクの LLM 設定チェーン → グローバル／環境設定。
 // バインディングはタスクチェーンより優先する。あるロールにモデルが明示的に指定されていれば、常にそのモデルで動く。バインディングが存在しないか
 // 構築に失敗したときだけタスクチェーンへ降格し、タスクチェーンが空ならさらにグローバル設定へ降格する。
-// 返される profile id はタスクチェーンを通したときだけ非ゼロ —— streamTaskLLM はこれで、クォータエラー時に
+// 返される profile id はタスクチェーンを通したときだけ非ゼロ。streamTaskLLM はこれで、クォータエラー時に
 // タスクのフェイルオーバー状態を進めるべきかを判断する（バインディング／グローバル経路ではタスクチェーン状態を変えず、既存の意味を踏襲する）。
 func (r *taskLLMRuntime) current() (taskLLMSelection, error) {
 	taskNum, err := parseTaskID(r.taskID)

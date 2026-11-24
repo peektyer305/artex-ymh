@@ -21,7 +21,7 @@ import (
 
 // 管理下ファイル配布（F13。stage パッケージの意味は stage/stage.go の先頭コメントを参照）。本ファイルの役割は 3 つ:
 //   1. 組み立て: stage.Manager を生成し、記帳イベントをタスクの activity へ書き込む（タスクコンテキストがなければログのみ）;
-//   2. ダウンロードルート GET /s/{token}/{name}（root mux、JWT の外——対象マシンはトークンを持たない。
+//   2. ダウンロードルート GET /s/{token}/{name}（root mux、JWT の外。対象マシンはトークンを持たない。
 //      gate のゲートは /s/ プレフィックスを除外する。gate.go を参照）;
 //   3. 管理 API（POST/GET/DELETE /api/stage*、JWT の後）+ worker の stage_share host ツール。
 
@@ -179,7 +179,7 @@ func (s *Server) stageShareTool() actool.CoreTool {
 		Name: "stage_share",
 		Description: "ワークスペース内で生成済みのファイルを、プラットフォームの管理下ステージングサービスで対象へ配布する: ランダムなトークンのダウンロード URL（/s/<token>/<name>、ディレクトリ一覧なし）と有効期限を返す。" +
 			"ハード TTL はデフォルト 15 分（ttl_minutes で調整可能、上限 120）で、期限が来ると自動破棄される。one_shot=true なら対象が最初に完全にダウンロードした直後に即破棄する。" +
-			"【対象へのツール／payload 配布にのみ使用】——戦利品／認証情報を配布しないこと。データの回収は必ずセッション読み取り／evidence 経由で行う。" +
+			"【対象へのツール／payload 配布にのみ使用】。戦利品／認証情報を配布しないこと。データの回収は必ずセッション読み取り／evidence 経由で行う。" +
 			"返される URL のホストはプラットフォームのリッスンアドレスである。対象マシンからそのアドレスに到達できないときは、対象から到達できるプラットフォームのアドレス／トンネルでホスト部分を置き換える（パスとトークンは変えない）。",
 		Schema: map[string]any{
 			"type": "object",

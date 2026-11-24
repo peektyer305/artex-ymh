@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# ARTEX 更新スクリプト：① Docker 更新（新イメージを取得して再構築）  ② ローカルビルド更新（バイナリを再構築）
+# ARTEX 更新スクリプト：① Docker 更新（ローカルの Dockerfile.source から再ビルド）  ② ローカルビルド更新（バイナリを再構築）
 # install.sh と対になる：install は初回導入、update は新バージョンへのアップグレードを担当。
-# DB マイグレーションは手動実行不要——artex は起動のたびに schema.sql を冪等に再実行する（ADD COLUMN/CREATE
+# DB マイグレーションは手動実行不要。artex は起動のたびに schema.sql を冪等に再実行する（ADD COLUMN/CREATE
 # INDEX IF NOT EXISTS を含む）ため「再起動＝マイグレーション」。データ（pgdata ボリューム、./data、./skills）は影響なし。
 set -euo pipefail
 cd "$(cd "$(dirname "$0")" && pwd)"
@@ -17,7 +17,7 @@ sync_repo(){
   [ -d .git ] && command -v git >/dev/null 2>&1 || { warn "git の作業コピーではないため、git pull をスキップします"; return; }
   [ "$(ask '最新コードを取得しますか（git pull --ff-only）（y/n）' y)" = y ] || return
   if ! git pull --ff-only; then
-    warn "git pull を fast-forward できませんでした（ローカルに変更があるかブランチが分岐）——手動で対処してから再試行してください。今回は現在のコードを使用します"
+    warn "git pull を fast-forward できませんでした（ローカルに変更があるかブランチが分岐）。手動で対処してから再試行してください。今回は現在のコードを使用します"
   fi
 }
 
@@ -41,9 +41,9 @@ update_docker(){
   # artex のみを操作：postgres は固定の 16-alpine で、一緒にアップグレードする必要はない（取得しても帯域の無駄で、
   # メジャーバージョン変更には互換性リスクもある）。artex は depends_on postgres を宣言しているため、サービス名を指定して
   # up すると pg が未起動なら自動で起動し、起動済みならそのまま維持して再構築しない。
-  info "新しいイメージを取得します（artex のみ）…"
-  docker compose pull artex
-  info "再構築して起動します（artex の再起動時に schema を自動マイグレーション）…"
+  info "最新コードからイメージを再ビルドします（artex のみ）…"
+  docker compose build artex
+  info "起動します（artex の再起動時に schema を自動マイグレーション）…"
   docker compose up -d artex
   ok "更新が完了しました → http://localhost:8787"
   info "ログ確認：docker compose logs -f artex"
@@ -53,7 +53,7 @@ update_docker(){
 # ── ② ローカルビルドで更新 ──────────────────────────────
 update_local(){
   command -v go >/dev/null 2>&1 || die "Go が見つかりません（>=1.26）：https://go.dev/dl/"
-  [ -f config.json ] || warn "config.json が見つかりません——初回デプロイの場合は ./install.sh を使用してください"
+  [ -f config.json ] || warn "config.json が見つかりません。初回デプロイの場合は ./install.sh を使用してください"
   ok "Go: $(go version)"
 
   if command -v npm >/dev/null 2>&1; then
@@ -72,7 +72,7 @@ update_local(){
 
 echo "=============================="
 echo "  ARTEX の更新"
-echo "  1) Docker 更新（新イメージを取得して再構築）"
+echo "  1) Docker 更新（ローカルの Dockerfile から再ビルド）"
 echo "  2) ローカルで更新（go で再ビルド）"
 echo "=============================="
 case "$(ask '番号を選択' 1)" in

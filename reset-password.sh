@@ -4,12 +4,12 @@
 #
 # ログインユーザー名は ARTEX 固定。パスワードは bcrypt ハッシュとしてデータベースの settings テーブルの
 # auth.password_hash キーに保存される。本スクリプトはデータベースに接続した後、pgcrypto で DB 内に bcrypt ハッシュを生成し
-# そのキーへ書き戻す——バックエンドのログイン検証（golang.org/x/crypto/bcrypt）と完全に互換。
+# そのキーへ書き戻す。バックエンドのログイン検証（golang.org/x/crypto/bcrypt）と完全に互換。
 #
 # 2 種類のデプロイ：
-#   local （デフォルト）—— ホストから psql で直接データベースに接続。接続情報は次の優先順位で取得：
+#   local （デフォルト）。ホストから psql で直接データベースに接続。接続情報は次の優先順位で取得：
 #                    コマンドライン引数 > --dsn/$ARTEX_PG_DSN > config.json の database.*
-#   docker        —— `docker compose exec`（または `docker exec`）で postgres
+#   docker       。`docker compose exec`（または `docker exec`）で postgres
 #                    コンテナ内の psql を実行（compose はデフォルトでホストに 5432 を公開しないため、コンテナ内で実行）。
 #
 # 使い方の例：

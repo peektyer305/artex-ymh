@@ -78,7 +78,7 @@ type penSession struct {
 }
 
 // reverseSecret は kind=reverse セッションを永続化する secret の構造体（AES-GCM 暗号化保存）:
-// penelope のセッション識別子 + 現行 handler の MCP 接続パラメータ（診断/突合用、復元は非対応——
+// penelope のセッション識別子 + 現行 handler の MCP 接続パラメータ（診断/突合用、復元は非対応。
 // penelope のセッションはそのプロセスのメモリ内にあり、プラットフォーム再起動後は initReverse が正直に dead を付ける）。
 type reverseSecret struct {
 	PenelopeID int    `json:"penelope_id"`
@@ -349,7 +349,7 @@ func (h *PenelopeHandler) waitReady(ctx context.Context, listenPort int, iface s
 }
 
 // listenerBound はリバース待ち受け口が実際に LISTEN しているか確認する（portaudit の /proc 解析を再利用;
-// Linux 以外では確認できないため通す——MCP が使えることが最低限の健全性ライン）。
+// Linux 以外では確認できないため通す。MCP が使えることが最低限の健全性ライン）。
 func (h *PenelopeHandler) listenerBound() bool {
 	if runtime.GOOS != "linux" {
 		return true
@@ -614,7 +614,7 @@ func (sh *reverseShell) Test(ctx context.Context) error {
 }
 
 // Exec は exec_in_session 経由でターゲット側で実行する。penelope のチャネルは stdout/stderr が統合済みで、
-// stderr は常に空（セッションの契約どおり）。タイムアウトは HTTP の待機を切るだけで——penelope 側のコマンドは
+// stderr は常に空（セッションの契約どおり）。タイムアウトは HTTP の待機を切るだけで。penelope 側のコマンドは
 // 走り続けており、次のコマンドの出力に残骸が混ざるため、呼び出し側は長いコマンドを避ける（ツール説明に記載済み）。
 func (sh *reverseShell) Exec(ctx context.Context, cmd string, timeout time.Duration) (stdout, stderr string, err error) {
 	if timeout <= 0 {
@@ -666,7 +666,7 @@ func (sh *reverseShell) ReadFile(ctx context.Context, path string) ([]byte, erro
 	return data, nil
 }
 
-// WriteFile は upload_to_session 経由:まずローカルの一時ファイルに書く（basename はターゲットと一致させる——
+// WriteFile は upload_to_session 経由:まずローカルの一時ファイルに書く（basename はターゲットと一致させる。
 // penelope のアップロードはローカルのファイル名を保持する）、remote_path にはターゲットのディレクトリを渡す（ディレクトリ必須、実測どおり）。
 func (sh *reverseShell) WriteFile(ctx context.Context, path string, data []byte) error {
 	dir, base := splitRemotePath(path)
@@ -702,7 +702,7 @@ func (sh *reverseShell) WriteFile(ctx context.Context, path string, data []byte)
 	return nil
 }
 
-// Close は可能な範囲で kill_session を呼ぶ（セッションは既に死んでいる場合があり、エラーは握りつぶす——Registry クリーンアップの意味論）。
+// Close は可能な範囲で kill_session を呼ぶ（セッションは既に死んでいる場合があり、エラーは握りつぶす。Registry クリーンアップの意味論）。
 func (sh *reverseShell) Close(ctx context.Context) error {
 	_, _ = sh.caller.Call(ctx, "kill_session", map[string]any{"session_id": sh.penID})
 	return nil
@@ -757,7 +757,7 @@ func (s *Server) reverseListenTool() actool.CoreTool {
 			"session_exec/session_read/session_write で操作できる（ファイル転送は penelope の自動 PTY 昇格に依存し、昇格に失敗したセッションは明確なエラーを返す）、" +
 			"イントラネットページのセッションパネルに表示される。" +
 			"【RoE】承認されたタスクの範囲内でのみ使用する：penelope にリバース接続の合言葉はなく、待ち受けは既定で 127.0.0.1 のみにバインドする（トンネル/ローカルからのリバース接続と併用）;" +
-			"ターゲットから直接リバース接続させる場合は iface=0.0.0.0 または NIC の IP を明示する——待ち受けは外部に露出する面を持つ管理下リソースであり、使い終わったセッションは速やかに削除する。" +
+			"ターゲットから直接リバース接続させる場合は iface=0.0.0.0 または NIC の IP を明示する。待ち受けは外部に露出する面を持つ管理下リソースであり、使い終わったセッションは速やかに削除する。" +
 			"penelope 自体は暗号化しない（暗号化は暗号化 webshell/トンネルで行う）;セッションの死はプラットフォームが dead を付けて生かしたふりはせず、再生成 = ターゲットに再度リバース接続させること。" +
 			"長いコマンドに注意：Exec のタイムアウトはプラットフォーム側の待機を切るだけで、penelope 側のコマンドは走り続ける。",
 		Schema: map[string]any{
@@ -796,7 +796,7 @@ func (s *Server) reverseListenTool() actool.CoreTool {
 			if err := s.reverse.ensure(ctx, a.Port, a.Iface, ri.TaskID, ri.IntentID); err != nil {
 				return actool.Errorf("handler の起動に失敗しました：" + err.Error()), nil
 			}
-			// ここで 1 回突合する（リバース接続が同期ループより先に届く場合がある）;失敗してもブロックしない——同期ループが補う。
+			// ここで 1 回突合する（リバース接続が同期ループより先に届く場合がある）;失敗してもブロックしない。同期ループが補う。
 			active, syncErr := s.reverse.SyncSessions(ctx)
 			out := map[string]any{
 				"listen_addr":    net.JoinHostPort(a.Iface, fmt.Sprint(a.Port)),

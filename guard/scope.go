@@ -46,7 +46,7 @@ type ScopeMatcher struct {
 	hasRules bool
 	// AllowLocal treats worker-local targets (loopback / link-local / localhost)
 	// as in-scope: 本機操作は範囲外としない。デフォルトは有効。無効にすると本機アドレスも範囲マッチングに回る。
-	// 注意：RFC1918 の内部ネットワークアドレスは通過対象外——内部ネットワークのタスクは対象セグメントを
+	// 注意：RFC1918 の内部ネットワークアドレスは通過対象外。内部ネットワークのタスクは対象セグメントを
 	// task_scope に登録する必要があり、そうしなければ RoE は内部ネットワークに対して形骸化する。
 	AllowLocal bool
 }

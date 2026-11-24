@@ -937,7 +937,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
     reqTokenRef.current.mainboot = token;
     let bootKey = mainSessionKey(0);
     // F6: SSE の認証情報は 60s の使い捨て ticket（api.ts sseUrl 参照）。EventSource 標準の
-    // 自動再接続は 2 回目のハンドシェイクで必ず 401 になる——接続が完全に閉じたら ticket を取り直して再接続する。snapshot カーソル
+    // 自動再接続は 2 回目のハンドシェイクで必ず 401 になる。接続が完全に閉じたら ticket を取り直して再接続する。snapshot カーソル
     // の再生 + mergeBySeq の seq 重複排除で空いた区間を補い、従来の Last-Event-ID 継続と等価になる。
     let sseRetry: ReturnType<typeof setTimeout> | undefined;
     const openStreamRef = { current: null as null | (() => void) };
@@ -1587,7 +1587,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
   return (
     <TooltipProvider delayDuration={300}>
       {/* 高さの余白：ページ先頭（タイトル行 + ゴール + Tabs ≈ 7.5rem）+ 内容のパディング。モバイルは p-4、
-        デスクトップは lg:p-6、さらにデスクトップはスクロール余裕も要るので、2 段階で 10rem / 13rem を確保する —— モバイルで
+        デスクトップは lg:p-6、さらにデスクトップはスクロール余裕も要るので、2 段階で 10rem / 13rem を確保する。モバイルで
         13rem を流用すると 3rem の記録領域を無駄に食う。 */}
       <div
         className={cn(

@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	// DefaultTTL は明示指定がない場合の生存期間。MaxTTL は厳格な上限——一時保管はストレージではないので、
+	// DefaultTTL は明示指定がない場合の生存期間。MaxTTL は厳格な上限。一時保管はストレージではないので、
 	// 期限超過は即オーファン（python -m http.server を止め忘れる定番の失敗もここに由来する）。
 	DefaultTTL = 15 * time.Minute
 	MaxTTL     = 2 * time.Hour
@@ -81,7 +81,7 @@ const (
 	EventDestroy  = "destroy"
 )
 
-// Manager はプロセス内の一時保管マネージャ。エントリは本プロセスのメモリ内にのみ存在する——再起動後は data/stage/
+// Manager はプロセス内の一時保管マネージャ。エントリは本プロセスのメモリ内にのみ存在する。再起動後は data/stage/
 // 配下に残ったファイルの台帳がないため、New 時に全体を消去する（期限切れリソースをプロセスを跨いで延命させない）。
 type Manager struct {
 	dir string
@@ -111,7 +111,7 @@ func New(ctx context.Context, dir string) (*Manager, error) {
 	if err := os.Chmod(dir, 0o700); err != nil { // 既存ディレクトリは権限が緩い可能性がある
 		return nil, fmt.Errorf("stage dir chmod: %w", err)
 	}
-	// 台帳はプロセス内のものなので再起動で全て無効になる——残留ファイルに存在理由はない。消す。
+	// 台帳はプロセス内のものなので再起動で全て無効になる。残留ファイルに存在理由はない。消す。
 	if errs := clearDir(dir); errs != nil {
 		return nil, fmt.Errorf("stage dir sweep: %w", errs[0])
 	}
@@ -229,7 +229,7 @@ func (m *Manager) List() []Entry {
 	for _, e := range m.entries {
 		out = append(out, *e)
 	}
-	// 単純な挿入ソートで十分——一時保管エントリはごく少数。
+	// 単純な挿入ソートで十分。一時保管エントリはごく少数。
 	for i := 1; i < len(out); i++ {
 		for j := i; j > 0 && out[j].CreatedAt.After(out[j-1].CreatedAt); j-- {
 			out[j], out[j-1] = out[j-1], out[j]
@@ -245,7 +245,7 @@ func (m *Manager) Delete(token string) bool {
 }
 
 // Download はダウンロードを 1 回提供する（GET /s/{token}/{name} にマウント）。列挙防止の要点：
-// token が存在しない / name 不一致 / 期限切れ / レート制限超過——すべて同じ 404 を返す。
+// token が存在しない / name 不一致 / 期限切れ / レート制限超過。すべて同じ 404 を返す。
 func (m *Manager) Download(w http.ResponseWriter, r *http.Request, token, name string) {
 	ip := remoteIP(r)
 	if !m.allowAttempt(token, ip) {

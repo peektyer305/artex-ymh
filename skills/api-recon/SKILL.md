@@ -1,200 +1,200 @@
 ---
 name: api-recon
-description: 收集网站API接口时调用该skill。
+description: WebサイトのAPIを収集する際にこのskillを呼び出します。
 ---
 
-# API Recon（前端接口侦察）
+# API Recon（フロントエンドAPI偵察）
 
-在**已授权**前提下，尽可能完整地发现：**后端 API**（路径、方法、参数、响应体）、**前端路由**、**UI 功能触发点**（Tab、弹窗、表格操作等）。
+**認可済み**の前提で、可能な限り網羅的に発見する：**バックエンド API**（パス、メソッド、パラメータ、レスポンスボディ）、**フロントエンドルート**、**UI 機能トリガー**（タブ、モーダル、テーブル操作など）。
 
 ---
 
-## 边界与禁止（Agent 必读 · 违反即越界）
+## 境界と禁止（Agent 必読 · 違反は範囲外）
 
-本 skill **仅做 API / 参数面侦察**，不是漏洞挖掘或渗透利用阶段。
+本 skill は **API / パラメータ面の偵察のみ** を行い、脆弱性の探索やペネトレーション・エクスプロイトのフェーズではありません。
 
-### 任务边界
+### タスク境界
 
-| 范围 | 允许 | 禁止 |
+| 範囲 | 許可 | 禁止 |
 |---|---|---|
-| **目标** | 枚举 path、method、参数、路由、UI 触发点 | SQLi/XSS/越权/爆破/fuzz 漏洞、改包攻击、破坏性操作 |
-| **鉴权** | Hook + stub/mock 绕过**客户端**登录门 | 向用户索要或猜测账号密码；尝试真实登录表单提交 |
-| **运行时** | 无凭据下 hook 接口，用 mock 响应让 SPA 进入登录后壳层 | 依赖真实后端会话才能继续的流程 |
+| **対象** | path、method、パラメータ、ルート、UI トリガーの列挙 | SQLi/XSS/権限外アクセス/ブルートフォース/fuzz の脆弱性、パケット改ざん攻撃、破壊的操作 |
+| **認証** | Hook + stub/mock で**クライアント**側のログインゲートを迂回 | ユーザーにアカウント/パスワードを要求・推測する、実際のログインフォーム送信を試みる |
+| **ランタイム** | 認証情報なしで API をフックし、mock レスポンスで SPA をログイン後のシェル層へ導く | 実際のバックエンドセッションに依存しないと続行できないフロー |
 
-### 无凭据动态分析（Phase 3 默认）
+### 認証情報なしの動的分析（Phase 3 デフォルト）
 
-1. 通过 `preload.js` / `runtime_harvest.js` **拦截并 stub** 登录、权限、菜单等 bootstrap 接口；
-2. 对业务查询接口返回 **结构正确、业务码成功、数据可为空** 的 mock body；
-3. 使前端在无后端或 401 环境下仍能渲染登录后页面，从而触发更多 XHR/fetch/WebSocket；
-4. **空数据、空白表格、占位 UI 均属预期**——勿为此转向真实登录或漏洞测试。
+1. `preload.js` / `runtime_harvest.js` でログイン・権限・メニューなどの bootstrap API を**インターセプトして stub** する；
+2. ビジネス照会 API に対して**構造が正しく、ビジネスコードが成功で、データが空でもよい** mock body を返す；
+3. フロントエンドをバックエンドなしまたは 401 の環境でもログイン後のページを描画できるようにし、より多くの XHR/fetch/WebSocket をトリガーする；
+4. **空データ、空白テーブル、プレースホルダ UI はいずれも想定どおり**。そのために実際のログインや脆弱性テストへ逸れないこと。
 
-**一句话**：用 mock 撑开前端路由与组件挂载，**只录 outbound 请求**；后端返回什么不重要，重要的是前端**还会发哪些接口**。
+**一言でいうと**：mock でフロントエンドのルートとコンポーネントのマウントを広げ、**outbound リクエストのみ記録する**。バックエンドが何を返すかは重要ではなく、重要なのはフロントエンドが**さらにどの API を送信するか**である。
 
-### 流程硬禁止
+### フローのハード禁止
 
-| 禁止 | 替代做法 |
+| 禁止 | 代替手段 |
 |---|---|
-| Phase 1 完成前 grep/curl/Read 主 entry `index-*.js` 提取 API path | 跑 `OUTDIR/harvest_static.py` |
-| 手写 `extract_apis.py` 等替代 harvest 的脚本 | 改 `OUTDIR/harvest_static.py` 后重跑 |
-| 同一 grep/命令失败 ≥2 次仍重复 | 换策略：读 tool_logs、改 harvest、查 reference |
-| 跳过门禁 A/B，直接跑 `scripts/` 原版 | 复制到 OUTDIR 并按目标改 |
-| 真实用户名/密码、OTP、OAuth 等鉴权 | stub/mock（见上文） |
-| 以「拿真实数据」为由跳过 stub，做越权/注入测试 | 只录 outbound，属 recon 边界 |
-| 删除、导出敏感数据、批量写等不可逆操作 | coverage 点击亦同 |
-| 未完成 runtime + 动态枚举，声称已获全部页面和接口 | 见「完成定义」或标注局限 |
-| 未完成参数触发矩阵 + diff，声称已掌握全部参数 | Phase 3b 矩阵 + Phase 5 diff |
-| 用单一 runtime 样本推断必填/可选 | 多样本 diff 或校验规则/错误反推 |
+| Phase 1 完了前に主 entry `index-*.js` を grep/curl/Read して API path を抽出する | `OUTDIR/harvest_static.py` を実行する |
+| harvest の代替として `extract_apis.py` などを手書きする | `OUTDIR/harvest_static.py` を変更して再実行する |
+| 同じ grep/コマンドが 2 回以上失敗しても繰り返す | 戦略を変える：tool_logs を読む、harvest を変更する、reference を確認する |
+| ゲート A/B をスキップして `scripts/` のオリジナルを直接実行する | OUTDIR へコピーして対象に合わせて変更する |
+| 実際のユーザー名/パスワード、OTP、OAuth などの認証 | stub/mock（前述を参照） |
+| 「実際のデータを取得する」ことを理由に stub をスキップして権限外アクセス/インジェクションのテストを行う | outbound のみ記録する。これは recon の境界 |
+| 削除、機密データのエクスポート、一括書き込みなどの不可逆な操作 | coverage のクリックも同様 |
+| runtime + 動的列挙を完了せずに、全ページと API を取得済みと主張する | 「完了定義」を参照、または限界を明記する |
+| パラメータトリガーマトリクス + diff を完了せずに、全パラメータを把握済みと主張する | Phase 3b マトリクス + Phase 5 diff |
+| 単一の runtime サンプルで必須/任意を推定する | 複数サンプルの diff、または検証ルール/エラーからの逆推定 |
 
 ---
 
-## 两层模型 + 运行模式
+## 2層モデル + 実行モード
 
-| 层 | 产出 | 上限 |
+| 層 | 成果物 | 限界 |
 |---|---|---|
-| **静态**（JS bundle） | 全量 endpoint 路径、路由草案、组包点字段候选 | 无 HTTP 方法；参数须 Phase 1b；漏掉运行时拼接 URL |
-| **运行时**（活会话） | 方法 + body + 响应 + 动态 URL + WS/SSE；多样本 diff 补全参数 | 页面须实际渲染才会发请求；单样本不足以定必填/可选 |
+| **静的**（JS bundle） | 全量の endpoint パス、ルート草案、組み立てポイントのフィールド候補 | HTTP メソッドなし；パラメータは Phase 1b が必要；ランタイムで組み立てられる URL を見落とす |
+| **ランタイム**（ライブセッション） | メソッド + body + レスポンス + 動的 URL + WS/SSE；複数サンプルの diff でパラメータを補完 | ページが実際に描画されないとリクエストが送信されない；単一サンプルでは必須/任意を確定できない |
 
-| 运行模式 | 引擎 | 适用 |
+| 実行モード | エンジン | 適用 |
 |---|---|---|
-| **depth** | `runtime_harvest.js`（Puppeteer） | API 清单、METHOD/params/响应体、WS/SSE、可复现批量跑 |
-| **coverage** | browser + `preload.js` | 点 Tab/弹窗/表格，功能点覆盖更深 |
-| **both** | 先 depth 再 coverage | 最完整，耗时最长 |
+| **depth** | `runtime_harvest.js`（Puppeteer） | API リスト、METHOD/params/レスポンスボディ、WS/SSE、再現可能な一括実行 |
+| **coverage** | browser + `preload.js` | タブ/モーダル/テーブルをクリックし、機能ポイントをより深くカバーする |
+| **both** | 先に depth、次に coverage | 最も完全で、所要時間が最長 |
 
-**参数方法论**（无通用脚本）：path 用 harvest/正则；参数用 **锚点扩窗 + UI 绑定链 + 多样本 diff + 错误反推**（grep 配方见 [reference.md](reference.md) J 节）。
-
----
-
-## 完成定义
-
-全部满足方可声称 recon 完成：
-
-- [ ] **静态**：Phase 1 harvest 产出 `api_static.txt`、`routes.txt`、`js/`
-- [ ] **运行时**：至少 depth 或 coverage 之一；coverage/both 须 **Hook 生效 + 动态枚举环**
-- [ ] **进壳**：访问业务 path 时非 `/login`（注意 hash 路由）
-- [ ] **参数**：coverage/both 完成参数触发矩阵 + `param_samples.json`；Phase 5 合并 `params_merged.json`
-- [ ] **深度**（若模块页空白）：Phase 4 权限树还原并重跑，直至出现 **module 级 API**（非仅 locale/bootstrap）
-- [ ] **交付**：Phase 5 产出齐全（见 Phase 5 产出表）；`insert_assets` 写入服务与端点资产
+**パラメータ方法論**（汎用スクリプトなし）：path は harvest/正規表現を使用；パラメータは **アンカー拡窓 + UI バインディングチェーン + 複数サンプル diff + エラー逆推定**（grep レシピは [reference.md](reference.md) の J 節を参照）。
 
 ---
 
-## 脚本与门禁
+## 完了定義
 
-`scripts/` 仅为参考模板，**禁止**直接跑原版并当最终结果。
+すべて満たした場合のみ recon 完了を主張できる：
 
-**规则**：先读 → 按目标改 → 写入 `OUTDIR`（如 `recon/`）→ 记 `CHANGES.md`；不匹配则按方法论重写，只借结构。
+- [ ] **静的**：Phase 1 harvest が `api_static.txt`、`routes.txt`、`js/` を生成する
+- [ ] **ランタイム**：depth または coverage の少なくとも一方；coverage/both は **Hook 有効 + 動的列挙ループ** が必要
+- [ ] **シェル進入**：ビジネス path へアクセスした際に `/login` でない（hash ルートに注意）
+- [ ] **パラメータ**：coverage/both でパラメータトリガーマトリクス + `param_samples.json` を完了；Phase 5 で `params_merged.json` を統合
+- [ ] **深度**（モジュールページが空白の場合）：Phase 4 で権限ツリーを復元して再実行し、**module レベルの API** が現れるまで続ける（locale/bootstrap のみでない）
+- [ ] **成果物**：Phase 5 の成果物が揃っている（Phase 5 成果物表を参照）；`insert_assets` がサービスとエンドポイントのアセットを書き込む
 
-| 门禁 | 何时 | 参考脚本 → OUTDIR 副本 | 常见必改项 |
+---
+
+## スクリプトとゲート
+
+`scripts/` は参考テンプレートにすぎず、オリジナルを直接実行して最終結果とみなすことは**禁止**。
+
+**ルール**：先に読む → 対象に合わせて変更 → `OUTDIR`（例 `recon/`）へ書き込む → `CHANGES.md` に記録；一致しない場合は方法論に従って書き直し、構造のみ借用する。
+
+| ゲート | タイミング | 参考スクリプト → OUTDIR コピー | よくある必須変更点 |
 |---|---|---|---|
-| **A（静态）** | Phase 0 后、**第一次**跑 harvest/spider 前 | `harvest_static.py` / `spider_mpa.py` | **多数站点默认 regex 可直接跑**；仅 manifest/方言不匹配时改 endpoint 正则、webpack/Vite `publicPath`、MPA exclude/cookie |
-| **B（运行时）** | Phase 2 后、跑 depth/coverage 前 | `runtime_harvest.js` / `preload.js` + `config.json` | Cookie/localStorage 键、neutralize 成功值、stubs、login 正则、api 前缀、hash/history |
+| **A（静的）** | Phase 0 後、harvest/spider を**初めて**実行する前 | `harvest_static.py` / `spider_mpa.py` | **多くのサイトはデフォルト regex で直接実行できる**；manifest/書き方が一致しない場合のみ endpoint 正規表現、webpack/Vite `publicPath`、MPA の exclude/cookie を変更 |
+| **B（ランタイム）** | Phase 2 後、depth/coverage を実行する前 | `runtime_harvest.js` / `preload.js` + `config.json` | Cookie/localStorage のキー、neutralize の成功値、stubs、login の正規表現、api プレフィックス、hash/history |
 
-**SPA 强制顺序**（不可交换；Phase 编号优先于「先探索再脚本」）：
+**SPA の強制順序**（交換不可；Phase 番号は「先に探索してからスクリプト」より優先）：
 
-| 步骤 | 必须 | 禁止 |
+| ステップ | 必須 | 禁止 |
 |---|---|---|
-| Phase 0 完成后 | 下一条 Bash = `python3 OUTDIR/harvest_static.py <URL> OUTDIR` | curl/grep/Read 主 entry `index-*.js`（通常 >500KB） |
-| 门禁 A | 复制脚本 → 按需小改 → **立刻运行** | 先手工提取 API 再决定是否 harvest |
-| Phase 1 完成前 | `wc -l` 校验产出；404 改 harvest 重试 | 手写 extract 脚本；对未下载 URL 反复 grep |
-| Phase 1b 起 | grep 仅 `OUTDIR/js/*.js` | 用主 bundle 代替 harvest |
+| Phase 0 完了後 | 次の Bash = `python3 OUTDIR/harvest_static.py <URL> OUTDIR` | 主 entry `index-*.js`（通常 >500KB）を curl/grep/Read する |
+| ゲート A | スクリプトをコピー → 必要に応じて小変更 → **すぐに実行** | 先に手動で API を抽出してから harvest するか判断する |
+| Phase 1 完了前 | `wc -l` で成果物を検証；404 は harvest を変更して再試行 | extract スクリプトを手書きする；未ダウンロードの URL を繰り返し grep する |
+| Phase 1b 以降 | grep は `OUTDIR/js/*.js` のみ | 主 bundle で harvest を代替する |
 
-- ✅ 复制 `harvest_static.py` → （可选）改 regex → **立即运行**
-- ❌ curl 主 bundle → grep 多次 → 写临时 extract → 最后才 harvest
-- **MPA**：Phase 0 后下一条 Bash = `python3 OUTDIR/spider_mpa.py ...`
+- ✅ `harvest_static.py` をコピー → （任意）regex を変更 → **すぐに実行**
+- ❌ 主 bundle を curl → grep を複数回 → 一時的な extract を書く → 最後にやっと harvest
+- **MPA**：Phase 0 後の次の Bash = `python3 OUTDIR/spider_mpa.py ...`
 
 ---
 
-## 工具与输出约束
+## ツールと出力の制約
 
-| 约束 | 说明 |
+| 制約 | 説明 |
 |---|---|
-| 大文件 | >100KB 的 `index-*.js` **禁止** Read/grep 进上下文；用 OUTDIR 脚本批处理 |
-| grep 输出 | 必须 `\| head -20` 或 `-m 5`；对话只保留 path 摘要，勿贴 bundle 片段 |
-| 校验 | 用 `wc -l`、`ls \| wc -l`；勿 Read 整目录 |
-| regex 初探 | 可选、≤1 次、仅 ≤50KB 小 chunk 或 HTML；正式静态以 harvest 为准 |
-| reference | 配方/模板/排障见 [reference.md](reference.md)，勿重复 inline 全文 |
+| 大容量ファイル | >100KB の `index-*.js` を Read/grep でコンテキストへ入れることは**禁止**；OUTDIR のスクリプトで一括処理する |
+| grep 出力 | `\| head -20` または `-m 5` が必須；会話には path の要約のみ残し、bundle の断片を貼らない |
+| 検証 | `wc -l`、`ls \| wc -l` を使用；ディレクトリ全体を Read しない |
+| regex の初探 | 任意、1 回以下、≤50KB の小さな chunk または HTML のみ；正式な静的解析は harvest を基準とする |
+| reference | レシピ/テンプレート/トラブルシューティングは [reference.md](reference.md) を参照。全文を inline で繰り返さない |
 
 ---
 
-## 执行路线图
+## 実行ロードマップ
 
 ```
-Phase 0 分类 + OUTDIR
-  → 门禁 A → Phase 1 harvest（★ 立刻运行 ★）
-  → Phase 1b 参数逆向
-  → Phase 2 鉴权三道门 → config.json
-  → 门禁 B → Phase 3 运行时 + 参数矩阵
-  → Phase 4 权限树（必要时）→ 重跑 Phase 3
-  → Phase 5 合并报告 + insert_assets批量插入所有发现的服务、端点api资产，无论如何插入时不允许漏掉已发现的资产
+Phase 0 分類 + OUTDIR
+  → ゲート A → Phase 1 harvest（★ すぐに実行 ★）
+  → Phase 1b パラメータ逆解析
+  → Phase 2 認証の3つのゲート → config.json
+  → ゲート B → Phase 3 ランタイム + パラメータマトリクス
+  → Phase 4 権限ツリー（必要な場合）→ Phase 3 を再実行
+  → Phase 5 レポート統合 + insert_assets で発見したすべてのサービス、エンドポイント API のアセットを一括挿入。どのような場合も、挿入時に発見済みアセットを漏らしてはならない
 ```
 
-按序勾选；**前一项未完成不得进入下一 Phase**。
+順にチェックする。**前の項目が完了するまで次の Phase に入ってはならない**。
 
-1. [ ] **Phase 0**：初探 SPA/MPA；创建 `OUTDIR` → [Phase 0](#phase-0--分类)
-2. [ ] **门禁 A + Phase 1**：复制脚本 → **立刻** harvest → `wc -l` 校验 → [Phase 1](#phase-1--静态)
-3. [ ] **Phase 1b**：锚点扩窗 + 绑定层 → `param_candidates.json` → [Phase 1b](#phase-1b--参数逆向)
-4. [ ] **Phase 2**：鉴权三道门 → `config.json` → [Phase 2](#phase-2--鉴权三道门)
-5. [ ] **门禁 B**：调整 runtime 脚本 → [Phase 3](#phase-3--运行时)
-6. [ ] **Phase 3**：depth / coverage / both；确认进壳；参数触发矩阵 → `param_samples.json`
-7. [ ] **Phase 4**（若需要）：权限树 → patch stubs → 重跑 Phase 3 → [Phase 4](#phase-4--权限树还原)
-8. [ ] **Phase 5**：合并产出 + 报告 + `insert_assets` → [Phase 5](#phase-5--合并与报告)
+1. [ ] **Phase 0**：SPA/MPA を初探；`OUTDIR` を作成 → [Phase 0](#phase-0--分類)
+2. [ ] **ゲート A + Phase 1**：スクリプトをコピー → **すぐに** harvest → `wc -l` で検証 → [Phase 1](#phase-1--静的)
+3. [ ] **Phase 1b**：アンカー拡窓 + バインディング層 → `param_candidates.json` → [Phase 1b](#phase-1b--パラメータ逆解析)
+4. [ ] **Phase 2**：認証の3つのゲート → `config.json` → [Phase 2](#phase-2--認証の3つのゲート)
+5. [ ] **ゲート B**：runtime スクリプトを調整 → [Phase 3](#phase-3--ランタイム)
+6. [ ] **Phase 3**：depth / coverage / both；シェル進入を確認；パラメータトリガーマトリクス → `param_samples.json`
+7. [ ] **Phase 4**（必要な場合）：権限ツリー → stubs を patch → Phase 3 を再実行 → [Phase 4](#phase-4--権限ツリーの復元)
+8. [ ] **Phase 5**：成果物の統合 + レポート + `insert_assets` → [Phase 5](#phase-5--統合とレポート)
 
 ---
 
-## Phase 0 — 分类
+## Phase 0 — 分類
 
-拉取入口 HTML，**创建 `OUTDIR`**（勿改 skill 内 `scripts/`）：
+エントリ HTML を取得し、**`OUTDIR` を作成**（skill 内の `scripts/` を変更しない）：
 
-- **SPA**：空壳 + `<div id=app>` + chunk → Phase 1–5
-- **MPA**：SSR + `<form>`、无 endpoint bundle → 门禁 A 后：
+- **SPA**：空シェル + `<div id=app>` + chunk → Phase 1–5
+- **MPA**：SSR + `<form>`、endpoint bundle なし → ゲート A 後：
 
 ```bash
 python3 recon/spider_mpa.py <BASE_URL> <OUTDIR> [--cookie "session=..."] [--max 300] [--depth 5] [--exclude "logout|delete|destroy"]
 ```
 
-产出 `forms.txt`、`links.txt`、`api_inline.txt`。SPA 若 forms ≈ 0 → 切 Phase 1。
+`forms.txt`、`links.txt`、`api_inline.txt` を生成する。SPA で forms ≈ 0 の場合 → Phase 1 へ移行。
 
 ---
 
-## Phase 1 — 静态
+## Phase 1 — 静的
 
-遵守 [脚本与门禁](#脚本与门禁) · [工具与输出约束](#工具与输出约束)。
+[スクリプトとゲート](#スクリプトとゲート) ・ [ツールと出力の制約](#ツールと出力の制約) に従う。
 
 ```bash
 python3 recon/harvest_static.py <BASE_URL> <OUTDIR>
 ```
 
-harvest：解析 HTML script → webpack/Vite manifest → 下载全部 lazy chunk → 产出 `js/`、`api_static.txt`、`routes.txt`、`chunkmap.txt`。
+harvest：HTML script を解析 → webpack/Vite manifest → 全 lazy chunk をダウンロード → `js/`、`api_static.txt`、`routes.txt`、`chunkmap.txt` を生成する。
 
 ```bash
 wc -l OUTDIR/api_static.txt OUTDIR/routes.txt
 ls OUTDIR/js | wc -l
 ```
 
-- chunk 数 vs manifest：404 须改 harvest 重试，勿手工 curl 逐个 chunk
-- `api_static.txt` 过少 → 放宽 OUTDIR 内 endpoint 正则后重跑（见 reference）
+- chunk 数 vs manifest：404 は harvest を変更して再試行する。chunk を 1 つずつ手動 curl しない
+- `api_static.txt` が少なすぎる → OUTDIR 内の endpoint 正規表現を緩めて再実行（reference を参照）
 
-### Phase 1b — 参数逆向
+### Phase 1b — パラメータ逆解析
 
-path 来自 Phase 1；参数字段须单独 recon。grep 规则见 [工具与输出约束](#工具与输出约束)。
+path は Phase 1 由来；パラメータフィールドは別途 recon する必要がある。grep のルールは [ツールと出力の制約](#ツールと出力の制約) を参照。
 
-**完成标准**：重要接口能答——字段名、传输位置、类型推断、是否必填、样本值、置信度。
+**完了基準**：重要な API について以下を回答できること。フィールド名、転送位置、型の推定、必須かどうか、サンプル値、信頼度。
 
-#### 1b.0 — 传输形态
+#### 1b.0 — 転送形態
 
-| 形态 | 参数在哪 | 静态优先看 |
+| 形態 | パラメータの場所 | 静的解析で優先的に見る |
 |---|---|---|
-| REST JSON | body + query | path 锚点旁 `(params\|data\|body)\s*:\s*\{` |
-| GraphQL | `variables` | gql 模板、`$page: Int` |
-| 传统 form | urlencoded | `<form>`、`FormData` |
-| 文件上传 | multipart | `FormData.append` |
-| 路径参数 | `/user/:id` | 路由表 + `useParams` / `$route.params` |
-| 加密/签名 | 包进 `sign`/`data` | Hook 加密函数入参（reference D 节） |
+| REST JSON | body + query | path アンカー付近の `(params\|data\|body)\s*:\s*\{` |
+| GraphQL | `variables` | gql テンプレート、`$page: Int` |
+| 従来の form | urlencoded | `<form>`、`FormData` |
+| ファイルアップロード | multipart | `FormData.append` |
+| パスパラメータ | `/user/:id` | ルートテーブル + `useParams` / `$route.params` |
+| 暗号化/署名 | `sign`/`data` に包まれる | 暗号化関数の入力を Hook（reference D 節） |
 
-产出：每接口标注 `transport: query|json|form|graphql|encrypted`。
+成果物：各 API に `transport: query|json|form|graphql|encrypted` を付与する。
 
-#### 1b.1 — 锚点扩窗
+#### 1b.1 — アンカー拡窓
 
-以已知 path 为锚，扩窗口找组包对象：
+既知の path をアンカーに、ウィンドウを広げて組み立てオブジェクトを探す：
 
 ```bash
 grep -n '"/api/user/list"' OUTDIR/js/*.js | head -20
@@ -202,190 +202,190 @@ grep -rhoaE '.{0,120}("/api[^"]+").{0,200}' OUTDIR/js/*.js | head -20
 grep -rhoaE '(params|data|body|payload)\s*:\s*\{' OUTDIR/js/*.js | head -20
 ```
 
-| 包装层 | 参数线索 |
+| ラッパー層 | パラメータの手がかり |
 |---|---|
-| axios 实例 | `data` / `params` |
-| 统一 request | 拦截器注入全局字段 |
-| OpenAPI 客户端 | 生成 method 签名 |
-| React Query / SWR | hook 第二参数 |
-| Vue composable | composable 入参 |
+| axios インスタンス | `data` / `params` |
+| 共通 request | インターセプタがグローバルフィールドを注入 |
+| OpenAPI クライアント | 生成された method シグネチャ |
+| React Query / SWR | hook の第2引数 |
+| Vue composable | composable の入力 |
 
-类型残留：`yup`/`zod`/rules、`Form.Item name=`、内嵌 Swagger。
+型の残骸：`yup`/`zod`/rules、`Form.Item name=`、埋め込み Swagger。
 
 → `param_candidates.json`：`{ path, fields[], source: "static-callsite", confidence }`
 
-#### 1b.2 — 绑定层
+#### 1b.2 — バインディング層
 
 ```
 Form field → onFinish/handleSubmit → transform → API payload
 ```
 
-| 绑定源 | 手法 |
+| バインディング元 | 手法 |
 |---|---|
-| 表单 submit | 跟 submit → transform → API |
-| 表格搜索 | `getFieldsValue()` → `params` |
-| 路由 | `:id` / `?tab=` |
-| 拦截器 | 全局 `tenantId`、分页、sign |
-| 枚举 select | `options` → API 枚举值 |
+| フォーム submit | submit → transform → API を追う |
+| テーブル検索 | `getFieldsValue()` → `params` |
+| ルート | `:id` / `?tab=` |
+| インターセプタ | グローバル `tenantId`、ページネーション、sign |
+| 列挙 select | `options` → API の列挙値 |
 
-DevTools call stack 从 `fetch`/`XHR.send` 往上追组包函数。
+DevTools の call stack で `fetch`/`XHR.send` から上へ遡って組み立て関数を追う。
 
-#### 1b.3 — 组包三问（≠ Phase 2 鉴权三门）
+#### 1b.3 — 組み立ての3つの問い（≠ Phase 2 の認証の3つのゲート）
 
-| 问 | 要答什么 |
+| 問い | 何に答えるか |
 |---|---|
-| **组装** | payload 在哪 build、transform 痕迹 |
-| **校验** | required、pattern、enum |
-| **传输** | path / query / body / multipart / 头 |
+| **組み立て** | payload がどこで build されるか、transform の痕跡 |
+| **検証** | required、pattern、enum |
+| **転送** | path / query / body / multipart / ヘッダ |
 
-拦截器门（Phase 2）顺带读全局注入字段（Authorization、`X-Tenant-Id`、sign）。
+インターセプタゲート（Phase 2）でついでにグローバル注入フィールド（Authorization、`X-Tenant-Id`、sign）を読む。
 
-#### 1b.4 — 与 Phase 3 衔接
+#### 1b.4 — Phase 3 への接続
 
-候选字段来自静态/绑定层；**必填/可选/条件依赖**须 Phase 3 参数矩阵 + diff + Phase 5 错误反推。
+候補フィールドは静的解析/バインディング層由来；**必須/任意/条件依存**は Phase 3 のパラメータマトリクス + diff + Phase 5 のエラー逆推定が必要。
 
 ---
 
-## Phase 2 — 鉴权三道门
+## Phase 2 — 認証の3つのゲート
 
-在 `OUTDIR/js/` grep（带 `head`），写入 `config.json`（配方见 reference）：
+`OUTDIR/js/` を grep（`head` 付き）し、`config.json` に書き込む（レシピは reference を参照）：
 
-| 门 | 问题 | 关键词 |
+| ゲート | 問題 | キーワード |
 |---|---|---|
-| **渲染门** | 如何判断已登录？ | `isLogin`、`getToken`、Cookie/localStorage |
-| **拦截器门** | 什么触发跳 `/login`？ | `response_code`、`errno`、axios interceptor |
-| **内容门** | 菜单/权限从哪来？ | `menu`、`permission`、`role`、`acl`、`routes` |
+| **レンダリングゲート** | ログイン済みかどうかをどう判断するか？ | `isLogin`、`getToken`、Cookie/localStorage |
+| **インターセプタゲート** | 何が `/login` への遷移をトリガーするか？ | `response_code`、`errno`、axios interceptor |
+| **コンテンツゲート** | メニュー/権限はどこから来るか？ | `menu`、`permission`、`role`、`acl`、`routes` |
 
-禁止把 localStorage 键名当凭据——须从 chunk/请求链确认。
+localStorage のキー名を認証情報とみなすことは禁止。chunk/リクエストチェーンから確認する必要がある。
 
-**出口 = 门禁 B**：结论落到 `config.json`，并改 `OUTDIR/runtime_harvest.js` / `preload.js`。
+**出口 = ゲート B**：結論を `config.json` に落とし、`OUTDIR/runtime_harvest.js` / `preload.js` を変更する。
 
-### Phase 2b — API 观察（可选）
+### Phase 2b — API 観察（任意）
 
-用 OUTDIR 内 `preload.js` 确认会话键名、Authorization、嵌套 API URL：
+OUTDIR 内の `preload.js` でセッションのキー名、Authorization、ネストされた API URL を確認する：
 
-| 配置 | 产出 |
+| 設定 | 成果物 |
 |---|---|
 | `recordDetail: true` | `__API_RECON_DETAIL__` |
-| `observe.xhrHeaders: true` | headers 观察 |
-| `extractUrlsFromResponse: true` | 响应内子 API |
-| `observe.storageReads/cookieReads: true` | 回填 config |
+| `observe.xhrHeaders: true` | ヘッダの観察 |
+| `extractUrlsFromResponse: true` | レスポンス内の子 API |
+| `observe.storageReads/cookieReads: true` | config への反映 |
 | `neutralizeVueRouter: true` | `__API_RECON_ROUTES__` |
 
-coverage 每轮导出：`__API_RECON_LOG__`、`__API_RECON_DETAIL__`、`__API_RECON_ROUTES__`、`__API_RECON_OBSERVE__`。
+coverage の各ラウンドでエクスポート：`__API_RECON_LOG__`、`__API_RECON_DETAIL__`、`__API_RECON_ROUTES__`、`__API_RECON_OBSERVE__`。
 
 ---
 
-## Phase 3 — 运行时
+## Phase 3 — ランタイム
 
-须已过门禁 B；遵守 [边界与禁止](#边界与禁止agent-必读--违反即越界) · 无凭据 mock 策略。
+ゲート B を通過済みであること；[境界と禁止](#境界と禁止agent-必読--違反は範囲外) ・ 認証情報なしの mock 戦略に従う。
 
-`config.json` 设置 `"runtimeMode": "depth" | "coverage" | "both"`（模板见 reference）。
+`config.json` に `"runtimeMode": "depth" | "coverage" | "both"` を設定する（テンプレートは reference を参照）。
 
-### Hook 与 stub（depth + coverage 共用）
+### Hook と stub（depth + coverage 共通）
 
-| 层 | 范围 | 目的 |
+| 層 | 範囲 | 目的 |
 |---|---|---|
-| L1 精确 | auth/权限/bootstrap stub | 过首屏鉴权 |
-| L2 负向修正 | 所有 JSON 响应 | 未登录码 → 成功 |
-| L3 兜底 | 未命中 L1 的 `/api` 等 | 空成功体，撑开 UI |
+| L1 精密 | auth/権限/bootstrap の stub | 初回表示の認証を通過 |
+| L2 負方向の修正 | すべての JSON レスポンス | 未ログインコード → 成功 |
+| L3 フォールバック | L1 に一致しない `/api` など | 空の成功ボディで UI を広げる |
 
-- **depth**：fake auth + `forward` 改业务码 + `stubs`；遍历 `routes`（hash/history）；产出 `runtime_api.json`
-- **coverage**：**document-start** 注入 `preload.js`（CDP `addScriptToEvaluateOnNewDocument` 或 Userscript）
+- **depth**：fake auth + `forward` でビジネスコードを変更 + `stubs`；`routes`（hash/history）を走査；`runtime_api.json` を生成
+- **coverage**：**document-start** で `preload.js` を注入（CDP `addScriptToEvaluateOnNewDocument` または Userscript）
 
-验证：`window.__API_RECON_PRELOAD__` 存在；业务 path 不回 `/login`。
+検証：`window.__API_RECON_PRELOAD__` が存在する；ビジネス path が `/login` に戻らない。
 
 ```bash
 cd recon && npm install
 node runtime_harvest.js config.json
 ```
 
-### 3b — coverage 动态枚举（必做）
+### 3b — coverage の動的列挙（必須）
 
-1. 主导航/侧栏 — 每项点击，等网络 1–3s
-2. Tab — `role=tab`、`.ant-tabs-tab`
-3. 表格 — 首行查看/编辑/详情
-4. 工具栏 — 导出、筛选、新建（**避免不可逆删除**）
-5. 每进模块 — 合并 API/路由
-6. SPA — 对 `routes.txt` 未覆盖 path 受控 `pushState`（MPA 禁止）
+1. メインナビゲーション/サイドバー — 各項目をクリックし、ネットワークを 1–3 秒待つ
+2. タブ — `role=tab`、`.ant-tabs-tab`
+3. テーブル — 先頭行の表示/編集/詳細
+4. ツールバー — エクスポート、フィルタ、新規作成（**不可逆な削除は避ける**）
+5. 各モジュールに入るたび — API/ルートを統合
+6. SPA — `routes.txt` でカバーされていない path を制御下で `pushState`（MPA は禁止）
 
-**参数触发矩阵**（必做）：每模块按操作类型各录一次，**diff 多样本**：
+**パラメータトリガーマトリクス**（必須）：各モジュールで操作タイプごとに 1 回ずつ記録し、**複数サンプルを diff** する：
 
-| 操作 | 通常多出的参数 |
+| 操作 | 通常増えるパラメータ |
 |---|---|
-| 列表首屏 | 分页 + 默认筛选 |
-| 点搜索 | keyword、filter |
-| 高级筛选 | 更多 optional |
-| 新建/编辑 | 完整 entity |
-| 批量/导出/排序 | `ids[]`、`exportType`、`sortField` |
+| リスト初回表示 | ページネーション + デフォルトフィルタ |
+| 検索クリック | keyword、filter |
+| 高度なフィルタ | より多くの optional |
+| 新規作成/編集 | 完全な entity |
+| 一括/エクスポート/並べ替え | `ids[]`、`exportType`、`sortField` |
 
-**stub 下 outbound body/headers 仍真实**——以请求为准。录制 → `scan_raw.json`、`param_samples.json`、`api_detail.json`。
+**stub 下でも outbound の body/headers は依然として実物**。リクエストを基準とする。記録 → `scan_raw.json`、`param_samples.json`、`api_detail.json`。
 
 - **Vue**：`neutralizeVueRouter: true` + document-start preload
-- **React**：`routes.txt` + 侧栏点击 + `pushState`
-- **both**：先 3a depth，再 3b coverage
+- **React**：`routes.txt` + サイドバークリック + `pushState`
+- **both**：先に 3a depth、次に 3b coverage
 
 ---
 
-## Phase 4 — 权限树还原
+## Phase 4 — 権限ツリーの復元
 
-**触发**：模块页空白 / 每路由仅 bootstrap（如 locale）→ 内容门未过。
+**トリガー**：モジュールページが空白 / 各ルートが bootstrap（例 locale）のみ → コンテンツゲートを通過していない。
 
-| 现象 | 含义 |
+| 現象 | 意味 |
 |---|---|
-| 进壳成功 | 渲染门 + 拦截器门已过 |
-| 侧栏缺项/点击空白 | stub shape 或权限码不全 |
-| 每路由 API 相同且极少 | `v-if permission` 未通过 |
-| `routes.txt` 远少于 bundle | 须从 auth 模块补全 |
+| シェル進入に成功 | レンダリングゲート + インターセプタゲートを通過済み |
+| サイドバーの項目不足/クリックで空白 | stub の shape または権限コードが不十分 |
+| 各ルートの API が同じで非常に少ない | `v-if permission` が通過していない |
+| `routes.txt` が bundle よりはるかに少ない | auth モジュールから補完する必要がある |
 
 ```bash
 grep -rhoaE '"/api[^"]*(permission|perm|role|menu|acl)[^"]*"' OUTDIR/js/*.js | sort -u | head -30
 grep -rhoaE 'userRouteAuth|getResultTree|routeMap|routeLink|menuList|authList' OUTDIR/js/*.js | head -20
 ```
 
-典型链：`role_permissions`（flat codes）+ `permissions/all`（tree）→ `getResultTree` → `userRouteAuth[CODE].url`。
+典型的なチェーン：`role_permissions`（flat codes）+ `permissions/all`（tree）→ `getResultTree` → `userRouteAuth[CODE].url`。
 
 ```bash
 python3 recon/extract_route_map.py recon/js recon/
 python3 recon/build_perm_tree.py recon/js recon/ --config recon/config.json
 ```
 
-中间产出：`route_map.json`、`userRouteAuth.json`、`permissions_tree.json`、`*_stub.json`、`perm_codes_all.txt`。
+中間成果物：`route_map.json`、`userRouteAuth.json`、`permissions_tree.json`、`*_stub.json`、`perm_codes_all.txt`。
 
-stub 检查：外层 `response_code` 与拦截器门一致；flat codes 与 tree 对齐；`routes` 覆盖 `route_map` 全部 link。
+stub 検査：外側の `response_code` がインターセプタゲートと一致；flat codes と tree が揃っている；`routes` が `route_map` の全 link をカバーする。
 
-更新 `config.json` 后**重跑 Phase 3**。大型 SPA 可调 `waitUntil`、`routeTimeout`、`perRouteMs`（见 reference A3/I 节）。
+`config.json` を更新後、**Phase 3 を再実行**。大規模 SPA では `waitUntil`、`routeTimeout`、`perRouteMs` を調整できる（reference の A3/I 節を参照）。
 
 ---
 
-## Phase 5 — 合并与报告
+## Phase 5 — 統合とレポート
 
-### 产出表
+### 成果物表
 
-| 文件 | 阶段 | 内容 |
+| ファイル | フェーズ | 内容 |
 |---|---|---|
-| `js/`、`api_static.txt`、`routes.txt`、`chunkmap.txt` | 1 | 静态 bundle 与 path |
-| `param_candidates.json` | 1b | 静态参数字段候选 |
-| `config.json` | 2 | 三道门 + runtime 配置 |
-| `runtime_api.json` | 3a | depth 详细录制（含 WS/SSE） |
-| `param_samples.json`、`scan_raw.json`、`api_detail.json` | 3b | 多样本、点击日志、detail |
-| `route_map.json` 等 | 4 | 权限树中间文件（若执行） |
-| `params_merged.json` | 5 | 合并参数字段 + 置信度 |
+| `js/`、`api_static.txt`、`routes.txt`、`chunkmap.txt` | 1 | 静的 bundle と path |
+| `param_candidates.json` | 1b | 静的パラメータのフィールド候補 |
+| `config.json` | 2 | 3つのゲート + runtime 設定 |
+| `runtime_api.json` | 3a | depth の詳細記録（WS/SSE を含む） |
+| `param_samples.json`、`scan_raw.json`、`api_detail.json` | 3b | 複数サンプル、クリックログ、detail |
+| `route_map.json` など | 4 | 権限ツリーの中間ファイル（実行した場合） |
+| `params_merged.json` | 5 | 統合したパラメータフィールド + 信頼度 |
 | `api_merged.txt` | 5 | `METHOD /path [params] [static\|runtime\|both]` |
-| `site_map.json` | 5 | 路由、API、params、功能点、局限 |
-| **insert_assets** | 5 | 将所有服务、端点资产写入资产库 |
+| `site_map.json` | 5 | ルート、API、params、機能ポイント、限界 |
+| **insert_assets** | 5 | すべてのサービス、エンドポイントアセットをアセットライブラリへ書き込む |
 
-### 5b — 参数合并
+### 5b — パラメータ統合
 
-从 `param_samples.json` diff，**无通用合并脚本**。置信度规则见 reference J7（高/中/低/待触发）。
+`param_samples.json` から diff する。**汎用統合スクリプトはない**。信頼度ルールは reference の J7（高/中/低/トリガー待ち）を参照。
 
-### 5c — 错误反推
+### 5c — エラー逆推定
 
-授权范围内可发不完整请求读 400（**属参数 recon，非漏洞测试**）：`field 'x' is required`、枚举错误等。注意 `data` 包装、`variables`、加密前 `bizData`。
+認可範囲内で不完全なリクエストを送信して 400 を読むことができる（**パラメータ recon であり、脆弱性テストではない**）：`field 'x' is required`、列挙エラーなど。`data` ラッパー、`variables`、暗号化前の `bizData` に注意。
 
-报告须注明：runtimeMode、静态/运行时 API 数、参数置信度、未覆盖模块、相对参考脚本的 `CHANGES.md` 摘要。
+レポートに明記する必要がある：runtimeMode、静的/ランタイムの API 数、パラメータ信頼度、未カバーのモジュール、参考スクリプトとの相対的な `CHANGES.md` の要約。
 
-`site_map.json` 建议结构：
+`site_map.json` の推奨構造：
 
 ```json
 {
@@ -404,22 +404,22 @@ stub 检查：外层 `response_code` 与拦截器门一致；flat codes 与 tree
 }
 ```
 
-更多字段与 grep 配方见 [reference.md](reference.md)。
+その他のフィールドと grep レシピは [reference.md](reference.md) を参照。
 
 ---
 
-## 通用说明
+## 一般的な説明
 
-- **框架无关**：webpack/Vite/Angular lazy load 方法相同
-- **传输**：REST/JSON、GraphQL、WebSocket、SSE；gRPC-web 不在范围
-- **SSR**：客户端 fetch 可录；RSC/Server Actions 不完全可枚举
-- **盲区**：JSVMP、WASM、HMAC/mTLS 强校验 → 静态 + 标注局限
-- **参数盲区**：条件联动、hidden params、WASM 组包 → 「待触发」/「不可达」
-- **静态是安全网**：runtime 被挡时静态仍能枚举 endpoint
+- **フレームワーク非依存**：webpack/Vite/Angular の lazy load 手法は同じ
+- **転送**：REST/JSON、GraphQL、WebSocket、SSE；gRPC-web は範囲外
+- **SSR**：クライアントの fetch は記録可能；RSC/Server Actions は完全には列挙できない
+- **盲点**：JSVMP、WASM、HMAC/mTLS の強力な検証 → 静的解析 + 限界の明記
+- **パラメータの盲点**：条件連動、hidden params、WASM 組み立て → 「トリガー待ち」/「到達不能」
+- **静的解析はセーフティネット**：runtime がブロックされても静的解析で endpoint を列挙できる
 
 ---
 
-## 附加资源
+## 追加リソース
 
-- Grep 配方、`config.json` 模板、排障、Hook、参数逆向 J 节、site_map 模板：**[reference.md](reference.md)**
-- 参考脚本路径见 [脚本与门禁](#脚本与门禁) 表
+- Grep レシピ、`config.json` テンプレート、トラブルシューティング、Hook、パラメータ逆解析の J 節、site_map テンプレート：**[reference.md](reference.md)**
+- 参考スクリプトのパスは [スクリプトとゲート](#スクリプトとゲート) の表を参照

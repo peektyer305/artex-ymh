@@ -597,12 +597,12 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 	out["recent_done_intents"] = append(
 		compactIntents(doneHot, parentsOf, yieldsOf),
 		compactIntents(doneCold[:keepColdDone], parentsOf, yieldsOf)...)
-	out["recent_facts"] = append(recentFactsHot, recentFactsCold[:keepColdFacts]...) // {id, summary, from_intent, confidence?}——inferred は「(要再確認)」付き。詳細は node_detail(id)
+	out["recent_facts"] = append(recentFactsHot, recentFactsCold[:keepColdFacts]...) // {id, summary, from_intent, confidence?}。inferred は「(要再確認)」付き。詳細は node_detail(id)
 	// cold-digest §6.1/§6.2: the folded cold region + the per-asset directory that
 	// collapses independent directions, plus the dangling-lineage resolver map.
 	if cds, cidx := t.coldDigestOverview(); len(cds) > 0 {
-		out["cold_digests"] = cds // [{id, body, member_count}] —— body をそのまま読む (§6.1)
-		out["cold_index"] = cidx  // [{asset, asset_id, digest_ids}] —— アセット単位で方向を集約 (§6.2)
+		out["cold_digests"] = cds // [{id, body, member_count}]。body をそのまま読む (§6.1)
+		out["cold_index"] = cidx  // [{asset, asset_id, digest_ids}]。アセット単位で方向を集約 (§6.2)
 	}
 	if len(covered) > 0 {
 		cm := make(map[string]int64, len(covered))
@@ -1399,7 +1399,7 @@ func (t *ToolSet) proveGoal() actool.CoreTool {
 }
 
 func (t *ToolSet) goalMet() actool.CoreTool {
-	return writeTool("goal_met", "【タスク全体を即座に終了する】——タスクの【すべてのゴールが本当に達成され、全体を締めくくれる】と確認できたときだけ呼ぶ（あくまでタスク【全体】の完了。そのうちの1つのゴール/1つの flag/1つの脆弱性を達成しただけでは【該当しない】。その場合は prove_goal でそのゴールをマークすればよい）。⚠️これは「今ラウンドの計画を終える」ためのものではない。今ラウンドに出す新しい意図が無い、worker の成果を待っている、いずれも【そのまま今ラウンドを終えればよく、このツールは呼ばない】（意図が0件なのは完全に正常）。通常の判定は prove_goal でゴールを個別に証明するのを優先し、goal_met は個別証明を省いて全体を締める手段にすぎない。",
+	return writeTool("goal_met", "【タスク全体を即座に終了する】。タスクの【すべてのゴールが本当に達成され、全体を締めくくれる】と確認できたときだけ呼ぶ（あくまでタスク【全体】の完了。そのうちの1つのゴール/1つの flag/1つの脆弱性を達成しただけでは【該当しない】。その場合は prove_goal でそのゴールをマークすればよい）。⚠️これは「今ラウンドの計画を終える」ためのものではない。今ラウンドに出す新しい意図が無い、worker の成果を待っている、いずれも【そのまま今ラウンドを終えればよく、このツールは呼ばない】（意図が0件なのは完全に正常）。通常の判定は prove_goal でゴールを個別に証明するのを優先し、goal_met は個別証明を省いて全体を締める手段にすぎない。",
 		obj(map[string]any{"reason": str("達成理由（ゴールが本当に達成されたエビデンスであること。「今ラウンドに新方向が無い」のようなラウンド終了の理由は不可）")}, "reason"),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
 			var a struct{ Reason string }
@@ -1567,14 +1567,18 @@ func normalizeFactConfidence(c string) string {
 	}
 }
 
-// negativeConclusionPatterns は否定的結論の保守的なキーワード検出（中国語・英語）。誤って拾う（inferred を多めに付ける）
+// negativeConclusionPatterns は否定的結論の保守的なキーワード検出（日本語・英語・中国語）。誤って拾う（inferred を多めに付ける）
 // のは許容し、見逃さないことを優先する。命中したら observed→inferred を強制し、成熟ツールで再確認してから confirm_fact で confirmed に上げる。
 var negativeConclusionPatterns = []string{
-	"不可用", "被封", "无响应", "不存在", "不支持",
+	// 日本語（エージェントの要約向け）
+	"利用不可", "応答なし", "応答しない", "存在しない", "非対応", "封鎖", "ブロック",
+	// 英語（ツール出力向け）
 	"not supported", "blocked", "unreachable", "no response", "filtered",
+	// 中国語（中国語プロバイダ/ツールの出力に備える）
+	"不可用", "被封", "无响应", "不存在", "不支持",
 }
 
-// isNegativeConclusion はテキスト（summary+detail）が「X 不可用/被封/不存在」のような否定的結論かを判定する。
+// isNegativeConclusion はテキスト（summary+detail）が「X が利用不可/応答なし/存在しない」のような否定的結論かを判定する。
 func isNegativeConclusion(text string) bool {
 	s := strings.ToLower(text)
 	for _, p := range negativeConclusionPatterns {
@@ -1640,7 +1644,7 @@ func (t *ToolSet) recordFact() actool.CoreTool {
 		"  · evidence=この結論を支える【1行】の要点エビデンス（コマンド+最も証明力のある1〜2行の出力）。**必ず簡潔に**。詳細は detail にあるので、ここに長い出力を貼らない。\n"+
 		"  · confidence=observed（出力に直接現れた）| inferred（現象からの推測/間接エビデンス/自作ツールの否定的結論）| confirmed（再確認/成熟ツールで確定。通常は confirm_fact による昇格で、自分では付けない）。\n"+
 		"  · **否定的な結論**（インジェクション不可/ポート閉/入口が見つからないなど）は「観察 + 試行的な読み」だけを書く。実際に何を見たかを述べ、方向を捨てるかは planner が全体を見て決める。evidence は必ず付け、手段を尽くしていない、またはエビデンスが弱い（1回だけ試した、それらしいだけ）場合は inferred、本当に尽くして直接見た場合だけ observed にする。\n"+
-		"  · システム規則：テキストに「不可用/被封/无响应/不存在/不支持/blocked/unreachable」などの否定的結論の特徴が含まれると、observed は【自動で inferred に降格】され返却時に通知される。その後に成熟ツール/直接エビデンスで再確認して確定したら、confirm_fact で confirmed に上げる。",
+		"  · システム規則：テキストに「利用不可/封鎖/応答なし/存在しない/非対応/blocked/unreachable」などの否定的結論の特徴が含まれると、observed は【自動で inferred に降格】され返却時に通知される。その後に成熟ツール/直接エビデンスで再確認して確定したら、confirm_fact で confirmed に上げる。",
 		obj(map[string]any{
 			"facts":      map[string]any{"type": "array", "description": "【異なる結論が複数あるときに使う】事実の配列。要素のフィールドは下のトップレベルと同じ（summary/detail/evidence/confidence/intent_id/asset_ids）。intent_id を省略するとトップレベルの intent_id を使う。ids はこの配列と同じ長さ・同じ順序で返る。", "items": map[string]any{"type": "object"}},
 			"summary":    str("今回の探索結論の【まとめの一文】（detail の要約）"),

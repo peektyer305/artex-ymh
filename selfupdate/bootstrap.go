@@ -70,7 +70,7 @@ func Bootstrap() (Action, State) {
 
 // applyStaged は「一時保存ファイルがある」状況を処理する：検証に通れば差し替え、失敗すれば破棄する。
 //
-// ここはアップグレード経路で唯一実行ファイルを上書きする場所であり、最後の関門でもある——スモークテストが
+// ここはアップグレード経路で唯一実行ファイルを上書きする場所であり、最後の関門でもある。スモークテストが
 // ダウンロードの破損、アーキテクチャの誤り、動的リンクの欠落といった問題を弾く。動かないバイナリを
 // 一度通してしまうと、監視スクリプトは飽きもせず起動を繰り返し、Go コードは動く機会がなく、自動ロールバックもできない。
 func applyStaged(p Paths) (Action, State) {
@@ -112,7 +112,7 @@ func confirmOrRollback(p Paths, m marker) (Action, State) {
 	if m.Attempts > maxAttempts {
 		if err := rollback(p); err != nil {
 			// ロールバックまで失敗したら再起動はしない。さもないと無限再起動に陥る。マーカーを消し、
-			// 現在の状態で起動させる——起動できなければ、少なくともログから原因が分かる。
+			// 現在の状態で起動させる。起動できなければ、少なくともログから原因が分かる。
 			log.Printf("[update] 新バージョンが %d 回連続で起動に失敗し、ロールバックも失敗しました：%v", maxAttempts, err)
 			_ = os.Remove(p.Marker)
 			return Continue, State{Detail: "新バージョンの起動に失敗し、ロールバックも失敗しました：" + err.Error()}

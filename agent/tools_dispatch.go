@@ -11,13 +11,13 @@ import (
 )
 
 // 本ファイルは意図スケジューリング用のツール（红日 3 の振り返り R2:決勝意図 #207 が
-// スケジューリング待ちで死んだ——frontier に上限が無く、P0 を誰も引き受けず、mainagent に
+// スケジューリング待ちで死んだ。frontier に上限が無く、P0 を誰も引き受けず、mainagent に
 // kill/cancel の手段も無かった）。別ファイルに切り出したのは tools.go の並行変更と
 // 衝突しないため。
 //
 //   - frontier のハード上限：planner の add_intent は open の意図数が MaxOpenIntents 以上の
 //     とき派遣を拒否する（capFrontierTools が planner の組み立て層で門番を 1 枚被せる形で、
-//     add_intent 本体は変えない。mainagent の手動直投は制限外——これは滞留を消化する際の
+//     add_intent 本体は変えない。mainagent の手動直投は制限外。これは滞留を消化する際の
 //     緊急経路）。
 //   - cancel_intent:【未開始（open）】の意図を 1 件無効化する。mainagent/planner の
 //     どちらにも束縛できる。

@@ -1,31 +1,31 @@
 ---
 name: chains-pwn
-description: PWN 二进制利用反问决策链原文索引(栈溢出/堆漏洞 UAF/利用链与保护绕过)。做 pwn 题或二进制利用、要定利用总路线时查阅。
+description: PWN バイナリエクスプロイトの問い直し判断チェーンの原文インデックス(スタックオーバーフロー/ヒープ脆弱性 UAF/利用チェーンと保護バイパス)。pwn 問題やバイナリエクスプロイトを解く際、利用方針を決めるときに参照する。
 ---
 
-# chains-pwn · 二进制利用反问决策链(L4 原文索引)
+# chains-pwn · バイナリエクスプロイト問い直し判断チェーン(L4 原文インデックス)
 
-## 何时使用
+## 使用するタイミング
 
-- 拿到未知 ELF,要用保护机制定利用总路线(pwn-stack)
-- 菜单类交互程序,要判是不是堆题、定 libc 版本(pwn-heap)
-- 保护全开要规划"先 leak 后打"的两阶段利用(pwn-stack)
-- 利用链构造中要绕过 Canary/NX/PIE/RELRO(pwn-exploit-chain)
+- 未知の ELF を入手し、保護機構で利用方針を決めたい(pwn-stack)
+- メニュー型の対話プログラムで、ヒープ問題かどうか判定し libc バージョンを決めたい(pwn-heap)
+- 保護が全有効で「まず leak してから攻撃する」二段階の利用を計画したい(pwn-stack)
+- 利用チェーン構築中に Canary/NX/PIE/RELRO をバイパスしたい(pwn-exploit-chain)
 
-## 铁律
+## 鉄則
 
-- checksec 五个开关(Canary/NX/PIE/RELRO/符号)决定利用骨架,总路线先于逆向细节(refs/pwn-stack.md)
-- 保护全开 = "必须先 leak 后打"两阶段;保护全关就别往复杂里做,利用复杂度应与保护强度成正比(refs/pwn-stack.md)
-- 别只信 checksec:用 vmmap 在运行时确认段权限,假设放到运行时验证(refs/pwn-stack.md)
-- 菜单含 add/delete + malloc/free 组合基本定性堆题;定性后先抓 libc 版本,版本决定全部利用姿势(refs/pwn-heap.md)
-- 静态编译/musl/uclibc 别套 glibc 打法,当"未知 allocator 逆向"另起炉灶(refs/pwn-heap.md)
+- checksec の 5 つのスイッチ(Canary/NX/PIE/RELRO/シンボル)が利用の骨格を決める。利用方針は逆アセンブルの詳細より先に決める(refs/pwn-stack.md)
+- 保護が全有効 = 「まず leak してから攻撃する」二段階。保護が全無効なら複雑にしすぎない。利用の複雑さは保護の強度に比例させる(refs/pwn-stack.md)
+- checksec だけを信じない:vmmap で実行時にセグメント権限を確認し、仮定は実行時に検証する(refs/pwn-stack.md)
+- メニューに add/delete + malloc/free の組み合わせがあれば基本的にヒープ問題と判断する。判断後はまず libc バージョンを特定する。バージョンがすべての利用手法を決める(refs/pwn-heap.md)
+- 静的コンパイル/musl/uclibc には glibc の手法を当てはめず、「未知の allocator のリバースエンジニアリング」として別に進める(refs/pwn-heap.md)
 
-## refs/ 原文清单
+## refs/ 原文一覧
 
-- `refs/pwn-exploit-chain.md` — 利用链构造与保护绕过决策
-- `refs/pwn-heap.md` — 堆漏洞(UAF/overflow)的判断
-- `refs/pwn-stack.md` — 栈溢出漏洞定位与利用取舍
+- `refs/pwn-exploit-chain.md` — 利用チェーン構築と保護バイパスの判断
+- `refs/pwn-heap.md` — ヒープ脆弱性(UAF/オーバーフロー)の判断
+- `refs/pwn-stack.md` — スタックオーバーフロー脆弱性の特定と利用の取捨選択
 
-## 用法
+## 使い方
 
-先用本索引定位篇目与场景节(`### 场景句`),再 Read 对应文件;回答/决策时优先遵循其中的判据与转向规则。worker 无 Glob/Grep,按上面的精确相对路径直接 Read。
+まず本インデックスで篇目と場面節(`### 場面句`)を特定し、対応するファイルを Read する。回答・判断の際はその中の判定基準と方向転換ルールを優先して従う。worker に Glob/Grep はないため、上記の正確な相対パスで直接 Read する。

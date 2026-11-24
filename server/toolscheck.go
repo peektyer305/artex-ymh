@@ -31,7 +31,7 @@ func checkToolsManifest(dataDir string) {
 			unpinned = append(unpinned, r.Entry.Name)
 		case tools.StatusMismatch:
 			mismatch = append(mismatch, r.Entry.Name)
-			log.Printf("[tools] ⚠ %s のハッシュが一致しません(期待 %s、実際 %s)——自前ビルド/新版の可能性があります。警告のみでブロックしません",
+			log.Printf("[tools] ⚠ %s のハッシュが一致しません(期待 %s、実際 %s)。自前ビルド/新版の可能性があります。警告のみでブロックしません",
 				r.Entry.Name, r.Entry.SHA256, r.Actual)
 		case tools.StatusMissing:
 			missing = append(missing, r.Entry.Name)

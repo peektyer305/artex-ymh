@@ -1810,7 +1810,7 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 	p.APIKey = body.APIKey
 	p.Streaming = body.Streaming == nil || *body.Streaming
 	// 出力上限:負数は無意味なので 0 にする（= そのフィールドを送信しない）。フィールド名の切り替えが必要なのは Chat Completions
-	// だけ——anthropic と openai-responses はフィールド名が固定で、保存しても後から読む人を混乱させるだけなので、
+	// だけ。anthropic と openai-responses はフィールド名が固定で、保存しても後から読む人を混乱させるだけなので、
 	// openai 以外の形式では一律クリアする。未知の値も同様にクリアし、DB CHECK のエラーをユーザーに投げないようにする。
 	if p.MaxTokens < 0 {
 		p.MaxTokens = 0
