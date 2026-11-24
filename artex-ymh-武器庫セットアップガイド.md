@@ -1,6 +1,6 @@
 # ARTEX-ymh 武器庫（外部ツール）セットアップガイド
 
-ARTEX-ymh はペネトレーションに使う外部ツール群（＝**武器庫**）を、イメージに同梱せず `data/tools/` に置く設計です。このガイドでは、**どの Linux VM でも同じ手順で一括セットアップできる方法**と、**途中でつまずいたときの対処**をまとめています。
+ARTEX-ymh はペネトレーションに使う外部ツール群（＝武器庫）を、イメージに同梱せず `data/tools/` に置く設計です。このガイドでは、どの Linux VM でも同じ手順で一括セットアップできる方法と、途中でつまずいたときの対処をまとめています。
 
 > 対象: Docker Compose で動かしている Linux 環境（Kali / Ubuntu / Debian など）。x86_64（amd64）前提です。
 
@@ -16,8 +16,8 @@ ARTEX-ymh はペネトレーションに使う外部ツール群（＝**武器�
 | 権限昇格 | peass / penelope.py |
 | Windows 認証 | impacket / nxc（NetExec）/ pypykatz / mimikatz.exe / laZagne.exe |
 
-- `nmap` は**イメージに同梱済み**なので追加不要です。
-- `mimikatz.exe` / `laZagne.exe` は**ターゲットへ送る用**で、ホストでは実行しません（配置のみ）。
+- `nmap` はイメージに同梱済みなので追加不要です。
+- `mimikatz.exe` / `laZagne.exe` はターゲットへ送る用で、ホストでは実行しません（配置のみ）。
 - 全部揃えなくても動きます（スキャン系だけでもタスクは回ります）。
 
 ---
@@ -50,23 +50,23 @@ stp(){ printf '  - %-26s ' "$1"; }
 
 say "前提チェック"
 for c in curl jq unzip tar; do
-  command -v "$c" >/dev/null 2>&1 || { echo "  不足: $c（sudo apt install -y curl jq unzip tar）"; exit 1; }
+command -v "$c" >/dev/null 2>&1 || { echo "  不足: $c（sudo apt install -y curl jq unzip tar）"; exit 1; }
 done
 command -v docker >/dev/null 2>&1 || { echo "  docker が見つかりません"; exit 1; }
 echo "  前提 OK（リポジトリ: $PWD）"
 
 say "compose 設定（docker-compose.override.yml）"
 if [ -f docker-compose.override.yml ] && ! grep -q 'tools-manifest.json' docker-compose.override.yml; then
-  cp docker-compose.override.yml docker-compose.override.yml.bak
-  echo "  既存 override を .bak に退避"
+cp docker-compose.override.yml docker-compose.override.yml.bak
+echo "  既存 override を .bak に退避"
 fi
 cat > docker-compose.override.yml <<'OVR'
 services:
-  artex:
-    environment:
-      PATH: /app/data/tools:/app/data/tools/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
-    volumes:
-      - ./packaging/tools-manifest.json:/app/packaging/tools-manifest.json:ro
+artex:
+environment:
+PATH: /app/data/tools:/app/data/tools/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+volumes:
+- ./packaging/tools-manifest.json:/app/packaging/tools-manifest.json:ro
 OVR
 $COMPOSE up -d >/dev/null 2>&1 || { echo "  compose 起動失敗"; exit 1; }
 echo "  コンテナ起動済み"
@@ -77,24 +77,24 @@ mkdir -p "$TOOLS" "$TOOLS/peass"
 gh_asset() { curl -fsSL "https://api.github.com/repos/$1/releases/latest" | jq -r --arg p "$2" '[.assets[]|select(.name|test($p))][0].browser_download_url // empty'; }
 
 install_bin() {
-  local repo="$1" re="$2" srcname="${3:-}" dest="$4"
-  local url f dir src
-  stp "$dest"
-  url="$(gh_asset "$repo" "$re")"
-  [ -n "$url" ] || { echo "アセットなし（手動配置）"; ng=$((ng+1)); return; }
-  f="$TMP/$(basename "$url")"
-  curl -fsSL -o "$f" "$url" || { echo "DL失敗"; ng=$((ng+1)); return; }
-  dir="$TMP/u_${dest}"; mkdir -p "$dir"
-  case "$f" in
-    *.tar.gz) tar -xzf "$f" -C "$dir" ;;
-    *.zip)    unzip -qo "$f" -d "$dir" ;;
-    *.gz)     gunzip -c "$f" > "$dir/${srcname:-$(basename "$f" .gz)}" ;;
-    *)        cp "$f" "$dir/${srcname:-$(basename "$f")}" ;;
-  esac
-  src="$(find "$dir" -type f -name "${srcname:-$(basename "$f")}" 2>/dev/null | head -n1)"
-  [ -n "$src" ] || { echo "展開後になし"; ng=$((ng+1)); return; }
-  install -m755 "$src" "$TOOLS/$dest" 2>/dev/null || sudo install -m755 "$src" "$TOOLS/$dest" || { echo "配置失敗"; ng=$((ng+1)); return; }
-  echo "OK"; ok=$((ok+1))
+local repo="$1" re="$2" srcname="${3:-}" dest="$4"
+local url f dir src
+stp "$dest"
+url="$(gh_asset "$repo" "$re")"
+[ -n "$url" ] || { echo "アセットなし（手動配置）"; ng=$((ng+1)); return; }
+f="$TMP/$(basename "$url")"
+curl -fsSL -o "$f" "$url" || { echo "DL失敗"; ng=$((ng+1)); return; }
+dir="$TMP/u_${dest}"; mkdir -p "$dir"
+case "$f" in
+*.tar.gz) tar -xzf "$f" -C "$dir" ;;
+*.zip)    unzip -qo "$f" -d "$dir" ;;
+*.gz)     gunzip -c "$f" > "$dir/${srcname:-$(basename "$f" .gz)}" ;;
+*)        cp "$f" "$dir/${srcname:-$(basename "$f")}" ;;
+esac
+src="$(find "$dir" -type f -name "${srcname:-$(basename "$f")}" 2>/dev/null | head -n1)"
+[ -n "$src" ] || { echo "展開後になし"; ng=$((ng+1)); return; }
+install -m755 "$src" "$TOOLS/$dest" 2>/dev/null || sudo install -m755 "$src" "$TOOLS/$dest" || { echo "配置失敗"; ng=$((ng+1)); return; }
+echo "OK"; ok=$((ok+1))
 }
 
 install_bin projectdiscovery/naabu   'linux_amd64\.zip$'          naabu  naabu
@@ -111,15 +111,15 @@ stp "penelope.py"
 if curl -fsSL -o "$TOOLS/penelope.py" https://raw.githubusercontent.com/brightio/penelope/main/penelope.py; then chmod +x "$TOOLS/penelope.py"; echo "OK"; ok=$((ok+1)); else echo "失敗"; ng=$((ng+1)); fi
 
 for f in linpeas.sh winPEASx64.exe; do
-  stp "peass/$f"
-  if curl -fsSL -o "$TOOLS/peass/$f" "https://github.com/carlospolop/PEASS-ng/releases/latest/download/$f"; then chmod +x "$TOOLS/peass/$f" 2>/dev/null; echo "OK"; ok=$((ok+1)); else echo "失敗"; ng=$((ng+1)); fi
+stp "peass/$f"
+if curl -fsSL -o "$TOOLS/peass/$f" "https://github.com/carlospolop/PEASS-ng/releases/latest/download/$f"; then chmod +x "$TOOLS/peass/$f" 2>/dev/null; echo "OK"; ok=$((ok+1)); else echo "失敗"; ng=$((ng+1)); fi
 done
 
 stp "mimikatz.exe"
 if curl -fsSL -o "$TMP/mimi.zip" https://github.com/gentilkiwi/mimikatz/releases/latest/download/mimikatz_trunk.zip; then
-  unzip -qo "$TMP/mimi.zip" -d "$TMP/mimi" >/dev/null
-  src="$(find "$TMP/mimi" -type f -iname mimikatz.exe | grep -i x64 | head -n1)"
-  if [ -n "$src" ]; then install -m644 "$src" "$TOOLS/mimikatz.exe" && { echo "OK"; ok=$((ok+1)); }; else echo "x64 なし"; ng=$((ng+1)); fi
+unzip -qo "$TMP/mimi.zip" -d "$TMP/mimi" >/dev/null
+src="$(find "$TMP/mimi" -type f -iname mimikatz.exe | grep -i x64 | head -n1)"
+if [ -n "$src" ]; then install -m644 "$src" "$TOOLS/mimikatz.exe" && { echo "OK"; ok=$((ok+1)); }; else echo "x64 なし"; ng=$((ng+1)); fi
 else echo "DL失敗"; ng=$((ng+1)); fi
 
 stp "laZagne.exe"
@@ -128,13 +128,13 @@ if curl -fsSL -o "$TOOLS/laZagne.exe" https://github.com/AlessandroZ/LaZagne/rel
 stp "suo5-payloads"
 suo5_tag="$(curl -fsSL https://api.github.com/repos/zema1/suo5/releases/latest | jq -r '.tag_name')"
 if [ -n "$suo5_tag" ] && curl -fsSL -o "$TMP/suo5-src.tar.gz" "https://github.com/zema1/suo5/archive/refs/tags/${suo5_tag}.tar.gz"; then
-  tar -xzf "$TMP/suo5-src.tar.gz" -C "$TMP"
-  asset_dir="$(find "$TMP" -maxdepth 2 -type d -name assets | head -n1)"
-  if [ -n "$asset_dir" ]; then
-    mkdir -p "$TOOLS/suo5-payloads"
-    find "$asset_dir" -type f \( -name '*.jsp' -o -name '*.php' -o -name '*.aspx' -o -name '*.js' -o -name '*.mjs' \) -exec cp -n {} "$TOOLS/suo5-payloads/" \;
-    echo "OK"; ok=$((ok+1))
-  else echo "assets なし"; ng=$((ng+1)); fi
+tar -xzf "$TMP/suo5-src.tar.gz" -C "$TMP"
+asset_dir="$(find "$TMP" -maxdepth 2 -type d -name assets | head -n1)"
+if [ -n "$asset_dir" ]; then
+mkdir -p "$TOOLS/suo5-payloads"
+find "$asset_dir" -type f \( -name '*.jsp' -o -name '*.php' -o -name '*.aspx' -o -name '*.js' -o -name '*.mjs' \) -exec cp -n {} "$TOOLS/suo5-payloads/" \;
+echo "OK"; ok=$((ok+1))
+else echo "assets なし"; ng=$((ng+1)); fi
 else echo "取得失敗"; ng=$((ng+1)); fi
 
 say "実行権限の付与"
@@ -182,11 +182,11 @@ docker compose exec artex /app/artex doctor
 
 ## 3. スクリプトがやること（全体像）
 
-1. **compose 設定** — `docker-compose.override.yml` に PATH（ツールを名前で呼ぶため）と manifest マウント（doctor が集計するため）を書く
-2. **バイナリ系** — GitHub の最新リリースを正規表現で自動選択し、`data/tools/` に配置
-3. **実行権限** — 全部に `chmod 755`
-4. **Python 系** — コンテナ内に venv を作り、impacket / pypykatz / NetExec を導入
-5. **doctor** — 最終確認
+1. compose 設定— `docker-compose.override.yml` に PATH（ツールを名前で呼ぶため）と manifest マウント（doctor が集計するため）を書く
+2. バイナリ系— GitHub の最新リリースを正規表現で自動選択し、`data/tools/` に配置
+3. 実行権限— 全部に `chmod 755`
+4. Python 系— コンテナ内に venv を作り、impacket / pypykatz / NetExec を導入
+5. doctor — 最終確認
 
 > `data/` は `docker compose` が `/app/data` にマウントしているので、ホスト側の `data/tools/` に置けばそのままコンテナから見えます。
 
@@ -204,18 +204,18 @@ docker compose exec artex /app/artex doctor
 | 4 | fscan のアセットが見つからない | fscan は `linux_x64` 表記（`amd64` ではない）で、生バイナリ | `fscan_<ver>_linux_x64` を選ぶ |
 | 5 | gogo / suo5 が見つからない | どちらも生バイナリ（`gogo_linux_amd64` / `suo5-linux-amd64`） | 無拡張子のそのまま配置 |
 | 6 | suo5-payloads が見つからない | リリースに同梱されず、リポジトリの `assets/` にある | tarball で取得して `assets/` の中身をコピー |
-| 7 | `pip install netexec` で `No matching distribution` | **netexec は PyPI に無い** | `pip install git+https://github.com/Pennyw0rth/NetExec` |
+| 7 | `pip install netexec` で `No matching distribution` | netexec は PyPI に無い| `pip install git+https://github.com/Pennyw0rth/NetExec` |
 | 8 | pypykatz で `gcc: No such file or directory` | `netifaces`（C 拡張）のビルドに gcc が必要 | コンテナに `build-essential` を導入（`Dockerfile.source` にも追加すると恒久化） |
-| 9 | `command -v impacket-psexec` が出ない | pip 版 impacket は `secretsdump.py` などの **`.py` 名**で入る（`impacket-*` は apt 版の慣習） | `secretsdump.py` 等を呼ぶ。必要なら `impacket-*` の symlink を作る |
+| 9 | `command -v impacket-psexec` が出ない | pip 版 impacket は `secretsdump.py` などの `.py` 名で入る（`impacket-*` は apt 版の慣習） | `secretsdump.py` 等を呼ぶ。必要なら `impacket-*` の symlink を作る |
 | 10 | pip が `from versions: none` | PyPI（pypi.org）に到達できない | ミラー `-i https://pypi.tuna.tsinghua.edu.cn/simple` を指定 |
 | 11 | `chmod: cannot operate on dangling symlink` | venv を作る前に symlink だけ作った | venv を作ってから symlink。このエラー自体は無害 |
-| 12 | chisel の `sha256 不一致` | 使った chisel が manifest 固定版とバージョン違い | **警告のみで動作する**。気になれば manifest と同じ版に揃える |
+| 12 | chisel の `sha256 不一致` | 使った chisel が manifest 固定版とバージョン違い | 警告のみで動作する。気になれば manifest と同じ版に揃える |
 
 ---
 
 ## 5. 手動で入れる場合の早見表
 
-`data/tools/` 以下に、manifest の `path` と**同じ名前**で置きます。
+`data/tools/` 以下に、manifest の `path` と同じ名前で置きます。
 
 | ツール | 配置先 | 備考 |
 |---|---|---|
@@ -240,5 +240,5 @@ docker compose exec artex /app/artex doctor
 ```
 
 - `[OK]` = 問題なし、`[WARN]` = 動くが注意、`[FAIL]` = 起動を妨げる可能性
-- 最後の `集計：OK n · WARN n · FAIL n · SKIP n` を見て、**`FAIL 0` なら起動して OK**
+- 最後の `集計：OK n · WARN n · FAIL n · SKIP n` を見て、`FAIL 0` なら起動して OK
 - 武器庫は `武器庫ツール: 存在 X/Y` で確認（目標は `14/14`）
