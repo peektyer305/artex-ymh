@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Autumn-27/artex/config"
 )
 
 const (
@@ -179,32 +181,14 @@ func newGate(path, token string, key []byte, ttl time.Duration) *Gate {
 	}
 }
 
-// gateEnabled は ARTEX_GATE を解決する。未設定時はリッスンアドレスから自動判定する。explicit はスイッチが
-// 明示的な設定によるもので、自動判定ではないことを示す。
+// gateEnabled delegates to the shared configuration rule.
 func gateEnabled(addr string) (enabled, explicit bool) {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("ARTEX_GATE"))) {
-	case "off", "0", "false":
-		return false, true
-	case "on", "1", "true":
-		return true, true
-	}
-	return !isLoopbackAddr(addr), false
+	return config.GateEnabled(addr)
 }
 
-// isLoopbackAddr はリッスンアドレスがループバックのみにバインドされているか判定する。空の host（:8787）= 全 NIC で、ループバックとはみなさない。
+// isLoopbackAddr keeps the existing private callers compatible.
 func isLoopbackAddr(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-	if host == "" {
-		return false
-	}
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return config.IsLoopbackAddr(addr)
 }
 
 // randomGateToken は crypto/rand の n バイト乱数を URL-safe base64（パディングなし）にする。

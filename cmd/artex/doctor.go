@@ -6,7 +6,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,21 +99,24 @@ func runDoctor(args []string) int {
 
 	checkDoctorTools(dataDir, check)
 
-	// 6. ゲート状態：リッスンアドレスが loopback でない場合に ARTEX_GATE が有効か（server.NewGate と同じ規則）
+	// Use the same effective setting as the server.
 	{
-		gateEnv := strings.ToLower(strings.TrimSpace(os.Getenv("ARTEX_GATE")))
-		off := gateEnv == "off" || gateEnv == "0" || gateEnv == "false"
-		on := gateEnv == "on" || gateEnv == "1" || gateEnv == "true"
-		switch {
-		case doctorLoopback(*addr):
-			check(docOK, "偽装ゲート", fmt.Sprintf("リッスン %s は loopback のため、ゲートは任意（loopback でない場合は既定で有効）", *addr))
-		case off:
-			check(docWarn, "偽装ゲート", fmt.Sprintf("リッスン %s は loopback ではありませんが ARTEX_GATE=off です。UI/API が直接公開されるため、前段の保護を確認してください", *addr))
-		case on:
-			check(docOK, "偽装ゲート", fmt.Sprintf("リッスン %s は loopback ではなく、ARTEX_GATE が明示的に有効です", *addr))
-		default:
-			check(docOK, "偽装ゲート", fmt.Sprintf("リッスン %s は loopback ではないため、ゲートは既定で有効になります（起動ログに入口パスを出力します）", *addr))
+		enabled, explicit := config.GateEnabled(*addr)
+		state := "無効"
+		if enabled {
+			state = "有効"
 		}
+		source := "リッスンアドレスから自動判定"
+		if explicit {
+			source = "ARTEX_GATE で明示設定"
+		}
+		status := docOK
+		note := fmt.Sprintf("リッスン %s、ゲートは%s（%s）", *addr, state, source)
+		if !enabled && !config.IsLoopbackAddr(*addr) {
+			status = docWarn
+			note += "。UI/API の前段の保護を確認してください"
+		}
+		check(status, "偽装ゲート", note)
 	}
 
 	// 7. ARTEX_CALLBACK_ADDR：リバースシェル / トンネルがプラットフォームへ接続するために使用
@@ -155,23 +157,9 @@ func runDoctor(args []string) int {
 	return 0
 }
 
-// doctorLoopback はリッスンアドレスがループバックのみにバインドされているか判定する（server.isLoopbackAddr と同じ規則。
-// あちらは非公開のため、ここに小さなロジックを複製し、事前チェックのために server の公開面を変えないようにしている）。host が空（:8787）
-// は全 NIC を意味し、ループバックとはみなさない。
+// doctorLoopback delegates to the server's shared address classification.
 func doctorLoopback(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-	host = strings.TrimSpace(host)
-	if host == "" {
-		return false
-	}
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return config.IsLoopbackAddr(addr)
 }
 
 // readEnvFileValue は systemd の EnvironmentFile 形式の KEY=VALUE ファイルを解析し、指定キーの値を返す。
