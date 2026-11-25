@@ -7,7 +7,7 @@
 | 用途 | ファイル |
 |---|---|
 | アプリの起動 | [`cmd/artex/main.go`](cmd/artex/main.go), [`start.sh`](start.sh), [`start.bat`](start.bat) |
-| コンテナと設定例 | [`docker-compose.yml`](docker-compose.yml), [`Dockerfile`](Dockerfile), [`Dockerfile.source`](Dockerfile.source), [`.env.example`](.env.example), [`config.example.json`](config.example.json) |
+| コンテナと設定例 | [`docker-compose.yml`](docker-compose.yml), [`Dockerfile`](Dockerfile), [`Dockerfile (target: source)`](Dockerfile), [`.env.example`](.env.example), [`config.example.json`](config.example.json) |
 | 保守と変更履歴 | [`README.md`](README.md), [`CHANGELOG.md`](CHANGELOG.md), [`LICENSE`](LICENSE), [`packaging/artex.service`](packaging/artex.service) |
 
 ## doctor の結果を読む

@@ -205,7 +205,7 @@ docker compose exec artex /app/artex doctor
 | 5 | gogo / suo5 が見つからない | どちらも生バイナリ（`gogo_linux_amd64` / `suo5-linux-amd64`） | 無拡張子のそのまま配置 |
 | 6 | suo5-payloads が見つからない | リリースに同梱されず、リポジトリの `assets/` にある | tarball で取得して `assets/` の中身をコピー |
 | 7 | `pip install netexec` で `No matching distribution` | netexec は PyPI に無い| `pip install git+https://github.com/Pennyw0rth/NetExec` |
-| 8 | pypykatz で `gcc: No such file or directory` | `netifaces`（C 拡張）のビルドに gcc が必要 | コンテナに `build-essential` を導入（`Dockerfile.source` にも追加すると恒久化） |
+| 8 | pypykatz で `gcc: No such file or directory` | `netifaces`（C 拡張）のビルドに gcc が必要 | コンテナに `build-essential` を導入（`Dockerfile (target: source)` にも追加すると恒久化） |
 | 9 | `command -v impacket-psexec` が出ない | pip 版 impacket は `secretsdump.py` などの `.py` 名で入る（`impacket-*` は apt 版の慣習） | `secretsdump.py` 等を呼ぶ。必要なら `impacket-*` の symlink を作る |
 | 10 | pip が `from versions: none` | PyPI（pypi.org）に到達できない | ミラー `-i https://pypi.tuna.tsinghua.edu.cn/simple` を指定 |
 | 11 | `chmod: cannot operate on dangling symlink` | venv を作る前に symlink だけ作った | venv を作ってから symlink。このエラー自体は無害 |
