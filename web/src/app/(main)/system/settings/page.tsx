@@ -255,7 +255,7 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <RadioTowerIcon className="size-4" />
-              流量キャプチャ
+              トラフィックキャプチャ
             </CardTitle>
             <CardDescription>
               オンにすると、すべての Agent の HTTP トラフィックを記録プロキシ経由で漏れなく DB に保存し、Agent に traffic_search / traffic_get
