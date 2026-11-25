@@ -22,24 +22,20 @@ func checkToolsManifest(dataDir string) {
 		}
 		return
 	}
-	var ok, unpinned, missing, mismatch []string
-	for _, r := range tools.Check(m, dataDir) {
-		switch r.Status {
-		case tools.StatusOK:
-			ok = append(ok, r.Entry.Name)
-		case tools.StatusUnpinned:
-			unpinned = append(unpinned, r.Entry.Name)
-		case tools.StatusMismatch:
-			mismatch = append(mismatch, r.Entry.Name)
+	results := tools.Check(m, dataDir)
+	summary := tools.Summarize(results, "")
+	for _, r := range results {
+		if r.Status == tools.StatusMismatch {
 			log.Printf("[tools] ⚠ %s のハッシュが一致しません(期待 %s、実際 %s)。自前ビルド/新版の可能性があります。警告のみでブロックしません",
 				r.Entry.Name, r.Entry.SHA256, r.Actual)
-		case tools.StatusMissing:
-			missing = append(missing, r.Entry.Name)
 		}
 	}
 	log.Printf("[tools] マニフェストセルフチェック：sha256 一致 %d、未固定 %d、欠落 %d、不一致 %d%s%s",
-		len(ok), len(unpinned), len(missing), len(mismatch),
-		toolsListNote("欠落", missing), toolsListNote("不一致", mismatch))
+		len(summary.OK), len(summary.Unpinned), len(summary.Missing), len(summary.Mismatch),
+		toolsListNote("欠落", summary.Missing), toolsListNote("不一致", summary.Mismatch))
+	if len(summary.Unknown) > 0 {
+		log.Printf("[tools] 不明な状態: %s", strings.Join(summary.Unknown, ", "))
+	}
 }
 
 // toolsListNote はリストをサマリ行の接尾辞に組み立てる。空のリストは出力しない(画面を埋めない)。

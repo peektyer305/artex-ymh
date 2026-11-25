@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/Autumn-27/artex/tools"
@@ -33,45 +32,58 @@ func checkDoctorTools(dataDir *string, check func(doctorStatus, string, string))
 		check(docWarn, "ツール一覧", "packaging/tools-manifest.json が欠落しています。トンネルツールは既定パスで確認し、武器庫は集計できません")
 	}
 
-	// 4. トンネルツール（suo5/chisel/payloads）：存在確認 +（一覧にハッシュが固定されている場合は）sha256
+	// Tool status classification is shared with the startup check.
 	{
+		summary := tools.Summarize(results, "tunnel")
 		var parts []string
-		worst := docOK
-		for _, r := range results {
-			if r.Entry.Category != "tunnel" {
-				continue
-			}
-			parts = append(parts, doctorToolNote(r))
-			if r.Status == tools.StatusMissing || r.Status == tools.StatusMismatch {
-				worst = docWarn // トンネルツールの欠落はトンネル機能にのみ影響し、プラットフォームは停止しない
+		for _, result := range results {
+			if result.Entry.Category == "tunnel" {
+				parts = append(parts, doctorToolNote(result))
 			}
 		}
-		check(worst, "トンネルツール", strings.Join(parts, ";"))
+		switch {
+		case summary.Total() == 0:
+			check(docSkip, "トンネルツール", skippedToolGroupNote(mErr))
+		case summary.HasWarnings():
+			check(docWarn, "トンネルツール", strings.Join(parts, ";"))
+		default:
+			check(docOK, "トンネルツール", strings.Join(parts, ";"))
+		}
 	}
 
-	// 5. 武器庫ツールの存在状況を集計（存在 X/Y）
 	{
-		var present, missing []string
-		for _, r := range results {
-			if r.Entry.Category != "arsenal" {
-				continue
+		summary := tools.Summarize(results, "arsenal")
+		if summary.Total() == 0 {
+			check(docSkip, "武器庫ツール", skippedToolGroupNote(mErr))
+		} else {
+			status := docOK
+			note := fmt.Sprintf("存在 %d/%d", summary.Present(), summary.Total())
+			if len(summary.Missing) > 0 {
+				note += fmt.Sprintf("（欠落: %s）", strings.Join(summary.Missing, ", "))
 			}
-			if r.Status == tools.StatusMissing {
-				missing = append(missing, r.Entry.Name)
-			} else {
-				present = append(present, r.Entry.Name)
+			if len(summary.Mismatch) > 0 {
+				note += fmt.Sprintf("（ハッシュ不一致: %s）", strings.Join(summary.Mismatch, ", "))
 			}
+			if len(summary.Unknown) > 0 {
+				note += fmt.Sprintf("（不明な状態: %s）", strings.Join(summary.Unknown, ", "))
+			}
+			if summary.HasWarnings() {
+				status = docWarn
+			}
+			check(status, "武器庫ツール", note)
 		}
-		total := len(present) + len(missing)
-		switch {
-		case total == 0:
-			check(docSkip, "武器庫ツール", "一覧が欠落しているため集計できません")
-		case len(missing) == 0:
-			check(docOK, "武器庫ツール", fmt.Sprintf("存在 %d/%d", len(present), total))
-		default:
-			check(docWarn, "武器庫ツール", fmt.Sprintf("存在 %d/%d（欠落: %s）。必要に応じて %s に揃えてください",
-				len(present), total, strings.Join(missing, ", "), filepath.Join(*dataDir, "tools")))
-		}
+	}
+
+}
+
+func skippedToolGroupNote(err error) string {
+	switch {
+	case os.IsNotExist(err):
+		return "一覧ファイルが見つからず、この項目は確認できませんでした"
+	case err != nil:
+		return "一覧ファイルを読み込めず、この項目は確認できませんでした"
+	default:
+		return "一覧ファイルにこの分類の項目がありません"
 	}
 }
 
