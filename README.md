@@ -1,5 +1,11 @@
 # ARTEX-ymh
 
+<!-- artex-maintenance:begin -->
+## 保守と診断
+
+[保守ガイド](MAINTENANCE.ja.md)に、設定を読むファイルと `doctor` の結果の見方をまとめています。
+<!-- artex-maintenance:end -->
+
 AI 自律型ペネトレーションテスト基盤 · 二次開発版（Go バックエンド + Next.js フロントエンド + PostgreSQL）
 
 > 本プロジェクトは [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX) の二次開発ブランチです。アップストリームの v0.3.10 をベースに、アップストリームの更新を継続的に取り込み（v0.3.12 まで追従し、0.3.11/0.3.12 の修正を選択的に取り込み済み）、アップストリームの **AGPL-3.0** ライセンス（`LICENSE` 参照）に従います。
