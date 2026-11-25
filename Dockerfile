@@ -48,6 +48,8 @@ COPY dist/${TARGETARCH}/artex /app/artex
 COPY start.sh /app/start.sh
 RUN chmod +x /app/artex /app/start.sh
 COPY skills/ /app/skills/
+COPY packaging/tools-manifest.json /app/packaging/tools-manifest.json
+ENV ARTEX_TOOLS_MANIFEST=/app/packaging/tools-manifest.json
 # data/（SQLite + jwt.key）の永続化ポイント
 VOLUME ["/app/data"]
 EXPOSE 8787 8788
