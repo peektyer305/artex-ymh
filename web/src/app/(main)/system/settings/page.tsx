@@ -15,7 +15,6 @@ import { api } from "@/lib/api";
 import { CHAT_SEND_MODE_OPTIONS, type ChatSendMode, setChatSendMode, useChatSendMode } from "@/lib/chat-send-mode";
 import type { Settings } from "@/lib/types";
 
-import { UpdateCard } from "./_components/update-card";
 
 export default function SystemSettingsPage() {
   const [trafficCapture, setTrafficCapture] = React.useState(false);
@@ -249,7 +248,6 @@ export default function SystemSettingsPage() {
           横に大きな空白が残る。段組みなら内容の高さに応じて自動的に均等に埋まる。カード間隔は gap ではなく
           mb で取る。段組みでは column-gap は列間隔のみで、行間隔は子要素側で指定する必要がある。*/}
       <div className="columns-1 gap-4 md:gap-6 lg:columns-2">
-        <UpdateCard />
 
         <Card className="mb-4 break-inside-avoid md:mb-6">
           <CardHeader>

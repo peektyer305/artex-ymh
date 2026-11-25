@@ -9,12 +9,7 @@ rem   start.bat -addr :9000      追加の引数はそのまま artex に渡す
 rem
 rem やることは 1 つだけ：artex.exe を起動し、プロセス終了後は終了コードで再起動を判断する。
 rem
-rem   0      ユーザーが正常停止   -> ループを抜ける
-rem   75     プログラムが再起動を要求 -> すぐ再実行（画面で「ワンクリック更新」または「ロールバック」を押下）
-rem   その他 クラッシュ           -> バックオフ後に再実行（1->2->4…最大 60 秒）
 rem
-rem ダウンロード、SHA256 検証、差し替えはここでは行わず、すべて artex 自身が起動時に実行する
-rem （selfupdate パッケージ）。スクリプトはあえて単純に保つ。詳細は start.sh 冒頭の説明を参照。
 
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
@@ -25,7 +20,6 @@ if not exist "%BIN%" (
 	exit /b 1
 )
 
-set "RESTART_CODE=75"
 set "MAX_DELAY=60"
 set /a delay=1
 
@@ -38,12 +32,6 @@ if "!code!"=="0" (
 	exit /b 0
 )
 
-if "!code!"=="%RESTART_CODE%" (
-	rem 更新／ロールバックの準備完了：再実行後、artex は起動時に差し替えを完了する。
-	echo [artex] 再起動を要求（新しいバージョンを適用）…
-	set /a delay=1
-	goto loop
-)
 
 echo [artex] 異常終了 ^(code=!code!^)、!delay!s 後に再起動 1>&2
 rem timeout はリダイレクトされたコンソールでは失敗するため、ping で代用する（N 秒待つには N+1 回必要）。

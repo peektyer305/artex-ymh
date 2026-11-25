@@ -711,10 +711,6 @@ func (s *Server) Handler() http.Handler {
 
 	// ページからのワンクリック更新。既定の JWT 認証を通る(auth.go が素通しするのは /api/auth/* と
 	// /api/health のみ)ため、プログラム自身を書き換えるこれらの API は当然ログインを要する。
-	mux.HandleFunc("GET /api/update/check", s.updateCheck)
-	mux.HandleFunc("POST /api/update/apply", s.updateApply)
-	mux.HandleFunc("POST /api/update/rollback", s.updateRollback)
-	mux.HandleFunc("GET /api/update/stream", s.updateStream)
 
 	mux.HandleFunc("GET /api/tasks", s.listTasks)
 	mux.HandleFunc("POST /api/tasks", s.createTask)

@@ -102,8 +102,7 @@ import type {
   TrafficHost,
   TrafficResp,
   TunnelInfo,
-  UpdateCheck,
-  UsageStats,
+    UsageStats,
   WorkspaceFile,
   WorkspaceListing,
 } from "@/lib/types";
@@ -1212,10 +1211,6 @@ export const api = {
   // バックエンドの GitHub への問い合わせ結果は 30 分キャッシュする(未認証の GitHub API は 60 回/時/IP、
   // トップバーはページ全体の読み込みごとに 1 回問い合わせるので、キャッシュしないとすぐに枠を使い切る)。force=true で強制的に再取得し、
   // ユーザーが明示的に「更新を確認」を押した時に使う。
-  checkUpdate: (force = false) => get<UpdateCheck>(`/update/check${force ? "?force=1" : ""}`),
-  // 202 で即返し、実際のダウンロードはバックグラウンドで走り、進捗は /api/update/stream で流す。
-  applyUpdate: () => post<{ ok: boolean; target: string }>(`/update/apply`),
-  rollbackUpdate: () => post<{ ok: boolean }>(`/update/rollback`),
 
   // ---- イントラネット運用（トポロジ / セッション / トンネル / 認証情報）----
   // 4 つのリストは任意の taskId に対応(?task_id= を付ける);渡さなければグローバルビュー。

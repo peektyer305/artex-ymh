@@ -127,10 +127,6 @@ jobs:
       - name: Generate checksums
         working-directory: dist
         run: sha256sum *.zip > SHA256SUMS
-      # minisign で SHA256SUMS に署名。クライアント（selfupdate）は内蔵公開鍵で検証し、
-      # 署名の欠落や検証失敗は一律インストール拒否。MINISIGN_KEY は minisign のパスフレーズなし秘密鍵ファイルの
-      # 全内容（2 行）。公開鍵は selfupdate/minisign.go にハードコードされており、両者は必ずペアで変更してください。
-      # minisign ツール自体は 0.12 に固定して SHA256 を検証し、パッケージマネージャの可変バージョンは使わない。
       - name: Sign checksums with minisign
         working-directory: dist
         env:

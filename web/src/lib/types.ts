@@ -1431,46 +1431,7 @@ export interface FindingTrafficDetail {
   response: EvidenceBodyPreview;
 }
 
-/** GET /api/update/check。現在のバージョンと GitHub 最新正式版の比較結果。*/
-export interface UpdateCheck {
-  /** 現在実行中のバージョン；開発ビルドは "dev" または git describe の接尾辞付き形式。 */
-  current: string;
-  /** 実行形態。docker では差し替えはコンテナの書き込み可能層のみに作用し、コンテナ再作成でイメージ版に戻る。 */
-  mode: "docker" | "binary";
-  os: string;
-  arch: string;
-  repo: string;
-  /** ロールバック可能な前バージョン（artex.old）があるか。 */
-  has_backup: boolean;
-  /** 今回の起動時の自己更新ブートストラップの結果（差し替え失敗 / ロールバック済みなど）、何もなければ空。 */
-  boot_notice?: string;
-  rolled_back?: boolean;
-  /** GitHub への問い合わせに失敗した場合は理由を返し、そのとき以下のフィールドは付かない。 */
-  error?: string;
-  latest?: string;
-  notes?: string;
-  html_url?: string;
-  published_at?: string;
-  /** 現在のプラットフォームに対応するリリースパッケージ名、およびその Release が実際に同梱しているか。 */
-  asset?: string;
-  asset_available?: boolean;
-  size?: number;
-  has_update?: boolean;
-  /** 両者のバージョン番号が比較可能か；開発ビルドは false で、そのとき一括更新は無効。 */
-  comparable?: boolean;
-  /** comparable が false のときの説明。 */
-  reason?: string;
-}
 
-/** /api/update/stream が送る更新進捗 1 件。 */
-export interface UpdateProgress {
-  phase: "idle" | "downloading" | "verifying" | "extracting" | "staged" | "failed";
-  /** ダウンロード段階のみ意味を持つ（0-100）；他の段階は -1。 */
-  percent: number;
-  message: string;
-  version?: string;
-  error?: string;
-}
 
 // ---------------------------------------------------------------------------
 // イントラネット運用（/intranet）：トポロジ / セッション（webshell) / トンネル / 認証情報。

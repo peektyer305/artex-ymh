@@ -37,11 +37,6 @@ Thumbs.db
 # フロントエンドを埋め込んだ単一バイナリの生成物
 /artex
 # ワンクリック更新が実行ファイルの隣に残す中間生成物（一時ファイル / バックアップ / 失敗版 / アップグレードマーカー）
-/artex.new
-/artex.new.sha256
-/artex.old
-/artex.failed
-/artex.upgrade.json
 /server/webui/dist/
 /dist/
 

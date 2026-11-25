@@ -4,13 +4,6 @@
 #   sudo install -m644 packaging/artex.service /etc/systemd/system/artex.service
 #   sudo systemctl daemon-reload && sudo systemctl enable --now artex
 #
-# start.sh との関係：
-#   systemd モードでは【start.sh を重ねて使わない】—— 監視の役割（クラッシュ再起動、バックオフ、起動時自動起動）
-#   は systemd に移譲済みで、 ExecStart は artex 本体を直接実行します。画面の「ワンクリック更新」の入れ替え処理
-#   は影響を受けません： artex の終了コード 75（自己更新/ロールバック準備完了）は非ゼロ終了であり、 Restart=on-failure
-#   が再起動します。新しいバイナリは artex 自身が起動時に検証/入れ替えします（selfupdate パッケージ）。
-#   終了コード 0（ユーザーの正常停止 / systemctl stop）は正常終了とみなし、再起動しません。
-#   start.sh / start.bat は systemd のない環境（macOS、Windows、Docker ENTRYPOINT）向けに残しています。
 [Unit]
 Description=ARTEX agentic pentest platform
 Documentation=https://github.com/Autumn-27/ARTEX
