@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
+	actool "github.com/Autumn-27/norma/tool"
 )
 
 func names(tools []actool.CoreTool) map[string]actool.CoreTool {
@@ -61,8 +61,8 @@ func TestWireTools(t *testing.T) {
 	// non-catalog rows, so future user-defined custom tools survive too.
 	if bash, ok := worker["Bash"]; !ok {
 		t.Error("worker lost Bash (should pass through)")
-	} else if bash.Description() != actool.NewBash().Description() {
-		t.Error("Bash should pass through undecorated, but description changed")
+	} else if bash.Description() != actool.NewBash().Description()+bashUANote {
+		t.Error("Bash must keep the SDK description and append the worker User-Agent guidance")
 	}
 	// planner is not bound to record_fact → resolving a base that contains it drops it.
 	planner := names(agent.ToolResolve(ctx, "planner", base))

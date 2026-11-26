@@ -36,7 +36,7 @@ func TestMigrationsFreshExistingAndRepeated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pg.Close()
+	t.Cleanup(func() { _ = pg.Close() })
 	ctx := context.Background()
 	conn, err := pg.Conn(ctx)
 	if err != nil {

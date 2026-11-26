@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -24,7 +25,15 @@ func TestCoreTaskLifecyclePG(t *testing.T) {
 	}
 	defer m.Close()
 	td := t.TempDir()
-	s := New(context.Background(), m, td, td, td)
+	ctx, cancel := context.WithCancel(context.Background())
+	s := New(ctx, m, td, td, td)
+	defer func() { cancel(); s.archiveWG.Wait(); <-s.side.done }()
+	s.engine.SetAuthoritativeAgentResolver(func(*Task) (*agent.Planner, *agent.Worker) { return nil, nil })
+	restoreConcurrency := restoreConcurrencySetting(t, m)
+	defer restoreConcurrency()
+	if err := m.SetConcurrency(true, 1); err != nil {
+		t.Fatal(err)
+	}
 	h := s.Handler()
 	tok, err := signJWT(s.jwtKey, 0)
 	if err != nil {
@@ -72,20 +81,17 @@ func TestCoreTaskLifecyclePG(t *testing.T) {
 		t.Fatalf("bad task payload: %v", out)
 	}
 
-	// the exploration owns goal node(s) — goal seeding is async, poll briefly
-	var goals []*db.Node
-	for i := 0; i < 30; i++ {
-		goals, err = m.pg.Exploration(expID).ListByKind("goal", 10)
-		if err != nil || len(goals) > 0 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
+	// Without an LLM, admission queues the task rather than inventing goals.
+	if out["queued"] != true {
+		t.Fatalf("task without an LLM must be queued: %v", out)
 	}
-	if err != nil {
+	goals, err := m.pg.Exploration(expID).ListByKind(db.KindGoal, 10)
+	if err != nil || len(goals) != 0 {
+		t.Fatalf("queued task has goals: %v %v", goals, err)
+	}
+	// Add one explicit graph fixture to verify the deletion cascade below.
+	if _, err := m.pg.Exploration(expID).AddNode(db.KindGoal, map[string]any{"text": "fixture goal"}, 0, "open", "test", nil); err != nil {
 		t.Fatal(err)
-	}
-	if len(goals) < 1 {
-		t.Fatalf("expected goal nodes seeded, got %d", len(goals))
 	}
 
 	// it shows in the task list

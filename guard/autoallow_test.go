@@ -48,6 +48,8 @@ func TestAutoAllowKeepsDenyEnforced(t *testing.T) {
 		_, _ = d.Exec(`DELETE FROM intercept_pending WHERE tool_input::text LIKE '%' || $1 || '%'`, marker)
 	})
 
+	// Direct fixture writes bypass the API cache invalidation.
+	ic.Invalidate()
 	g := NewWithInterceptor(ic)
 	call := func(cmd string) bool {
 		input, _ := json.Marshal(map[string]string{"command": cmd})

@@ -121,11 +121,7 @@ func TestTaskArchiveFormatCompatibility(t *testing.T) {
 }
 
 func TestTaskArchiveDatabaseRoundTrip(t *testing.T) {
-	d, err := Open(testDSN(t))
-	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
-	}
-	defer d.Close()
+	d := isolatedTestDB(t)
 	if err := d.EnsureLLMRecordsTable(); err != nil {
 		t.Fatal(err)
 	}

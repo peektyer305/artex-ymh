@@ -94,7 +94,7 @@ func TestFindingWorkflowAutoHintToPlannerAndSetting(t *testing.T) {
 	ts.SetNotifyFinding(func(int64, string) { notices++ })
 	tools, def, cleanup := agent.AugmentTools(ctx, "planner", ts.PlannerTools(), s.agentDeps)
 	defer cleanup()
-	if !strings.Contains(def.FindingGuidance, "evidence_hint_id") || !strings.Contains(def.FindingGuidance, "取消 Worker") {
+	if !strings.Contains(def.FindingGuidance, "evidence_hint_id") || !strings.Contains(def.FindingGuidance, "Worker をキャンセル") {
 		t.Fatal("Planner missed runtime guidance")
 	}
 	report := workflowTool(t, tools, "report_finding")

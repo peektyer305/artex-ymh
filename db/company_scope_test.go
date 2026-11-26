@@ -233,7 +233,7 @@ func TestCompanyICPAttribution(t *testing.T) {
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}
-	defer d.Close()
+	t.Cleanup(func() { _ = d.Close() })
 
 	var suffix int64
 	if err := d.QueryRow(`SELECT COALESCE(MAX(id),0)+1 FROM companies`).Scan(&suffix); err != nil {
@@ -329,6 +329,11 @@ func TestCompanyScopeAttribution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertCompany: %v", err)
 	}
+	t.Cleanup(func() {
+		if _, err := d.Exec(`DELETE FROM companies WHERE id=$1`, cid); err != nil {
+			t.Error(err)
+		}
+	})
 
 	// a pre-existing asset (inserted BEFORE any scope) — must be back-filled.
 	preID, err := as.UpsertSubdomain(UpsertSubdomainReq{Domain: sub})

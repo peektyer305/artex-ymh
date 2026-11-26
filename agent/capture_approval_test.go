@@ -36,22 +36,24 @@ func TestCaptureApprovalLifecycle(t *testing.T) {
 	if err := ic.SetEnabledTools([]string{"ApprovalAuditProbe"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := ic.SetJudgeConfig(intercept.JudgeConfig{Enabled: true, AskTimeoutSeconds: 1, AskTimeoutAction: "allow"}); err != nil {
-		t.Fatal(err)
-	}
 
 	for _, tc := range []struct {
-		name, action, status, execution string
-		manual, approve, toolError      bool
+		name, action, failAction, status, execution string
+		manual, approve, toolError                  bool
 	}{
-		{"model_fallback", "invalid", "allowed", "succeeded", false, false, false},
-		{"model_allow", "allow", "allowed", "succeeded", false, false, false},
-		{"model_deny", "deny", "denied", "not_executed", false, false, false},
-		{"human_allow_tool_error", "ask", "allowed", "failed", true, true, true},
-		{"human_deny", "ask", "denied", "not_executed", true, false, false},
-		{"timeout_allow", "ask", "timeout", "succeeded", false, false, false},
+		{"model_fallback_default_ask", "invalid", "", "timeout", "succeeded", false, false, false},
+		{"model_fallback_allow", "invalid", "allow", "allowed", "succeeded", false, false, false},
+		{"model_fallback_deny", "invalid", "deny", "denied", "not_executed", false, false, false},
+		{"model_allow", "allow", "", "allowed", "succeeded", false, false, false},
+		{"model_deny", "deny", "", "denied", "not_executed", false, false, false},
+		{"human_allow_tool_error", "ask", "", "allowed", "failed", true, true, true},
+		{"human_deny", "ask", "", "denied", "not_executed", true, false, false},
+		{"timeout_allow", "ask", "", "timeout", "succeeded", false, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if err := ic.SetJudgeConfig(intercept.JudgeConfig{Enabled: true, FailAction: tc.failAction, AskTimeoutSeconds: 1, AskTimeoutAction: "allow"}); err != nil {
+				t.Fatal(err)
+			}
 			ic.SetReviewer(func(context.Context, int64, string, intercept.ReviewInput) (intercept.Decision, error) {
 				return intercept.Decision{Action: tc.action, Message: "probe review", ProfileID: 7}, nil
 			})
@@ -114,7 +116,10 @@ func TestCaptureApprovalLifecycle(t *testing.T) {
 			a := detail.Audit
 			initialAction := tc.action
 			if tc.action == "invalid" {
-				initialAction = "allow"
+				initialAction = tc.failAction
+				if initialAction == "" {
+					initialAction = "ask"
+				}
 			}
 			wantUserMessage := "record this review"
 			if initialAction == "allow" {

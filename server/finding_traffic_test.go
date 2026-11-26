@@ -22,6 +22,9 @@ import (
 
 func trafficEvidenceServer(t *testing.T) (*Server, *db.RecordedFinding, func(string, string, string) *httptest.ResponseRecorder) {
 	t.Helper()
+	if _, _, err := db.DSN(); err != nil {
+		t.Skipf("test postgres not configured: %v", err)
+	}
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
 		t.Fatal(err)

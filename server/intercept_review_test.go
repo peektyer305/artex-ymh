@@ -51,12 +51,17 @@ func TestReviewCompletionSendsCurrentCallWithoutHistory(t *testing.T) {
 		t.Fatal("review request cannot return a complete explanation")
 	}
 	body := p.request.Messages[0].Content[0].Text
+	payload, hasStart := strings.CutPrefix(body, "<untrusted-data source=\"tool-input\">\n")
+	payload, hasEnd := strings.CutSuffix(payload, "\n</untrusted-data>")
+	if !hasStart || !hasEnd {
+		t.Fatalf("review input must remain inside the untrusted-data boundary: %s", body)
+	}
 	var got intercept.ReviewInput
-	if err := json.Unmarshal([]byte(body), &got); err != nil {
+	if err := json.Unmarshal([]byte(payload), &got); err != nil {
 		t.Fatal(err)
 	}
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(body), &fields); err != nil {
+	if err := json.Unmarshal([]byte(payload), &fields); err != nil {
 		t.Fatal(err)
 	}
 	if len(fields) != 5 {

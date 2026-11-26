@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -37,13 +39,19 @@ func TestAddOneIntentChainTags(t *testing.T) {
 	if err != nil || n == nil {
 		t.Fatalf("インテントノードの取得: %v", err)
 	}
-	payload := string(n.Payload)
-	if !strings.Contains(payload, `"chain_tags":["web","priv"]`) {
-		t.Fatalf("payload は正規化後の chain_tags を含むべき, got: %s", payload)
+	var payload struct {
+		Summary   string   `json:"summary"`
+		ChainTags []string `json:"chain_tags"`
+	}
+	if err := json.Unmarshal(n.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(payload.ChainTags, []string{"web", "priv"}) {
+		t.Fatalf("payload は正規化後の chain_tags を含むべき, got: %s", n.Payload)
 	}
 	// 既存フィールドは影響を受けない
-	if !strings.Contains(payload, `"summary"`) {
-		t.Fatalf("payload に summary がない: %s", payload)
+	if payload.Summary != "example.com のログイン画面で SQL インジェクションを試す" {
+		t.Fatalf("payload に summary がない: %s", n.Payload)
 	}
 }
 

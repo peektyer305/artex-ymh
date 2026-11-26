@@ -173,7 +173,7 @@ func TestUploadSkillGBKNames(t *testing.T) {
 	if out["name"] != "日本語スキル" {
 		t.Fatalf("name = %v, want 日本語スキル", out["name"])
 	}
-	if _, err := os.Stat(filepath.Join(dir, "日本語スキル", "参考資料.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "日本語スキル", "参考资料.md")); err != nil {
 		t.Errorf("GBK-named entry not extracted: %v", err)
 	}
 }
