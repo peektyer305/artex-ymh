@@ -1,4 +1,7 @@
 "use client";
+import { toast } from "sonner";
+
+import { fmtTokens } from "@/lib/format";
 
 import * as React from "react";
 
@@ -22,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
+import { usePolling } from "@/hooks/use-polling";
 import type {
   Activity,
   Agent,
@@ -63,11 +67,6 @@ function fmtRel(ts?: string | number): string {
   return `${Math.floor(h / 24)}日前`;
 }
 
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1000) return (n / 1000).toFixed(1) + "k";
-  return String(n);
-}
 
 const ASSET_TYPE_LABELS: Record<string, string> = {
   root_domain: "ルートドメイン",
@@ -148,38 +147,20 @@ export default function DashboardPage() {
   const [tools, setTools] = React.useState<Tool[]>([]);
   const [llmProfiles, setLLMProfiles] = React.useState<LLMProfile[]>([]);
 
-  // The task list is the most expensive dashboard source. Poll it independently
-  // so a large history cannot hold back every other dashboard panel.
-  React.useEffect(() => {
-    let alive = true;
-    let loading = false;
-    let signature = "";
-    const load = async () => {
-      if (loading) return;
-      loading = true;
-      try {
-        const tr = await api.tasks();
-        if (!alive) return;
-        const nextSignature = JSON.stringify(tr.tasks);
-        if (nextSignature !== signature) {
-          signature = nextSignature;
-          setTasks(tr.tasks);
-        }
-      } catch {
-        /* transient errors — next poll retries */
-      } finally {
-        loading = false;
-      }
-    };
-    void load();
-    const t = setInterval(load, 5000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
+  const taskSignature = React.useRef("");
+  const fetchTasks = React.useCallback((signal: AbortSignal) => api.tasks(signal), []);
+  const receiveTasks = React.useCallback((response: Awaited<ReturnType<typeof api.tasks>>) => {
+    const signature = JSON.stringify(response.tasks);
+    if (signature !== taskSignature.current) {
+      taskSignature.current = signature;
+      setTasks(response.tasks);
+    }
   }, []);
+  const { error: tasksError } = usePolling(fetchTasks, receiveTasks, 5000);
+  React.useEffect(() => {
+    if (tasksError) toast.error("タスクを取得できませんでした。次回の更新時に再試行します。");
+  }, [tasksError]);
 
-  // The remaining fast sources stay batched so one poll causes a single render.
   React.useEffect(() => {
     let alive = true;
     let loading = false;

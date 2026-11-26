@@ -5,7 +5,7 @@ package db
 import (
 	"context"
 	"database/sql"
-	_ "embed"
+	"embed"
 	"errors"
 	"fmt"
 	"net/url"
@@ -17,8 +17,11 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // pgx database/sql driver ("pgx")
 )
 
-//go:embed schema.sql
+//go:embed migrations/0001_baseline.sql
 var schemaSQL string
+
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
 
 const schemaMigrationLockKey int64 = 7337741001
 
@@ -164,10 +167,10 @@ func Open(dsn string) (*DB, error) {
 	// Keep the dedicated lock connection checked out until both DDL and seeding
 	// finish so concurrent application instances cannot initialize out of order.
 	err = withSchemaMigrationLock(context.Background(), sqlDB, func(conn *sql.Conn) error {
-		if err := applySchemaWithRetry(context.Background(), conn, time.Sleep); err != nil {
+		if err := applyMigrations(context.Background(), conn); err != nil {
 			return fmt.Errorf("apply schema: %w", err)
 		}
-		if err := d.seedBuiltins(); err != nil {
+		if err := applySeedVersion(context.Background(), conn, 1, d.seedBuiltins); err != nil {
 			return fmt.Errorf("seed builtins: %w", err)
 		}
 		return nil

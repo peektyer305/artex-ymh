@@ -562,6 +562,7 @@ func (s *Server) agentsForTask(t *Task) *taskAgentBundle {
 	tx := transcript.NewStore(filepath.Join(s.m.dir, "transcripts"))
 	window := workerRuntime.CompactionWindow()
 	wk := agent.NewWorker(workerRuntime, "task-router", s.m.dir, tx, window, s.agentMaxTurns("worker"))
+	wk.SetDependencies(s.agentDeps)
 	wk.SetFindingRecorder(s.evidenceStore())
 	wk.SetCompactionWindowResolver(workerRuntime.CompactionWindow)
 	wk.SetNonStreaming(workerRuntime.nonStreaming) // タスクの現在アクティブな profile のストリーミング設定に従う（毎回読む）
@@ -574,6 +575,7 @@ func (s *Server) agentsForTask(t *Task) *taskAgentBundle {
 	wk.SetIntranetResolver(s.taskIntranet)           // フェーズ 4: イントラネット段階（フットホールド／トンネル）で worker.intranet プロンプトの変種へ切り替え
 	wk.SetUAResolver(s.uaForTask)                    // バッチ 5 B4: タスクごとに安定して割り当てるクライアント UA → BashEnv ARTEX_UA
 	pl := agent.NewPlanner(plannerRuntime, "task-router", s.m.dir, tx, plannerRuntime.CompactionWindow(), s.agentMaxTurns("planner"))
+	pl.SetDependencies(s.agentDeps)
 	pl.SetFindingRecorder(s.evidenceStore())
 	pl.SetCompactionWindowResolver(plannerRuntime.CompactionWindow)
 	pl.SetNonStreaming(plannerRuntime.nonStreaming)
@@ -589,6 +591,7 @@ func (s *Server) agentsForTask(t *Task) *taskAgentBundle {
 	// 同一モデルで、タスク LLM チェーンに従って解決）を使い、圧縮は Complete で body を一度に生成する。
 	pl.SetCompactor(agent.NewCompactor(plannerRuntime, "task-router"))
 	main := agent.NewMainAgent(mainRuntime, "task-router", s.m.dir, tx, mainRuntime.CompactionWindow(), s.agentMaxTurns("mainagent"))
+	main.SetDependencies(s.agentDeps)
 	main.SetFindingRecorder(s.evidenceStore())
 	main.SetCompactionWindowResolver(mainRuntime.CompactionWindow)
 	main.SetNonStreaming(mainRuntime.nonStreaming)

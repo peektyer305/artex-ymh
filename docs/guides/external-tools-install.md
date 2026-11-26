@@ -1,12 +1,12 @@
 # ARTEX-ymh 武器庫 一括インストール（旧版 → 統合先を参照）
 
-この文書は [武器庫セットアップガイド](artex-ymh-武器庫セットアップガイド.md) に統合されました。
+この文書は [武器庫セットアップガイド](external-tools-setup.md) に統合されました。
 
 一括スクリプト・手動配置・よくあるつまずき・doctor の読み方は、すべて以下を参照してください。
 
-[artex-ymh-武器庫セットアップガイド.md](artex-ymh-武器庫セットアップガイド.md)
+[artex-ymh-武器庫セットアップガイド.md](external-tools-setup.md)
 
-対応スクリプトファイル: [artex-ymh-install-arsenal.sh](artex-ymh-install-arsenal.sh)
+対応スクリプトファイル: [artex-ymh-install-arsenal.sh](../../artex-ymh-install-arsenal.sh)
 
 ---
 

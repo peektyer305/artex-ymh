@@ -19,7 +19,7 @@ AI 自律型ペネトレーションテスト基盤 · 二次開発版（Go バ�
 | --- | --- |
 | **内部ネットワーク作戦** | WebShell 暗号化セッション管理（PHP/JSP）、リバースシェル（penelope 管理下）、フットホールドのパッシブ偵察（`session_recon`）、多層プロキシトンネル（suo5/chisel の自動選定、タスク単位の MITM ホットスイッチ）、内部ネットワークトポロジ図（タスクで絞り込み）、認証情報ストア |
 | **ステージ編成** | 未承認セグメントの承認（偵察で scope 外のセグメントを検出 → 人手で承認して scope を拡張）、外部 → 内部ネットワークのタスク移管（handoff テンプレートでサブタスクを作成）、内部ネットワーク worker プロンプトのバリアント（フットホールドがあれば自動で切り替え） |
-| **セキュリティと対偵察対策** | 偽装ゲート（ゲートを通過しないアクセスは一律でバイト単位に固定された nginx ウェルカムページを返し、入口パスはランダム化）、ワンクリック許可（2/4/8h の期限付き承認免除、deny は免除なし）、RoE 範囲の強制 3 状態（off/warn/strict） |
+| **セキュリティと対偵察対策** | 偽装ゲート（ゲートを通過しないアクセスは一律でバイト単位に固定された nginx ウェルカムページを返し、入口パスはランダム化）、一時的な自動承認（2/4/8h の期限付き承認免除、deny は免除なし）、RoE 範囲の強制 3 状態（off/warn/strict） |
 | **ハニーポット識別と対 AI ハニーポット防御** | 静的シグネチャ識別レイヤー（`honeydetect/`、組み込みシグネチャライブラリが Cowrie/OpenCanary/Kippo/Glastopf/HFish/Dionaea をカバー）、アセットのハニーポットスコアリングと UI バッジ、planner の対応規律。さらに「AI 攻撃エージェントを獲物とする」新型トラップへの対策：worker のレッドライン（決して自証しない）、外向きの機密情報インターセプト、tarpit 取得のサーキットブレーカー、UA プール。設計は [docs/architecture/honeypot-detection.md](docs/architecture/honeypot-detection.md) を参照 |
 | **chains のシナリオ化** | 9 種類の自問型思考チェーン骨格を意図に応じて自動注入、脆弱性カテゴリ別の反証判定基準（誤検知は fact として記録し、真の脆弱性のみグラフに反映）、カテゴリ別の方向転換プロンプト |
 | **武器庫とデプロイチェーン** | 17 項目の外部ツールのバージョン固定リスト（`packaging/tools-manifest.json`、起動時に sha256 を自己検査）、`artex doctor` によるデプロイ事前チェック、systemd unit |
@@ -36,7 +36,7 @@ AI 自律型ペネトレーションテスト基盤 · 二次開発版（Go バ�
 ### 方式 1: ワンクリックインストールスクリプト
 
 ```bash
-git clone https://github.com/r0th-m/artex-ymh.git
+git clone https://github.com/peektyer305/artex-ymh.git
 cd artex-ymh
 ./install.sh
 ```
@@ -50,14 +50,12 @@ cd artex-ymh
 > **中国国内のネットワーク**：GitHub のクローン、npm、Go モジュールにはプロキシ／ミラーが必要な場合があります。参考：`git config --global http.proxy socks5h://127.0.0.1:7890`、`npm config set registry https://registry.npmmirror.com`、`go env -w GOPROXY=https://goproxy.cn,direct`。
 
 ```bash
-git clone https://github.com/r0th-m/artex-ymh.git
+git clone https://github.com/peektyer305/artex-ymh.git
 cd artex-ymh
-# 1) フロントエンドの静的エクスポート
-cd web && npm ci && npm run build:static && cd ..
-# 2) 内蔵ディレクトリへコピー（クローン直後でディレクトリが無い場合は先に mkdir -p server/webui/dist）
-cp -r web/out server/webui/dist
-# 3) ビルド（-tags embedui を付けたときだけフロントエンドを内蔵）
-CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
+# フロントエンドの生成、埋め込み先への同期、Goのビルド
+# build.shにはrsyncも必要です。
+ARTEX_OUTPUT=./artex ARTEX_COMPRESS=0 ./build.sh
+# 実行ファイルをプロジェクト直下に出力します。
 # 4) データベース接続を設定（必須。未設定だと起動しない）
 cp config.example.json config.json   # database セクションを編集して記入
 ./start.sh
@@ -79,7 +77,7 @@ journalctl -u artex -f
 リポジトリの `docker-compose.yml` は、**ソースから二次開発版のイメージをビルドする**ように設定済みです（`Dockerfile (target: source)`：フロントエンドのビルド → Go のコンパイル → ツールのランタイムをすべて Docker 内で完結し、ホスト側に Go/Node は不要）。レジストリからのイメージ取得（`docker compose pull`）は行いません。
 
 ```bash
-git clone https://github.com/r0th-m/artex-ymh.git
+git clone https://github.com/peektyer305/artex-ymh.git
 cd artex-ymh
 cp .env.example .env   # POSTGRES_PASSWORD を記入（# 文字は使わない）
 docker compose up -d --build
@@ -95,7 +93,7 @@ docker compose up -d --build
 二次開発版では**対偵察用の偽装ゲート**がデフォルトで有効です。ループバック以外で待ち受けている場合、`http://<IP>:8787` に直接アクセスすると nginx のウェルカムページが表示されます（正常な動作です）。
 
 1. 起動ログに入口パスが `[gate] 偽装ゲートを有効にしました。入口パス: /g-xxxxxxxx` の形式で出力されます（`data/gate.path` にも書き込まれます）。
-2. ブラウザで `http://<IP>:8787/g-xxxxxxxx` にアクセスし、ゲート口令を入力します（デフォルトは入口パスのランダム文字列と同じ）。
+2. ブラウザで `http://<IP>:8787/g-xxxxxxxx` にアクセスし、ゲートのパスワードを入力します（デフォルトは入口パスのランダム文字列と同じ）。
 3. 初回は `/setup` で管理者パスワードを設定します。
 
 ## 外部ツール（武器庫）とデプロイ自己検査
@@ -116,7 +114,7 @@ docker compose up -d --build
 ## アップグレード
 
 - **再起動でマイグレーション**:schema は起動のたびに冪等に再実行されるため、アップグレードではプログラムだけを入れ替えてデータには触れません（`./data` とデータベースのバックアップは今も良い習慣です）。
-- ⚠️ **画面の「ワンクリック更新」は使わないでください**：**アップストリーム**のリリースソースを指しているため、二次開発版がアップストリームのオリジナルで上書きされます。二次開発版のアップグレードは `git pull` と再ビルド（方式 2）で行ってください。
+- 更新は`git pull`でコードを取得し、利用している方式で再ビルドしてください。Dockerの場合は`docker compose up -d --build`を実行します。
 
 ## 設定
 
@@ -142,7 +140,7 @@ docker compose up -d --build
 
 ARTEX は **LLM マルチ agent 駆動の自律型ペネトレーションテストシステム**です：Go のモノリシックバックエンド（Next.js フロントエンドを内蔵）＋ PostgreSQL で構成され、agent の能力は [`norma`](https://github.com/Autumn-27/norma) SDK が提供します。中核は**デュアルグラフアーキテクチャ**です：
 
-- **アセットグラフ（全体で共有）**：タスクをまたぐアセットの真実の値のライブラリで、ノードは root_domain/subdomain/ip/service/app/endpoint であり、企業に帰属します。ドメイン → サブドメイン → サービス → エンドポイントの親子関係はプログラムが計算し、agent は生の情報だけを送信します。
+- **アセットグラフ（全体で共有）**：検出したアセットをタスクをまたいで共有する台帳で、ノードは root_domain/subdomain/ip/service/app/endpoint であり、企業に帰属します。ドメイン → サブドメイン → サービス → エンドポイントの親子関係はプログラムが計算し、agent は生の情報だけを送信します。
 - **探索グラフ（タスクごとに独立）**：1 回のタスクの「思考と前進」の過程で、ノードは goal/intent/fact/finding/hint であり、spawns/derived_from/yields/proves のエッジで系譜チェーンを形成します。アンカー（`exploration_anchors`）を介してアセットグラフと接続し、アセットのテストカバレッジを支えます。
 - **エンジンはイベント駆動の閉ループ**：グラフが変わると planner を起動 → planner が状況を読み取って意図を割り当て → worker が意図を 1 つ受け取り、実際のツールで実行し、新しいアセット／ファクト／ファインディングを 2 つのグラフに書き戻す → 再び起動。worker 間にはプロセスレベルの情報交換があり（`search_all_worker_traces`）、planner は起動をまたいで共有される todolist を保持し、多段攻撃チェーンを安定させます。
 
@@ -195,7 +193,4 @@ ARTEX は **LLM マルチ agent 駆動の自律型ペネトレーションテス
 
 **本プロジェクトをダウンロード、インストール、実行、または使用した時点で、あなたは上記のすべての条項を読み、理解し、同意したものとみなされます。**
 
-<!-- artex-unified-build-targets-link -->
-## Docker のビルド対象
 
-ソース版とビルド済みバイナリ版の選択方法は [DOCKER_BUILD_TARGETS.md](DOCKER_BUILD_TARGETS.md) を参照してください。

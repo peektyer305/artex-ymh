@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtTokens } from "@/lib/format";
+
 import * as React from "react";
 
 import {
@@ -42,11 +44,6 @@ import type {
 } from "@/lib/types";
 
 // token 数を簡潔にフォーマットする（12345 → 12.3k、2000000 → 2M）。
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1) + "M";
-  if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k";
-  return String(n);
-}
 
 // キャッシュヒット率 = キャッシュ読込 / 入力（InputTokens は cache_read を部分集合として含むため、比率は 0–100%）。
 function cacheHitRate(cacheRead: number, input: number): string {
@@ -866,7 +863,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                 </span>
                 <span className="text-muted-foreground shrink-0 text-xs tabular-nums">ヒット {row.hits} 回</span>
                 <span className="text-muted-foreground shrink-0 text-xs">
-                  最終 {row.last_seen ? new Date(row.last_seen).toLocaleString("zh-CN") : "—"}
+                  最終 {row.last_seen ? new Date(row.last_seen).toLocaleString("ja-JP") : "—"}
                 </span>
                 <Button
                   size="sm"
@@ -1002,7 +999,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
             <div className="text-xs text-muted-foreground">最終アクティビティ</div>
             <div className="mt-1 inline-flex items-center gap-1 text-sm">
               <ClockIcon className="size-3.5" />
-              {task?.last_activity ? new Date(task.last_activity).toLocaleTimeString("zh-CN") : "—"}
+              {task?.last_activity ? new Date(task.last_activity).toLocaleTimeString("ja-JP") : "—"}
             </div>
           </div>
           <div>
@@ -1016,7 +1013,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
               <div className="text-xs text-muted-foreground">完了時刻</div>
               <div className="mt-1 inline-flex items-center gap-1 text-sm">
                 <ClockIcon className="size-3.5" />
-                {new Date(task.completed_unix * 1000).toLocaleString("zh-CN")}
+                {new Date(task.completed_unix * 1000).toLocaleString("ja-JP")}
               </div>
             </div>
           ) : null}

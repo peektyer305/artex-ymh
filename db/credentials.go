@@ -5,12 +5,9 @@ package db
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"fmt"
-	"io"
 	"time"
 )
 
@@ -74,46 +71,12 @@ func NewCredentialStore(d *DB, masterKey []byte) *CredentialStore {
 }
 
 func (s *CredentialStore) encrypt(plain string) (string, error) {
-	if len(s.key) != 32 {
-		return "", fmt.Errorf("認証情報の暗号化鍵が未初期化のため、平文での保存を拒否します")
-	}
-	gcm, err := newGCM(s.key)
-	if err != nil {
-		return "", err
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-	return secretPrefix + base64.StdEncoding.EncodeToString(gcm.Seal(nonce, nonce, []byte(plain), nil)), nil
+	return encodeSecret(s.key, []byte(plain))
 }
 
 func (s *CredentialStore) decrypt(stored string) (string, error) {
-	if len(stored) == 0 {
-		return "", nil
-	}
-	if len(s.key) != 32 {
-		return "", fmt.Errorf("認証情報の暗号化鍵が未初期化のため、復号できません")
-	}
-	if !hasPrefix(stored, secretPrefix) {
-		return "", fmt.Errorf("未知の secret 形式（gcm1: 接頭辞がない）のため、平文としての読み取りを拒否します")
-	}
-	raw, err := base64.StdEncoding.DecodeString(stored[len(secretPrefix):])
-	if err != nil {
-		return "", fmt.Errorf("secret の base64 デコードに失敗しました: %w", err)
-	}
-	gcm, err := newGCM(s.key)
-	if err != nil {
-		return "", err
-	}
-	if len(raw) < gcm.NonceSize() {
-		return "", fmt.Errorf("secret の暗号文が短すぎます")
-	}
-	plain, err := gcm.Open(nil, raw[:gcm.NonceSize()], raw[gcm.NonceSize():], nil)
-	if err != nil {
-		return "", fmt.Errorf("secret の復号に失敗しました（鍵の不一致またはデータの改ざん）: %w", err)
-	}
-	return string(plain), nil
+	plain, err := decodeSecret(s.key, stored)
+	return string(plain), err
 }
 
 // Create は認証情報を 1 件挿入して主キーを返す。Secret は暗号化して保存する。

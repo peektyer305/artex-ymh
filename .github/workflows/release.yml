@@ -51,6 +51,8 @@ jobs:
         working-directory: web
       # 型チェックは必須ゲート。biome はリポジトリ全体に既存の lint error が 100 件以上あるため、当面は src のみ
       # レポートし、ブロックはしない。既存分の整理後に必須ゲートへ格上げする。
+      - run: npm test
+        working-directory: web
       - run: npx tsc --noEmit
         working-directory: web
       - name: Biome lint report (src only, non-blocking)

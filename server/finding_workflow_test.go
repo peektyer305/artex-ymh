@@ -87,11 +87,12 @@ func TestFindingWorkflowAutoHintToPlannerAndSetting(t *testing.T) {
 		}
 	}
 	ts := agent.NewToolSet(task.Store, "planner")
+	ts.SetDependencies(s.agentDeps)
 	ts.SetTaskID(*f.TaskID)
 	ts.SetFindingRecorder(s.evidenceStore())
 	notices := 0
 	ts.SetNotifyFinding(func(int64, string) { notices++ })
-	tools, def, cleanup := agent.AugmentTools(ctx, "planner", ts.PlannerTools())
+	tools, def, cleanup := agent.AugmentTools(ctx, "planner", ts.PlannerTools(), s.agentDeps)
 	defer cleanup()
 	if !strings.Contains(def.FindingGuidance, "evidence_hint_id") || !strings.Contains(def.FindingGuidance, "取消 Worker") {
 		t.Fatal("Planner missed runtime guidance")
@@ -183,7 +184,7 @@ func TestFindingWorkflowAutoHintToPlannerAndSetting(t *testing.T) {
 		t.Fatal("optional no-packet report failed")
 	}
 	workflowCall(t, ctx, s.toolGetFindingTraffic(), map[string]any{"finding_id": recorded.FindingID}, false)
-	tools, def, closeTools := agent.AugmentTools(ctx, "planner", ts.PlannerTools())
+	tools, def, closeTools := agent.AugmentTools(ctx, "planner", ts.PlannerTools(), s.agentDeps)
 	defer closeTools()
 	if def.FindingGuidance != "" {
 		t.Fatal("disabled feature still injects guidance")
@@ -275,7 +276,7 @@ func TestFindingWorkflowReporterBindsBeforeWritingReport(t *testing.T) {
 	}
 	seedServerEvidenceFlow(t, s, "reporter-proof", []byte("local proof payload"))
 	seedServerEvidenceFlow(t, s, "reporter-baseline", []byte("local normal response"))
-	tools, def, cleanup := agent.AugmentTools(ctx, "reporter", nil)
+	tools, def, cleanup := agent.AugmentTools(ctx, "reporter", nil, s.agentDeps)
 	defer cleanup()
 	if !strings.Contains(def.FindingGuidance, "レポート前のトラフィック自動関連付け") || !strings.Contains(def.FindingGuidance, "関連付けに成功したら") {
 		t.Fatal("reporter did not receive binding workflow")
@@ -313,7 +314,7 @@ func TestFindingWorkflowReporterBindsBeforeWritingReport(t *testing.T) {
 	if r := request("PUT", "/api/settings", `{"agent_traffic_binding":false}`); r.Code != 200 {
 		t.Fatal(r.Code, r.Body)
 	}
-	off, offDef, closeOff := agent.AugmentTools(ctx, "reporter", nil)
+	off, offDef, closeOff := agent.AugmentTools(ctx, "reporter", nil, s.agentDeps)
 	defer closeOff()
 	if offDef.FindingGuidance != "" {
 		t.Fatal("off reporter still receives auto-binding guidance")

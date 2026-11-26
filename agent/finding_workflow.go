@@ -15,15 +15,16 @@ const findingIDGuidance = "\n\n**脆弱性番号の取り決め**：finding_id �
 // cannot keep binding after the user switches the feature off.
 var FindingTrafficBindingEnabled func() bool
 
-func findingTrafficBindingEnabled() bool {
-	return FindingTrafficBindingEnabled != nil && FindingTrafficBindingEnabled()
+func findingTrafficBindingEnabled(dependencies ...*Dependencies) bool {
+	overrides := dependencySet(dependencies)
+	return overrides.FindingTrafficBindingEnabled != nil && overrides.FindingTrafficBindingEnabled()
 }
 
 // Applied after ToolResolve: user descriptions and prompts remain intact, while
 // all actual reporters (including Planner and custom chat agents) see the same
 // API contract. Disabled/unbound tools are never reintroduced here.
-func findingWorkflowTools(agentKey string, tools []actool.CoreTool) ([]actool.CoreTool, string) {
-	if !findingTrafficBindingEnabled() {
+func findingWorkflowTools(agentKey string, tools []actool.CoreTool, dependencies ...*Dependencies) ([]actool.CoreTool, string) {
+	if !findingTrafficBindingEnabled(dependencies...) {
 		out := make([]actool.CoreTool, 0, len(tools))
 		for _, tool := range tools {
 			if tool.Name() == "bind_finding_traffic" {

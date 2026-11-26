@@ -3,8 +3,7 @@
 // a few fields the backend serializes differently (e.g. created_at as a unix int)
 // are passed through and formatted at the call site.
 
-import { auth } from "@/lib/auth";
-import { refreshAccessToken } from "@/lib/auth-refresh";
+import { request } from "@/lib/request";
 import type { ChatMention } from "@/lib/chat-mentions";
 import { MOCK } from "@/lib/mock/enabled";
 import { mockHandle } from "@/lib/mock/handler";
@@ -107,53 +106,11 @@ import type {
   WorkspaceListing,
 } from "@/lib/types";
 
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("artex_token");
-}
-
 export async function http<T>(path: string, init?: RequestInit): Promise<T> {
-  return httpInner<T>(path, init, false);
-}
-
-async function httpInner<T>(path: string, init: RequestInit | undefined, retried: boolean): Promise<T> {
   if (MOCK) return mockHandle<T>(init?.method ?? "GET", path, init?.body ?? null);
-  const token = getToken();
-  const r = await fetch(`/api${path}`, {
-    ...init,
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers as Record<string, string> | undefined),
-    },
-  });
-  if (r.status === 401) {
-    // access token(2h)の期限切れ:まず HttpOnly refresh cookie で新 token を取り、1 回だけ再試行。
-    // /auth/* 自身(refresh 含む)の 401 は再帰せず、そのままログアウト扱い(F6)。
-    if (!retried && !path.startsWith("/auth/") && (await refreshAccessToken())) {
-      return httpInner<T>(path, init, true);
-    }
-    if (typeof window !== "undefined") {
-      auth.clearToken();
-      window.location.href = "/login";
-    }
-    throw new Error("未認証");
-  }
-  if (!r.ok) {
-    const fallback = `${init?.method ?? "GET"} ${path}: ${r.status}`;
-    let message = fallback;
-    try {
-      const payload = (await r.json()) as { error?: unknown };
-      if (typeof payload.error === "string" && payload.error.trim()) {
-        message = payload.error.trim();
-      }
-    } catch {
-      // Keep the status-based fallback for empty or non-JSON error responses.
-    }
-    throw new Error(message);
-  }
-  if (r.status === 204) return undefined as T;
-  return r.json();
+  const response = await request(`/api${path}`, init);
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
 }
 
 // sseUrl builds a URL for Server-Sent Events streams. SSE must NOT go through the
@@ -250,8 +207,8 @@ export const api = {
   logout: () => post<{ ok: boolean }>("/auth/logout"),
 
   // ---- tasks ----
-  tasks: () =>
-    get<{ tasks: Task[]; active: string }>("/tasks").then((r) => ({ tasks: arr(r.tasks), active: r.active ?? "" })),
+  tasks: (signal?: AbortSignal) =>
+    http<{ tasks: Task[]; active: string }>("/tasks", { signal }).then((r) => ({ tasks: arr(r.tasks), active: r.active ?? "" })),
   task: (id: string) => get<Task>(`/tasks/${encodeURIComponent(id)}`),
   createTask: (input: {
     name?: string;
@@ -431,10 +388,8 @@ export const api = {
     if (MOCK) return { uploaded: files.length };
     const fd = new FormData();
     for (const f of files) fd.append("file", f);
-    const token = getToken();
-    const r = await fetch(`/api/workspace/upload?path=${encodeURIComponent(dir)}`, {
+    const r = await request(`/api/workspace/upload?path=${encodeURIComponent(dir)}`, {
       method: "POST",
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: fd,
     });
     if (!r.ok) throw new Error(`アップロードに失敗しました: ${r.status}`);
@@ -445,9 +400,7 @@ export const api = {
     if (MOCK) {
       blob = new Blob([`（demo）${path} のダウンロード内容サンプル。`], { type: "text/plain" });
     } else {
-      const token = getToken();
-      const r = await fetch(`/api/workspace/download?path=${encodeURIComponent(path)}`, {
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        const r = await request(`/api/workspace/download?path=${encodeURIComponent(path)}`, {
       });
       if (!r.ok) throw new Error(`ダウンロードに失敗しました: ${r.status}`);
       blob = await r.blob();
@@ -559,9 +512,7 @@ export const api = {
     } else if (opts.scope === "filtered" && opts.filters) {
       for (const [k, v] of findingFilterParams(opts.filters)) p.set(k, v);
     }
-    const token = getToken();
-    const r = await fetch(`/api/exploration/findings/export?${p.toString()}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    const r = await request(`/api/exploration/findings/export?${p.toString()}`, {
     });
     if (!r.ok) throw new Error(`export: ${r.status}`);
     const blob = await r.blob();
@@ -632,10 +583,9 @@ export const api = {
     side: "request" | "response",
     contextTask?: string,
   ) => {
-    const token = getToken();
-    const response = await fetch(
+    const response = await request(
       `/api/exploration/findings/${id}/traffic/${bindingId}/body?side=${side}&download=1${contextTask ? `&context_task=${encodeURIComponent(contextTask)}` : ""}`,
-      { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      {},
     );
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: "ダウンロードに失敗しました" }));
@@ -766,9 +716,7 @@ export const api = {
   }) => post<{ ok: boolean; error?: string; count?: number; backend?: string }>(`/settings/web-search/test`, patch),
   report: async (task?: string) => {
     if (MOCK) return mockReport(task);
-    const token = getToken();
-    const r = await fetch(`/api/report${tq(task)}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    const r = await request(`/api/report${tq(task)}`, {
     });
     if (!r.ok) throw new Error(`report: ${r.status}`);
     return r.text();
@@ -791,10 +739,8 @@ export const api = {
       };
     const fd = new FormData();
     for (const f of files) fd.append("file", f);
-    const token = getToken();
-    const r = await fetch(`/api/chat/upload?scope=${scope}&id=${encodeURIComponent(id)}`, {
+    const r = await request(`/api/chat/upload?scope=${scope}&id=${encodeURIComponent(id)}`, {
       method: "POST",
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: fd,
     });
     if (!r.ok) throw new Error(`アップロードに失敗しました: ${r.status} ${await r.text()}`);
@@ -1051,11 +997,9 @@ export const api = {
     if (MOCK) return { name: file.name.replace(/\.zip$/i, ""), files: 1 };
     const fd = new FormData();
     fd.append("file", file);
-    const token = getToken();
-    const r = await fetch(`/api/skills/upload${overwrite ? "?overwrite=true" : ""}`, {
+    const r = await request(`/api/skills/upload${overwrite ? "?overwrite=true" : ""}`, {
       method: "POST",
       body: fd,
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(body?.error || `アップロードに失敗しました(${r.status})`);
@@ -1128,21 +1072,17 @@ export const api = {
   // ---- intercept tool-config (グローバルなツールインターセプト範囲) ----
   interceptGetToolConfig: async (): Promise<{ enabled_tools: string[] }> => {
     if (MOCK) return { enabled_tools: ["bash"] };
-    const token = getToken();
-    const r = await fetch("/api/intercept/tool-config", {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    const r = await request("/api/intercept/tool-config", {
     });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   interceptSetToolConfig: async (enabledTools: string[]): Promise<void> => {
     if (MOCK) return;
-    const token = getToken();
-    const r = await fetch("/api/intercept/tool-config", {
+    const r = await request("/api/intercept/tool-config", {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ enabled_tools: enabledTools }),
     });
@@ -1203,14 +1143,6 @@ export const api = {
   // per-agent バインド / ポーリング / 中断の消費もカバー）。
   tokensByModel: (task: string) =>
     get<{ models: ModelTokenStat[] }>(`/llm/records/by-model?task=${encodeURIComponent(task)}`),
-
-  // ---- ワンクリック更新 ----
-  // 確認はバックエンド基準:ダウンロードはバックエンドが行うので、ブラウザは GitHub に繋がるが
-  // サーバからは繋がらない(サーバがイントラネット内、プロキシはブラウザ側だけ)状況はよくあり、
-  // その時に更新を押すと必ず失敗する。
-  // バックエンドの GitHub への問い合わせ結果は 30 分キャッシュする(未認証の GitHub API は 60 回/時/IP、
-  // トップバーはページ全体の読み込みごとに 1 回問い合わせるので、キャッシュしないとすぐに枠を使い切る)。force=true で強制的に再取得し、
-  // ユーザーが明示的に「更新を確認」を押した時に使う。
 
   // ---- イントラネット運用（トポロジ / セッション / トンネル / 認証情報）----
   // 4 つのリストは任意の taskId に対応(?task_id= を付ける);渡さなければグローバルビュー。

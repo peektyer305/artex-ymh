@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtBytes } from "@/lib/format";
+
 import * as React from "react";
 import {
   CheckIcon,
@@ -554,11 +556,6 @@ function MessageBlock({
 // summary is a truncated first line, so the full message is pulled from the detail
 // and shown in full (bubble is whitespace-pre-wrap, so long/multi-line text wraps).
 // fmtBytes renders a human file size for attachment chips.
-function fmtBytes(n: number): string {
-  if (n >= 1 << 20) return `${(n / (1 << 20)).toFixed(1)} MB`;
-  if (n >= 1 << 10) return `${(n / (1 << 10)).toFixed(1)} KB`;
-  return `${n} B`;
-}
 
 type MsgAttachment = { name: string; path: string; size: number };
 

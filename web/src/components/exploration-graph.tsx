@@ -428,7 +428,7 @@ function NodeDetailSheet({
                       <span className="font-mono text-xs">#{node.source_task_id}（継承、読み取り専用）</span>
                     </DetailRow>
                   )}
-                  <DetailRow label="時刻">{new Date(node.ts).toLocaleString("zh-CN")}</DetailRow>
+                  <DetailRow label="時刻">{new Date(node.ts).toLocaleString("ja-JP")}</DetailRow>
                 </section>
 
                 {node.type === "digest" && (

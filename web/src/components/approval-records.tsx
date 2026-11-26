@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtTime } from "@/lib/format";
+
 import * as React from "react";
 
 import {
@@ -36,16 +38,6 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-function fmtTime(value?: string) {
-  if (!value) return "—";
-  return new Date(value).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
 
 function source(row: InterceptApprovalRow) {
   if (row.decision_source) return row.decision_source;

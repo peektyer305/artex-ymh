@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Database is the PostgreSQL connection config. Either set DSN directly, or set
@@ -101,15 +102,53 @@ func Path() string {
 	return candidates[0]
 }
 
-// Load reads and parses the config file. A missing/unreadable file yields a zero
-// Config (so callers fall back to defaults) rather than an error.
-func Load() Config {
+// Load distinguishes a missing file from unreadable or invalid configuration.
+func Load() (Config, error) {
 	var c Config
-	b, err := os.ReadFile(Path())
+	path := Path()
+	b, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return c, nil
+	}
 	if err != nil {
+		return c, fmt.Errorf("設定ファイル %s を読み取れません: %w", path, err)
+	}
+	if err := json.Unmarshal(b, &c); err != nil {
+		return Config{}, fmt.Errorf("設定ファイル %s のJSONが不正です: %w", path, err)
+	}
+	return c, nil
+}
+
+var runtimeConfig struct {
+	sync.RWMutex
+	initialized bool
+	value       Config
+}
+
+// Initialize validates once before services start. File changes take effect on restart.
+func Initialize() error {
+	c, err := Load()
+	if err != nil {
+		return err
+	}
+	runtimeConfig.Lock()
+	runtimeConfig.value, runtimeConfig.initialized = c, true
+	runtimeConfig.Unlock()
+	return nil
+}
+
+// Legacy accessors keep their signatures. Main and doctor use the validated snapshot.
+func current() Config {
+	runtimeConfig.RLock()
+	c, initialized := runtimeConfig.value, runtimeConfig.initialized
+	runtimeConfig.RUnlock()
+	if initialized {
 		return c
 	}
-	_ = json.Unmarshal(b, &c)
+	c, err := Load()
+	if err != nil {
+		panic(err)
+	}
 	return c
 }
 
@@ -122,7 +161,7 @@ func SkillDir() string {
 	var d string
 	if v := strings.TrimSpace(os.Getenv("ARTEX_SKILL_DIR")); v != "" {
 		d = v
-	} else if v := strings.TrimSpace(Load().SkillDir); v != "" {
+	} else if v := strings.TrimSpace(current().SkillDir); v != "" {
 		d = v
 	} else {
 		d = filepath.Join(BaseDir(), "skills")
@@ -143,7 +182,11 @@ func PostgresDSN() (dsn, source string, err error) {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_PG_DSN")); v != "" {
 		return v, "環境変数 ARTEX_PG_DSN", nil
 	}
-	db := Load().Database
+	cfg, loadErr := Load()
+	if loadErr != nil {
+		return "", "", loadErr
+	}
+	db := cfg.Database
 	if d := strings.TrimSpace(db.DSN); d != "" {
 		return d, "設定ファイル " + Path() + "（database.dsn）", nil
 	}
@@ -192,7 +235,7 @@ func CallbackAddr() string {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_CALLBACK_ADDR")); v != "" {
 		return v
 	}
-	return strings.TrimSpace(Load().CallbackAddr)
+	return strings.TrimSpace(current().CallbackAddr)
 }
 
 // TunnelPortRange resolves the tunnel port pool ("min-max") with precedence:
@@ -205,7 +248,7 @@ func TunnelPortRange() string {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_TUNNEL_PORT_RANGE")); v != "" {
 		return v
 	}
-	if v := strings.TrimSpace(Load().TunnelPortRange); v != "" {
+	if v := strings.TrimSpace(current().TunnelPortRange); v != "" {
 		return v
 	}
 	return "20000-21000"
@@ -230,7 +273,7 @@ func TaskProxyPortRange() string {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_TASK_PROXY_PORT_RANGE")); v != "" {
 		return v
 	}
-	if v := strings.TrimSpace(Load().TaskProxyPortRange); v != "" {
+	if v := strings.TrimSpace(current().TaskProxyPortRange); v != "" {
 		return v
 	}
 	return "21100-21199"

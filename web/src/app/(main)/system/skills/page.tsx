@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtTime } from "@/lib/format";
+
 import * as React from "react";
 import { toast } from "sonner";
 import {
@@ -45,15 +47,6 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import type { Agent, SkillItem, MCPServer, SkillCall, MissingSkill } from "@/lib/types";
 
-function fmtTime(ts?: string) {
-  if (!ts) return "呼び出しなし";
-  return new Date(ts).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 // ── Tree node ──────────────────────────────────────────────────────────────
 interface TreeNode {

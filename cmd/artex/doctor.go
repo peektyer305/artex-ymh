@@ -54,6 +54,11 @@ func runDoctor(args []string) int {
 		return 2
 	}
 
+	if err := config.Initialize(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return 1
+	}
+
 	fmt.Printf("ARTEX doctor。デプロイ事前チェック（読み取り専用、サービスを起動せず、DB にも書き込まない）\n\n")
 	var items []doctorItem
 	check := func(status doctorStatus, name, note string) {

@@ -1,3 +1,5 @@
+import type { TaskStatus } from "@/lib/types";
+
 // Centralised status → color/label semantics, reused across the whole app.
 // Spec §8.3: 意図 / カバレッジ / タスク / 深刻度 each have a consistent color set.
 
@@ -39,7 +41,7 @@ const intent: Record<string, StatusMeta> = {
   // blocked = モデル/API/ネットワーク障害で再試行を使い切り、実際にはほぼ突破できていない（目標のブロックではない）。
   blocked: { label: "実行エラー", tone: "red" },
   // exhausted = ステップ数/時間予算に達して途中で打ち切られ、結果の一部だけを書き戻した（方向性の探求が尽きたわけではない）。
-  exhausted: { label: "予算切れ", tone: "violet" },
+  exhausted: { label: "実行上限に到達", tone: "violet" },
   // stopped = 過去の論理削除状態（ノードは保持、過去データ）。
   stopped: { label: "停止済み", tone: "slate" },
   // deleted = ユーザーが該当意図を仮削除した（ノードとリネージは保持、削除理由は delete_reason フィールド）。
@@ -115,3 +117,6 @@ export type StatusDomain = keyof typeof maps;
 export function statusMeta(domain: StatusDomain, key: string): StatusMeta {
   return maps[domain][key] ?? { label: key, tone: "neutral" };
 }
+
+export const taskStatusOrder: TaskStatus[] = ["created", "queued", "running", "paused", "done", "failed", "timeout"];
+export const taskStatusOptions = taskStatusOrder.map((value) => ({ value, label: statusMeta("task", value).label }));

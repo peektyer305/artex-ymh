@@ -58,6 +58,10 @@ func run() int {
 		proxy   = flag.String("proxy", "127.0.0.1:8788", "traffic recording proxy address (loopback by default; empty to disable)")
 	)
 	flag.Parse()
+	if err := config.Initialize(); err != nil {
+		log.Printf("[config] %v", err)
+		return 1
+	}
 
 	// hand the build version to the server package so GET /api/health can report it
 	// to the frontend top bar.
@@ -68,7 +72,6 @@ func run() int {
 	// capture backend logs into the in-memory sink (still to stderr) so the /logs
 	// page can show a live log stream. Do this first, to catch startup logs too.
 	server.StartLogCapture()
-
 
 	// surface which config file the binary reads (absolute, so `go run`'s relative
 	// "config.json" — resolved against the CWD — is unambiguous).

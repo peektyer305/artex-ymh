@@ -353,7 +353,7 @@ function JudgeCard() {
   );
 }
 
-// ---- auto-allow (ワンクリック許可) card ----
+// ---- auto-allow (一時的な自動承認) card ----
 
 const AUTO_ALLOW_HOURS = [2, 4, 8] as const;
 
@@ -389,7 +389,7 @@ function AutoAllowCard() {
     try {
       setSt(await api.setAutoAllow(true, hours));
       setConfirmOpen(false);
-      toast.success(`ワンクリック許可を有効にしました（${hours} 時間後に自動でインターセプトへ復帰）`);
+      toast.success(`一時的な自動承認を有効にしました（${hours} 時間後に手動承認に戻ります）`);
     } catch (e) {
       toast.error("有効化に失敗しました: " + (e as Error).message);
     } finally {
@@ -401,7 +401,7 @@ function AutoAllowCard() {
     setBusy(true);
     try {
       setSt(await api.setAutoAllow(false, 0));
-      toast.success("ワンクリック許可を無効にしました。手動承認に戻ります");
+      toast.success("一時的な自動承認を無効にしました。手動承認に戻ります");
     } catch (e) {
       toast.error("無効化に失敗しました: " + (e as Error).message);
     } finally {
@@ -420,9 +420,9 @@ function AutoAllowCard() {
       >
         <div className="flex min-w-0 items-center gap-2 text-sm">
           <ZapIcon className={`h-4 w-4 shrink-0 ${enabled ? "text-red-600" : "text-muted-foreground"}`} />
-          <span className="shrink-0 font-medium">ワンクリック許可</span>
+          <span className="shrink-0 font-medium">一時的な自動承認</span>
           <span className="truncate text-muted-foreground">
-            期間限定で承認が必要な全操作を自動承認し、真·破壊的なコマンドのみブロック
+            期間限定で承認が必要な全操作を自動承認し、拒否ルールに該当する操作は引き続きブロック
           </span>
         </div>
         <Switch
@@ -435,10 +435,10 @@ function AutoAllowCard() {
       {enabled && st && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/60 bg-red-100/60 px-4 py-2.5 dark:bg-red-950/40">
           <p className="text-sm font-medium text-red-700 dark:text-red-400">
-            自動許可中 · 残り {autoAllowRemainingLabel(st.remaining_seconds)}（期限後は自動でインターセプトへ復帰）
+            自動承認中 · 残り {autoAllowRemainingLabel(st.remaining_seconds)}（期限が切れると手動承認に戻ります）
           </p>
           <Button variant="destructive" size="sm" className="shrink-0" onClick={disable} disabled={busy}>
-            閉じる
+            自動承認を停止
           </Button>
         </div>
       )}
@@ -446,13 +446,13 @@ function AutoAllowCard() {
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ワンクリック許可を有効にしますか？</AlertDialogTitle>
+            <AlertDialogTitle>一時的な自動承認を有効にしますか？</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 <p>
                   有効にすると、AI agent の承認が必要なすべての操作（横移動、トンネルツール、ブルートフォース、一時サービスなど）が
-                  <span className="font-semibold text-red-600 dark:text-red-400">【無人での自動許可】</span>
-                  となり、真·破壊的なコマンドのみブロックされます。認可された検証環境/テスト環境でのみ使用してください。有効期間を選択してください。
+                  <span className="font-semibold text-red-600 dark:text-red-400">自動承認</span>
+                  となり、拒否ルールに該当する操作は引き続きブロックされます。認可された検証環境/テスト環境でのみ使用してください。有効期間を選択してください。
                 </p>
                 <div className="flex items-center gap-2">
                   {AUTO_ALLOW_HOURS.map((h) => (
@@ -667,7 +667,7 @@ export default function InterceptPage() {
         </div>
       </div>
 
-      {/* ---- ワンクリック許可（期限付きの ask 自動承認） ---- */}
+      {/* ---- 一時的な自動承認（期限付きの ask 自動承認） ---- */}
       <AutoAllowCard />
 
       {/* ---- インターセプト範囲の情報バー（ルール照合とモデルフォールバックで共通：範囲外のツールにはどちらも介入しない）---- */}

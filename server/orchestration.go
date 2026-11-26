@@ -171,6 +171,7 @@ func (s *Server) delegateToTask(ctx context.Context, in json.RawMessage, pick fu
 	delete(m, "task_id")
 	inner, _ := json.Marshal(m)
 	tsx := agent.NewToolSet(t.Store, "orchestrator")
+	tsx.SetDependencies(s.agentDeps)
 	if s.m.Assets() != nil {
 		tsx.SetAssetStore(s.m.Assets(), s.m.Assets().Companies())
 	}

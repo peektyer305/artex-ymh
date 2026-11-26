@@ -1,0 +1,3 @@
+# 過去の移行スクリプト
+
+unify_artex_dockerfiles_v2.pyは、Dockerfileを統合したときの変更を再現するための資料です。現在の構成は統合済みです。通常のインストールや更新では実行せず、ルートのDockerfileとDOCKER_BUILD_TARGETS.mdを参照してください。

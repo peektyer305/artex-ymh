@@ -19,6 +19,7 @@ import (
 // (→planner) or direct high-priority intents (→frontier). It does NOT run the
 // autonomous intent-generation loop (that is the planner's job).
 type MainAgent struct {
+	dependencies    *Dependencies
 	findingRecorder FindingRecorder
 	prov            llm.Provider
 	model           string
@@ -110,8 +111,8 @@ const mainAgentDefaultTmpl = `あなたは認可されたペネトレーショ�
 
 発見をでっち上げない。ツールが返す実際のデータだけに基づいて回答する。`
 
-func mainAgentSystem(goal, dataDir, workDir string) string {
-	body := renderSystem("mainagent", mainAgentDefaultTmpl, MainVars{Goal: goal, DataDir: dataDir, Now: nowStr()})
+func mainAgentSystem(goal, dataDir, workDir string, dependencies ...*Dependencies) string {
+	body := renderSystem("mainagent", mainAgentDefaultTmpl, MainVars{Goal: goal, DataDir: dataDir, Now: nowStr()}, dependencies...)
 	return body + artifactSpec(workDir)
 }
 
@@ -121,6 +122,7 @@ func mainAgentSystem(goal, dataDir, workDir string) string {
 // worker/planner sessions — not just the final answer.
 func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.AssetStore, ts *db.ExplorationStore, goal, message string, emit func(db.Activity), notify, resume func(), notifyGoal func([]string)) (string, error) {
 	tsx := NewToolSet(ts, "human")
+	tsx.SetDependencies(m.dependencies)
 	tsx.SetFindingRecorder(m.findingRecorder)
 	if as != nil {
 		tsx.SetAssetStore(as, as.Companies())
@@ -136,12 +138,12 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	// アセットカバレッジ機能が無効なときは add_task_scope/list_untested_assets を除外する（prompt に入れない）。
 	base := append(tsx.DropCoverageTools(tsx.MainAgentTools()), actool.DefaultTools()...)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts)})
-	tools, def, cleanup := AugmentTools(ctx, "mainagent", base)
+	tools, def, cleanup := AugmentTools(ctx, "mainagent", base, m.dependencies)
 	defer cleanup()
 	// 本タスクの作業ディレクトリ <workDir>/tasks/<taskID> を先に作成する。
 	mainDir := ensureRunDir(m.workDir, taskID, 0)
 	ctx = intercept.WithReviewWorkingDirectory(ctx, mainDir)
-	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir), def)
+	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir, m.dependencies), def)
 	opts := agentcore.Options{
 		Provider:        m.prov,
 		SystemPrompt:    system,
@@ -172,7 +174,7 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 		Todos:                 actool.NewTodoStore(),                  // セッション単位の一時 ToDo（TodoWrite）。計画用のみで、終了時に破棄
 		// 予算（ステップ数）に達したら SDK が終了処理を実行:ユーザーへ進捗の一言まとめを出力する。
 		// Prompt と終了処理のターン数は管理画面で編集できる（既定 10 ターン）。
-		Settlement:   wrapupSettlement("mainagent", nil),
+		Settlement:   wrapupSettlement("mainagent", nil, m.dependencies),
 		NonStreaming: m.nonStreaming(), // この profile が非ストリーミングなら Provider.Complete を通る
 		MaxTokens:    m.maxTokens(),    // 0 = 上限を送らず、サーバ側の既定値に任せる
 	}

@@ -22,8 +22,12 @@ import (
 // hostTools, if set, returns runtime host tools (currently the traffic tools when
 // capture is on) to add to EVERY agent's base list — the DB tools table then
 // filters them per-agent binding. Empty/nil → no host tools this run (capture off).
-func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.CoreTool, map[string][]string)) {
-	agent.ToolAugment = func(ctx context.Context, agentKey string) ([]actool.CoreTool, agent.DeferredInfo, func()) {
+func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.CoreTool, map[string][]string), dependencies ...*agent.Dependencies) {
+	set := &agent.Dependencies{}
+	if len(dependencies) > 0 && dependencies[0] != nil {
+		set = dependencies[0]
+	}
+	set.ToolAugment = func(ctx context.Context, agentKey string) ([]actool.CoreTool, agent.DeferredInfo, func()) {
 		a, err := pg.GetAgentByKey(agentKey)
 		if err != nil || a == nil {
 			return nil, agent.DeferredInfo{}, nil
@@ -177,6 +181,9 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 		}
 		return extra, def, cleanup
 	}
+	if len(dependencies) == 0 {
+		agent.ToolAugment = set.ToolAugment
+	}
 }
 
 func idSet(ids []int64) map[int64]bool {
@@ -209,8 +216,12 @@ func seedPrompts(pg *db.DB) {
 // tool-assembly time each built-in tool is filtered by its agent binding / enabled
 // flag and, if kept, wrapped so the model sees the DB-overridden description/schema
 // and default arguments get injected. MCP/skill/host tools have no row and pass through.
-func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
-	agent.FindingTrafficBindingEnabled = func() bool { return pg.GetBool(settingAgentTrafficBinding, false) }
+func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool, dependencies ...*agent.Dependencies) {
+	set := &agent.Dependencies{}
+	if len(dependencies) > 0 && dependencies[0] != nil {
+		set = dependencies[0]
+	}
+	set.FindingTrafficBindingEnabled = func() bool { return pg.GetBool(settingAgentTrafficBinding, false) }
 	// Seed the built-in domain tools (first-insert only; DO NOTHING preserves edits).
 	// No startup prune: rows we didn't seed are left alone so future user-defined
 	// custom tools (system=false, added via the UI) survive restarts.
@@ -236,7 +247,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 	// interactive_shell is on, so Bash points at shell_open for interactive programs
 	// without ever referencing a tool that isn't injected (§14.1/§14.2).
 	const bashInteractiveShellNote = "\n\n対話入力を必要とするプログラム（msfconsole / ssh の対話ログイン / mysql、psql、python などの REPL / パスワードや yes/no のプロンプト / nc のリバースシェル）には Bash を使わないでください。Bash には stdin がなく、ハングしてしまいます。代わりに shell_open で対話セッションを開いてください（使い終わったら shell_close）。一度きりの非対話コマンドは引き続き Bash を使ってください。"
-	agent.ToolResolve = func(ctx context.Context, agentKey string, tools []actool.CoreTool) []actool.CoreTool {
+	set.ToolResolve = func(ctx context.Context, agentKey string, tools []actool.CoreTool) []actool.CoreTool {
 		rows, err := pg.ListTools()
 		if err != nil {
 			log.Printf("[tools] ツールテーブルの読み取りに失敗しました。コードのデフォルトで通過させます: %v", err)
@@ -332,6 +343,10 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 		}
 		return out
 	}
+	if len(dependencies) == 0 {
+		agent.FindingTrafficBindingEnabled = set.FindingTrafficBindingEnabled
+		agent.ToolResolve = set.ToolResolve
+	}
 }
 
 // bashUANote はバッチ 5 B4 で worker の Bash 説明に追加された UA 使用規律(実際は
@@ -357,11 +372,14 @@ func contains(ss []string, v string) bool {
 // (they only need the AssetStore); the exploration-graph tools refuse with a
 // clear message via ToolSet.needExploration. Binding one of them to a task-less
 // agent in the tools table is therefore a useless tool, not a crash.
-func buildDomainReg(as *db.AssetStore) map[string]actool.CoreTool {
+func buildDomainReg(as *db.AssetStore, dependencies ...*agent.Dependencies) map[string]actool.CoreTool {
 	if as == nil {
 		return nil
 	}
 	serverTS := agent.NewToolSet(nil, "")
+	if len(dependencies) > 0 {
+		serverTS.SetDependencies(dependencies[0])
+	}
 	serverTS.SetAssetStore(as, as.Companies())
 	reg := make(map[string]actool.CoreTool)
 	for _, t := range serverTS.AllDomainTools() {

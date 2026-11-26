@@ -40,10 +40,11 @@ func nowStr() string { return time.Now().Format("2006-01-02 15:04:05 MST") }
 // default template, then to the raw default string — an agent never starts with a
 // half-rendered prompt. Callers append the code-owned tail (trafficTool / 中間成果物
 // 出力規約) AFTER this, so those can't be edited away via the DB body.
-func renderSystem(agentKey, def string, vars any) string {
+func renderSystem(agentKey, def string, vars any, dependencies ...*Dependencies) string {
+	overrides := dependencySet(dependencies)
 	tmpl := def
-	if PromptOverride != nil {
-		if t, ok := PromptOverride(agentKey); ok && t != "" {
+	if overrides.PromptOverride != nil {
+		if t, ok := overrides.PromptOverride(agentKey); ok && t != "" {
 			tmpl = t
 		}
 	}
@@ -61,15 +62,16 @@ func renderSystem(agentKey, def string, vars any) string {
 // まず agentKey+"."+variant の DB 上書きを試し、なければ agentKey 自身の解決チェーン
 // （DB 上書き → コード既定）へ戻す。PromptOverride の仕組み自体は変えず、ここでは key 解決を 1 段足すだけ。
 // 変種テンプレートの描画失敗（カタログ外の変数を参照）も同様に key 自身へ戻し、半描画のプロンプトは絶対に出さない。
-func renderSystemVariant(agentKey, variant, def string, vars any) string {
-	if variant != "" && PromptOverride != nil {
-		if t, ok := PromptOverride(agentKey+"."+variant); ok && t != "" {
+func renderSystemVariant(agentKey, variant, def string, vars any, dependencies ...*Dependencies) string {
+	overrides := dependencySet(dependencies)
+	if variant != "" && overrides.PromptOverride != nil {
+		if t, ok := overrides.PromptOverride(agentKey + "." + variant); ok && t != "" {
 			if out, err := renderTmpl(t, vars); err == nil {
 				return out
 			}
 		}
 	}
-	return renderSystem(agentKey, def, vars)
+	return renderSystem(agentKey, def, vars, dependencies...)
 }
 
 func renderTmpl(tmpl string, vars any) (string, error) {

@@ -23,6 +23,7 @@ import (
 // LS/Glob/Grep) plus whatever skills/MCP the key is made visible; NO pentest
 // graph/task context is injected (that stays exclusive to MainAgent).
 type ChatAgent struct {
+	dependencies   *Dependencies
 	prov           llm.Provider
 	model          string
 	workDir        string
@@ -77,8 +78,8 @@ func chatWorkDirSpec(workDir string) string {
 
 // chatSystem renders the DB-managed prompt body for agentKey. Custom agents have
 // no per-key in-code default, so DefaultAssistantPrompt is the render fallback.
-func chatSystem(agentKey, dataDir, workDir string) string {
-	return renderSystem(agentKey, DefaultAssistantPrompt, chatVars{DataDir: dataDir, Now: nowStr()}) + chatWorkDirSpec(workDir)
+func chatSystem(agentKey, dataDir, workDir string, dependencies ...*Dependencies) string {
+	return renderSystem(agentKey, DefaultAssistantPrompt, chatVars{DataDir: dataDir, Now: nowStr()}, dependencies...) + chatWorkDirSpec(workDir)
 }
 
 // chatVars carries the runtime variables a custom agent's prompt may reference.
@@ -114,10 +115,10 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	// have no tools-table rows, so they always pass through.
 	base := actool.DefaultTools()
 	ctx = WithRunInfo(ctx, RunInfo{SessionID: sessionID})
-	tools, def, cleanup := AugmentTools(ctx, agentKey, base)
+	tools, def, cleanup := AugmentTools(ctx, agentKey, base, c.dependencies)
 	defer cleanup()
 
-	system, boundary := deferredSystem(chatSystem(agentKey, c.workDir, sessionWorkDir), def)
+	system, boundary := deferredSystem(chatSystem(agentKey, c.workDir, sessionWorkDir, c.dependencies), def)
 	opts := agentcore.Options{
 		Provider:        c.prov,
 		SystemPrompt:    system,
@@ -150,7 +151,7 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		ToolOutputDir: filepath.Join(sessionWorkDir, "cmd-output"),
 		// 予算（ステップ数）に達すると SDK が終了処理に入り、要約を 1 文出力する。プロンプトと終了処理のターン数はこの agent key ごとに管理画面で編集できる
 		// （カスタム agent はそれぞれ 1 つ。空/0 なら共通既定の 10 ターン）。
-		Settlement:   wrapupSettlement(agentKey, nil),
+		Settlement:   wrapupSettlement(agentKey, nil, c.dependencies),
 		NonStreaming: c.nonStreaming(), // この profile が非ストリーミングを選んだときは Provider.Complete を使う
 		MaxTokens:    c.maxTokens(),    // 0 = 上限を送らない（サーバー側の既定値で決まる）
 	}

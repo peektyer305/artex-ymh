@@ -23,6 +23,7 @@ import (
 // assets, judges whether the task goal is met, and emits 0..N exploration intents
 // into the frontier. It is the sole intent generator.
 type Planner struct {
+	dependencies      *Dependencies
 	findingRecorder   FindingRecorder
 	prov              llm.Provider
 	model             string
@@ -336,8 +337,8 @@ const plannerDefaultTmpl = `あなたはネットワークセキュリティプ�
 
 重複させず、無理に数を合わせない。ただし目標が未達成で、未カバーでより深い攻め方があるなら、割り当てるべきときは割り当てる。簡潔に、集中して、効率的に。`
 
-func plannerSystem(goal, dataDir, workDir string) string {
-	body := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: goal, DataDir: dataDir, Now: nowStr()})
+func plannerSystem(goal, dataDir, workDir string, dependencies ...*Dependencies) string {
+	body := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: goal, DataDir: dataDir, Now: nowStr()}, dependencies...)
 	// untrustedDataRule と L2 meta の鉄則(chainskel.PlannerMetaRules)は静的な固定テキスト
 	// (毎輪の変数を含まない)で、コード固定の末尾に追加し、輪を跨ぐキャッシュを壊さない。
 	// plannerHoneypotRules(バッチ6 L1 のハニーポット対処規律)も同じくコード固定の末尾で、常に追加する。
@@ -359,6 +360,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	// runs in a detached goroutine so it never adds latency to this round.
 	p.compactor.OnPlannerRound(ctx, ts)
 	tsx := NewToolSet(ts, "planner")
+	tsx.SetDependencies(p.dependencies)
 	tsx.SetFindingRecorder(p.findingRecorder)
 	if as != nil {
 		tsx.SetAssetStore(as, as.Companies())
@@ -378,7 +380,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	domain := tsx.capFrontierTools(tsx.DropCoverageTools(tsx.PlannerTools()))
 	base := append(domain, actool.DefaultTools()...)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts)})
-	tools, def, cleanup := AugmentTools(ctx, "planner", base)
+	tools, def, cleanup := AugmentTools(ctx, "planner", base, p.dependencies)
 	defer cleanup()
 	// 重要な状況（直前に完了した意図 + 先読みした全体グラフ）は【今回の user 入力】へ移し
 	// (下の input を参照)、system には静的な計画本文だけを残す。move-out により system が毎輪
@@ -395,7 +397,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	// 本タスクの作業ディレクトリ <workDir>/tasks/<taskID> を先に作成する。
 	taskDir := ensureRunDir(p.workDir, taskID, 0)
 	ctx = intercept.WithReviewContext(ctx, taskDir, intercept.ReviewBackground{})
-	sysBody := plannerSystem(goal, p.workDir, taskDir)
+	sysBody := plannerSystem(goal, p.workDir, taskDir, p.dependencies)
 	if p.wantConstraints() {
 		sysBody += constraintBlock(ts) // 操作制約(あれば)をシステムプロンプトに注入し、探索境界を画定する
 	}
@@ -404,9 +406,9 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	// 挟み込み、実行中の計画輪がタスクの期限到達で終了処理へ入るようにする(タイムアウト→
 	// タスクのタイムアウト文言、ステップ数→per-run の文言)。
 	maxDur, clamped := clampMaxDuration(tc.DeadlineUnix, 0)
-	settle := wrapupSettlement("planner", nil)
+	settle := wrapupSettlement("planner", nil, p.dependencies)
 	if tc.DeadlineUnix > 0 {
-		settle = wrapupSettlementForTask("planner", nil, clamped)
+		settle = wrapupSettlementForTask("planner", nil, clamped, p.dependencies)
 	}
 	opts := agentcore.Options{
 		Provider:        p.prov,

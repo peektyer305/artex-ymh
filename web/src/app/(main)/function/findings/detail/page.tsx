@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtTime } from "@/lib/format";
+
 import * as React from "react";
 
 import Link from "next/link";
@@ -40,9 +42,6 @@ const FINDING_STATUSES: FindingStatus[] = [
   "risk_accepted",
 ];
 
-function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN");
-}
 
 // FieldRow is one label/value line in the right-hand status panel.
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {

@@ -94,29 +94,29 @@ type GoalSpec struct {
 // straight into it (the same managed tool the main agent uses to add goals at
 // runtime). The returned specs are read back from the store so callers can emit
 // per-goal activity and detect the "LLM produced nothing" case for their fallback.
-func DecomposeGoals(ctx context.Context, prov llm.Provider, dataDir, goalText, desc string, as *db.AssetStore, ts *db.ExplorationStore, taskID int64, emit func(db.Activity)) []GoalSpec {
+func DecomposeGoals(ctx context.Context, prov llm.Provider, dataDir, goalText, desc string, as *db.AssetStore, ts *db.ExplorationStore, taskID int64, emit func(db.Activity), dependencies ...*Dependencies) []GoalSpec {
 	if prov == nil {
 		return nil
 	}
-	return DecomposeGoalsWithProvider(ctx, prov, dataDir, goalText, desc, as, ts, taskID, false, 0, emit)
+	return DecomposeGoalsWithProvider(ctx, prov, dataDir, goalText, desc, as, ts, taskID, false, 0, emit, dependencies...)
 }
 
 // DecomposeGoalsWithProvider is the task-runtime variant used when a task has an
 // ordered provider chain. It preserves the same tools and write behavior while
 // letting the caller own provider selection/failover. maxTokens is the profile's
 // per-reply output cap (0 = send none).
-func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir, goalText, desc string, as *db.AssetStore, ts *db.ExplorationStore, taskID int64, nonStreaming bool, maxTokens int, emit func(db.Activity)) []GoalSpec {
+func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir, goalText, desc string, as *db.AssetStore, ts *db.ExplorationStore, taskID int64, nonStreaming bool, maxTokens int, emit func(db.Activity), dependencies ...*Dependencies) []GoalSpec {
 	if prov == nil {
 		return nil
 	}
 	// worker="goals" tags the goal nodes' provenance; ts/taskID let set_goals link
 	// each goal under the task root. This is the catalog's real set_goals tool, so a
 	// web-edited description/schema on it applies here too.
-	tsx := &ToolSet{as: as, ts: ts, taskID: taskID, worker: "goals"}
+	tsx := &ToolSet{dependencies: firstDependency(dependencies), as: as, ts: ts, taskID: taskID, worker: "goals"}
 	// Description rides in the user message (same channel as the goal), NOT via the
 	// {{.EngagementDescription}} template var — else a prompt that references the var
 	// would inject the description twice. System prompt stays pure static instructions.
-	sys := renderSystem("goals", goalsDefaultTmpl, GoalsVars{DataDir: dataDir, Now: nowStr()})
+	sys := renderSystem("goals", goalsDefaultTmpl, GoalsVars{DataDir: dataDir, Now: nowStr()}, dependencies...)
 	// set_constraints は常に利用可能(asset store に依存しない)：本文に「先に操作制約を抽出し、
 	// その後に目標を分割する」手順が含まれる(agent の編集ページで文言を変えられる)。ここでは
 	// ツールを接続するだけでよい。

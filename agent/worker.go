@@ -53,6 +53,7 @@ type WebSearchOpts struct {
 }
 
 type Worker struct {
+	dependencies    *Dependencies
 	findingRecorder FindingRecorder
 	prov            llm.Provider
 	model           string
@@ -361,15 +362,15 @@ func ensureRunDir(base string, taskID, intentID int64) string {
 // cmdOutDir is the SDK large-tool-output spill dir under an agent's run dir.
 func cmdOutDir(dir string) string { return filepath.Join(dir, "cmd-output") }
 
-func workerSystem(proxyAddr, caCert, dataDir, runDir string, intranet bool) string {
+func workerSystem(proxyAddr, caCert, dataDir, runDir string, intranet bool, dependencies ...*Dependencies) string {
 	vars := WorkerVars{ProxyAddr: proxyAddr, DataDir: dataDir, Now: nowStr(), Intranet: intranet}
-	body := renderSystem("worker", workerDefaultTmpl, vars)
+	body := renderSystem("worker", workerDefaultTmpl, vars, dependencies...)
 	tail := ""
 	if intranet {
 		// イントラネット期: 本文を "worker.intranet" 変種へ切り替え(DB に上書きが無ければ
 		// worker チェーンへフォールバックし)、コード固定のイントラネット・レッドラインの末尾を
 		// 追加する(DB 本文では編集できない)。
-		body = renderSystemVariant("worker", "intranet", workerDefaultTmpl, vars)
+		body = renderSystemVariant("worker", "intranet", workerDefaultTmpl, vars, dependencies...)
 		tail = workerIntranetRules
 	}
 	// caCert is present only when the recording MITM is on, which is exactly when
@@ -448,6 +449,7 @@ func (w *Worker) ExecuteWithMessage(ctx context.Context, name string, taskID int
 
 func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.AssetStore, ts *db.ExplorationStore, intent *db.Node, hooks harness.HookRunner, emit func(db.Activity), enr EnrichTrigger, notifyFinding func(int64, string), requestID, message string) (harness.TerminalReason, WriteCounts, error) {
 	tsx := NewToolSet(ts, name)
+	tsx.SetDependencies(w.dependencies)
 	tsx.SetFindingRecorder(w.findingRecorder)
 	tsx.SetTaskID(taskID)
 	coverageEnabled := as == nil || as.CoverageEnabled(taskID)
@@ -467,7 +469,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// ツール(Read/Write/Edit/LS/Bash/Sleep)は従来どおり。
 	base = append(base, defaultToolsExcept("MultiEdit", "Glob", "Grep")...)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts), IntentID: intent.ID})
-	tools, def, cleanup := AugmentTools(ctx, "worker", base)
+	tools, def, cleanup := AugmentTools(ctx, "worker", base, w.dependencies)
 	defer cleanup()
 
 	// 意図は worker の【唯一の責務であり、run 全体を貫く不変条件】→ 起動指示や意図が指す
@@ -488,7 +490,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// inherit a parent run's background into the action reviewer.
 	ctx = intercept.WithReviewContext(ctx, runDir, intercept.ReviewBackground{})
 	overview := renderWorkerGraphOverview(tsx.graphOverviewData())
-	sysBody := workerSystem(proxyAddr, proxyCA, w.workDir, runDir, w.intranetForTask(taskID))
+	sysBody := workerSystem(proxyAddr, proxyCA, w.workDir, runDir, w.intranetForTask(taskID), w.dependencies)
 	if w.wantConstraints() {
 		sysBody += constraintBlock(ts) // 操作制約(あれば)をシステムプロンプトに注入し、worker は実行時に厳守する
 	}
@@ -528,9 +530,9 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// 決める(taskclock.go 参照)。
 	tc := taskClockFrom(ctx)
 	maxDur, clamped := clampMaxDuration(tc.DeadlineUnix, w.runTimeout)
-	settle := wrapupSettlement("worker", []string{"Bash"})
+	settle := wrapupSettlement("worker", []string{"Bash"}, w.dependencies)
 	if tc.DeadlineUnix > 0 {
-		settle = wrapupSettlementForTask("worker", []string{"Bash"}, clamped)
+		settle = wrapupSettlementForTask("worker", []string{"Bash"}, clamped, w.dependencies)
 	}
 	opts := agentcore.Options{
 		Provider:        w.prov,

@@ -24,8 +24,9 @@ web/next-env.d.ts
 *.swp
 *.swo
 
-# docs
-/docs/
+# Documentation sources are tracked; only generated documentation is ignored.
+/docs/_build/
+/docs/.cache/
 
 # os
 .DS_Store

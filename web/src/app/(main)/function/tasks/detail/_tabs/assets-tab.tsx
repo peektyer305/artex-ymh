@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtBytes } from "@/lib/format";
+
 import * as React from "react";
 
 import {
@@ -110,12 +112,6 @@ function statusTone(code: number) {
   return "text-muted-foreground";
 }
 
-function fmtBytes(value?: number | null) {
-  if (!value || !Number.isFinite(value) || value <= 0) return "—";
-  const units = ["B", "KB", "MB"];
-  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
-  return `${index === 0 ? value : (value / 1024 ** index).toFixed(1)} ${units[index]}`;
-}
 
 function Chips({ items, mono }: { items: string[]; mono?: boolean }) {
   const clean = items.filter(Boolean);

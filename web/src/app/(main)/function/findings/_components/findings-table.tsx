@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtTime } from "@/lib/format";
+
 import * as React from "react";
 
 import Link from "next/link";
@@ -77,14 +79,6 @@ export function isSameFinding(left: Finding, right: Finding): boolean {
   return findingRowKey(left) === findingRowKey(right);
 }
 
-export function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 const COLUMN_COUNT = 9;
 
@@ -452,3 +446,5 @@ export function FindingsTable({
     </Table>
   );
 }
+
+export { fmtTime } from "@/lib/format";

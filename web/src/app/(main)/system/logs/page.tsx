@@ -1,9 +1,12 @@
 "use client";
 
+import { fmtTime } from "@/lib/format";
+
 import * as React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { sseUrl } from "@/lib/api";
+import { http, sseUrl } from "@/lib/api";
+import { toast } from "sonner";
 import { MOCK } from "@/lib/mock/enabled";
 import type { LogLine } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -65,12 +68,6 @@ const levelDot: Record<LogLine["level"], string> = {
   error: "bg-red-500",
 };
 
-function fmtTime(ts: string) {
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
 
 export default function LogsPage() {
   const [lines, setLines] = React.useState<LogLine[]>([]);
@@ -149,9 +146,7 @@ export default function LogsPage() {
     setLoadingHistory(true);
     try {
       const params = minDbId > 0 ? `?before=${minDbId}&limit=200` : `?limit=200`;
-      const res = await fetch(`/api/logs/history${params}`);
-      if (!res.ok) return;
-      const data = (await res.json()) as { items: LogLine[]; has_more: boolean };
+      const data = await http<{ items: LogLine[]; has_more: boolean }>(`/logs/history${params}`);
       if (data.items?.length) {
         // Assign synthetic seq numbers below current minimum to keep dedup working.
         setLines((prev) => {
@@ -173,6 +168,8 @@ export default function LogsPage() {
         });
       }
       setHasMore(data.has_more ?? false);
+    } catch (error) {
+      toast.error("過去のログを取得できませんでした: " + (error instanceof Error ? error.message : String(error)));
     } finally {
       setLoadingHistory(false);
     }

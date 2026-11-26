@@ -36,16 +36,17 @@ var ToolAugment func(ctx context.Context, agentKey string) (extra []actool.CoreT
 // AugmentTools returns base plus the agent's visible skill/MCP tools, the
 // DeferredInfo, and a cleanup func the caller must defer (closes MCP clients).
 // Built-in base tools are kept as-is — never filtered（組み込みツールはコード層に残し、可視性フィルタはしない）.
-func AugmentTools(ctx context.Context, agentKey string, base []actool.CoreTool) ([]actool.CoreTool, DeferredInfo, func()) {
+func AugmentTools(ctx context.Context, agentKey string, base []actool.CoreTool, dependencies ...*Dependencies) ([]actool.CoreTool, DeferredInfo, func()) {
+	overrides := dependencySet(dependencies)
 	var (
 		def     DeferredInfo
 		cleanup = func() {}
 		out     = base
 	)
-	if ToolAugment != nil {
+	if overrides.ToolAugment != nil {
 		var extra []actool.CoreTool
 		var cl func()
-		extra, def, cl = ToolAugment(ctx, agentKey)
+		extra, def, cl = overrides.ToolAugment(ctx, agentKey)
 		if cl != nil {
 			cleanup = cl
 		}
@@ -57,10 +58,10 @@ func AugmentTools(ctx context.Context, agentKey string, base []actool.CoreTool) 
 	// agent isn't bound to (or that are disabled) and swap in overridden
 	// descriptions/schemas + default injection. MCP/skill/host tools have no row
 	// and pass through untouched, so deferred/unlock wiring stays consistent.
-	if ToolResolve != nil {
-		out = ToolResolve(ctx, agentKey, out)
+	if overrides.ToolResolve != nil {
+		out = overrides.ToolResolve(ctx, agentKey, out)
 	}
-	out, def.FindingGuidance = findingWorkflowTools(agentKey, out)
+	out, def.FindingGuidance = findingWorkflowTools(agentKey, out, dependencies...)
 	for i, t := range out {
 		out[i] = guardPanic(t)
 	}

@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtTime } from "@/lib/format";
+
 import * as React from "react";
 
 import { BarChart3Icon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, SearchIcon, TerminalIcon } from "lucide-react";
@@ -16,15 +18,6 @@ import { api } from "@/lib/api";
 import type { CommandRecord, ToolStat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
 
 // toolInput renders a tool's raw input for display. Bash's {"command":"..."} is
 // unwrapped to the bare command; other tools show their pretty-printed JSON args.

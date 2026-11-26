@@ -5,15 +5,10 @@ package db
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"time"
 )
 
@@ -36,9 +31,6 @@ type SessionRecord struct {
 const (
 	SessionAlive = "alive"
 	SessionDead  = "dead"
-
-	// secretPrefix は暗号文の形式バージョンを示す：gcm1:<base64(nonce|ciphertext)>。
-	secretPrefix = "gcm1:"
 )
 
 // SessionSecretKey は master key（jwt.key の内容）からセッション暗号化鍵を派生する:
@@ -65,58 +57,11 @@ func NewSessionStore(d *DB, masterKey []byte) *SessionStore {
 }
 
 func (s *SessionStore) encrypt(plain []byte) (string, error) {
-	if len(s.key) != 32 {
-		return "", fmt.Errorf("セッションの暗号化鍵が未初期化のため、平文での保存を拒否します")
-	}
-	gcm, err := newGCM(s.key)
-	if err != nil {
-		return "", err
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-	return secretPrefix + base64.StdEncoding.EncodeToString(gcm.Seal(nonce, nonce, plain, nil)), nil
+	return encodeSecret(s.key, plain)
 }
 
 func (s *SessionStore) decrypt(stored string) ([]byte, error) {
-	if len(stored) == 0 {
-		return nil, nil
-	}
-	if len(s.key) != 32 {
-		return nil, fmt.Errorf("セッションの暗号化鍵が未初期化のため、復号できません")
-	}
-	if !hasPrefix(stored, secretPrefix) {
-		return nil, fmt.Errorf("未知の secret 形式（gcm1: 接頭辞がない）のため、平文としての読み取りを拒否します")
-	}
-	raw, err := base64.StdEncoding.DecodeString(stored[len(secretPrefix):])
-	if err != nil {
-		return nil, fmt.Errorf("secret の base64 デコードに失敗しました: %w", err)
-	}
-	gcm, err := newGCM(s.key)
-	if err != nil {
-		return nil, err
-	}
-	if len(raw) < gcm.NonceSize() {
-		return nil, fmt.Errorf("secret の暗号文が短すぎます")
-	}
-	plain, err := gcm.Open(nil, raw[:gcm.NonceSize()], raw[gcm.NonceSize():], nil)
-	if err != nil {
-		return nil, fmt.Errorf("secret の復号に失敗しました（鍵の不一致またはデータの改ざん）: %w", err)
-	}
-	return plain, nil
-}
-
-func newGCM(key []byte) (cipher.AEAD, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	return cipher.NewGCM(block)
-}
-
-func hasPrefix(s, p string) bool {
-	return len(s) >= len(p) && s[:len(p)] == p
+	return decodeSecret(s.key, stored)
 }
 
 // nilIfZero は 0 を NULL に変換する（NULL 許容の外部キー列）。

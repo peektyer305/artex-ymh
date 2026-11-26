@@ -71,9 +71,10 @@ func WrapupTurnsDefault(agentKey string) int {
 
 // resolveWrapup returns the effective wrap-up prompt: the DB override (if set and
 // non-empty) over the built-in default.
-func resolveWrapup(agentKey string) string {
-	if WrapupOverride != nil {
-		if t, ok := WrapupOverride(agentKey); ok && strings.TrimSpace(t) != "" {
+func resolveWrapup(agentKey string, dependencies ...*Dependencies) string {
+	overrides := dependencySet(dependencies)
+	if overrides.WrapupOverride != nil {
+		if t, ok := overrides.WrapupOverride(agentKey); ok && strings.TrimSpace(t) != "" {
 			return t
 		}
 	}
@@ -82,9 +83,10 @@ func resolveWrapup(agentKey string) string {
 
 // resolveWrapupTurns returns the effective wrap-up turn budget: a positive DB
 // override over the built-in per-agent default.
-func resolveWrapupTurns(agentKey string) int {
-	if WrapupMaxTurnsOverride != nil {
-		if v, ok := WrapupMaxTurnsOverride(agentKey); ok && v > 0 {
+func resolveWrapupTurns(agentKey string, dependencies ...*Dependencies) int {
+	overrides := dependencySet(dependencies)
+	if overrides.WrapupMaxTurnsOverride != nil {
+		if v, ok := overrides.WrapupMaxTurnsOverride(agentKey); ok && v > 0 {
 			return v
 		}
 	}
@@ -111,11 +113,11 @@ func withWrapupSelfCheck(agentKey, prompt string) string {
 // turn budget are admin-editable per agent; disabled tools are code-owned policy so
 // a user can't edit away the "stop probing" guardrail. Resolved fresh each run
 // (reads DB live), so edits apply on the next run without a restart.
-func wrapupSettlement(agentKey string, disabledTools []string) *harness.Settlement {
+func wrapupSettlement(agentKey string, disabledTools []string, dependencies ...*Dependencies) *harness.Settlement {
 	return &harness.Settlement{
-		Prompt:        withWrapupSelfCheck(agentKey, resolveWrapup(agentKey)),
+		Prompt:        withWrapupSelfCheck(agentKey, resolveWrapup(agentKey, dependencies...)),
 		DisabledTools: disabledTools,
-		MaxTurns:      resolveWrapupTurns(agentKey),
+		MaxTurns:      resolveWrapupTurns(agentKey, dependencies...),
 	}
 }
 
@@ -150,22 +152,24 @@ func TaskTimeoutWrapupDefault(agentKey string) string {
 
 // resolveTaskTimeoutWrapup:DB の上書き（非空）> 組み込み既定。空文字はその agent にタスク
 // タイムアウト用プロンプトが無いこと（worker/planner 以外）を意味し、呼び出し側は per-run 用へ戻す。
-func resolveTaskTimeoutWrapup(agentKey string) string {
-	if WrapupTaskTimeoutOverride != nil {
-		if t, ok := WrapupTaskTimeoutOverride(agentKey); ok && strings.TrimSpace(t) != "" {
+func resolveTaskTimeoutWrapup(agentKey string, dependencies ...*Dependencies) string {
+	overrides := dependencySet(dependencies)
+	if overrides.WrapupTaskTimeoutOverride != nil {
+		if t, ok := overrides.WrapupTaskTimeoutOverride(agentKey); ok && strings.TrimSpace(t) != "" {
 			return t
 		}
 	}
 	return TaskTimeoutWrapupDefault(agentKey)
 }
 
-func resolveTaskTimeoutTurns(agentKey string) int {
-	if WrapupTaskTimeoutTurnsOverride != nil {
-		if v, ok := WrapupTaskTimeoutTurnsOverride(agentKey); ok && v > 0 {
+func resolveTaskTimeoutTurns(agentKey string, dependencies ...*Dependencies) int {
+	overrides := dependencySet(dependencies)
+	if overrides.WrapupTaskTimeoutTurnsOverride != nil {
+		if v, ok := overrides.WrapupTaskTimeoutTurnsOverride(agentKey); ok && v > 0 {
 			return v
 		}
 	}
-	return resolveWrapupTurns(agentKey) // 既定では per-run のターン数を流用する
+	return resolveWrapupTurns(agentKey, dependencies...) // 既定では per-run のターン数を流用する
 }
 
 // wrapupSettlementForTask builds settlement for a worker/planner run that is aware
@@ -178,20 +182,20 @@ func resolveTaskTimeoutTurns(agentKey string) int {
 //
 // PromptByReason handed to harness picks by the ACTUAL reason at wrap-up time; without it
 // the mapping would mismatch.
-func wrapupSettlementForTask(agentKey string, disabledTools []string, clamped bool) *harness.Settlement {
-	perRun := withWrapupSelfCheck(agentKey, resolveWrapup(agentKey))
+func wrapupSettlementForTask(agentKey string, disabledTools []string, clamped bool, dependencies ...*Dependencies) *harness.Settlement {
+	perRun := withWrapupSelfCheck(agentKey, resolveWrapup(agentKey, dependencies...))
 	st := &harness.Settlement{
 		Prompt:        perRun, // フォールバック（非 clamped 時は両 reason で使う値でもある）
 		DisabledTools: disabledTools,
-		MaxTurns:      resolveWrapupTurns(agentKey),
+		MaxTurns:      resolveWrapupTurns(agentKey, dependencies...),
 	}
 	if clamped {
-		if tt := resolveTaskTimeoutWrapup(agentKey); tt != "" {
+		if tt := resolveTaskTimeoutWrapup(agentKey, dependencies...); tt != "" {
 			st.PromptByReason = map[harness.TerminalReason]string{
 				harness.ReasonTimeout:  withWrapupSelfCheck(agentKey, tt), // タスクが期限到達
 				harness.ReasonMaxTurns: perRun,                            // ステップが先に尽きたが、タスクにはまだ時間がある
 			}
-			st.MaxTurns = resolveTaskTimeoutTurns(agentKey)
+			st.MaxTurns = resolveTaskTimeoutTurns(agentKey, dependencies...)
 		}
 	}
 	return st
