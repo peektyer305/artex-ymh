@@ -201,7 +201,7 @@ function ToolEditor({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
         {trafficGated && (
           <div className="border-amber-500/40 bg-amber-500/10 text-muted-foreground rounded-md border px-3 py-2 text-xs">
-            このツールは<b>トラフィックキャプチャ</b>に依存します。「システム設定」でトラフィックキャプチャをオンにすると、エージェントにバインドして有効化できます。
+            このツールを使うには<b>トラフィックキャプチャ</b>が必要です。「システム設定」でオンにしてから、エージェントに割り当ててください。
           </div>
         )}
         {/* binding + switch */}
@@ -403,7 +403,7 @@ export default function ToolsPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">ツール</h1>
-          <p className="text-muted-foreground text-sm">システムツールの説明・バインドと、カスタムツール（command/script/http）</p>
+          <p className="text-muted-foreground text-sm">組み込みツールの説明と割り当て、カスタムツール（command/script/http）の設定</p>
         </div>
         <div className="relative w-64">
           <SearchIcon className="text-muted-foreground absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />

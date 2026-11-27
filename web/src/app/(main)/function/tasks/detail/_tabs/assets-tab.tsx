@@ -129,7 +129,7 @@ function Chips({ items, mono }: { items: string[]; mono?: boolean }) {
 
 function SourceCell({ asset }: { asset: Asset }) {
   const source = firstText([asset.task_source], "legacy");
-  const summary = firstText([asset.task_source_summary], "過去のタスク資産の関連付けから移行されたもので、詳細なソース説明はありません");
+  const summary = firstText([asset.task_source_summary], "以前のタスクと紐付いていたアセットです。関連付けの詳しい情報は残っていません");
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -305,7 +305,7 @@ function AddTaskAssetsSheet({
         <SheetHeader>
           <SheetTitle>テストアセットを追加</SheetTitle>
           <SheetDescription>
-            テスト範囲を直接入力します。ドメインと IP はグローバルアセットを作成または再利用します。CIDR、ICP、キーワードはエージェントの範囲コンテキストとして扱われます。
+            テスト範囲を入力します。ドメインとIPは共通のアセット一覧に登録されます。登録済みなら、そのアセットを使います。CIDR、ICP、キーワードはエージェントに調査範囲として渡します。
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
@@ -679,7 +679,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
             <AlertDialogTitle>現在のタスクから関連解除しますか？</AlertDialogTitle>
             <AlertDialogDescription className="[overflow-wrap:anywhere]">
               {removeTarget ? `「${assetLabel(removeTarget)}」を現在のタスクのテストアセットから関連解除します。` : ""}
-              グローバルアセット、関連トラフィック、履歴のブラックボードアンカーは引き続き保持されます。
+              共通のアセット一覧、関連する通信記録、過去のタスクで保存した関連情報は削除されません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

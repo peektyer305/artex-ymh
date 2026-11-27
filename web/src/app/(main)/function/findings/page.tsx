@@ -739,7 +739,7 @@ export default function FindingsPage() {
       toast.success(
         result.queued
           ? `追加調査の実行指示 #${result.intent_id} をタスクキューに追加しました`
-          : `優先度の高いワーカー実行指示 #${result.intent_id} を作成しました`,
+          : `優先度10の追加調査の実行指示 #${result.intent_id} を作成しました`,
       );
       refreshAfterMutation(deepenFinding);
       setDeepenFinding(null);
@@ -1161,23 +1161,23 @@ export default function FindingsPage() {
           <DialogHeader>
             <DialogTitle>脆弱性の深掘り</DialogTitle>
             <DialogDescription className="break-words">
-              元のタスク #{deepenFinding?.task_id} に優先度 10 のワーカー実行指示を作成し、この脆弱性をもとに二次検証を行います：
+              元のタスク #{deepenFinding?.task_id} に優先度10の実行指示を追加し、この脆弱性をさらに検証します：
               {deepenFinding?.name || deepenFinding?.vulnclass || deepenFinding?.summary}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="finding-deepen-description">利用の説明</FieldLabel>
+              <FieldLabel htmlFor="finding-deepen-description">追加調査の内容</FieldLabel>
               <Textarea
                 id="finding-deepen-description"
                 value={deepenDescription}
                 onChange={(event) => setDeepenDescription(event.target.value)}
                 maxLength={4000}
-                placeholder="検証したい利用経路、境界条件、ターゲット、期待するエビデンスを記述"
+                placeholder="検証する利用経路、対象、条件、残してほしい証拠を入力"
                 disabled={deepening}
               />
               <FieldDescription className="flex justify-between gap-3">
-                <span>新しい実行指示には、この脆弱性に関連するアセットを引き継ぎます。</span>
+                <span>新しい実行指示には、この脆弱性に関連するアセットが引き継がれます。</span>
                 <span className="shrink-0 tabular-nums">{deepenDescription.length} / 4000</span>
               </FieldDescription>
             </Field>

@@ -1056,7 +1056,7 @@ export default function SkillsPage() {
                 </div>
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-                <Label htmlFor="sk-inst">本文 <span className="text-muted-foreground text-xs font-normal">（空欄ならスケルトンを自動生成）</span></Label>
+                <Label htmlFor="sk-inst">本文 <span className="text-muted-foreground text-xs font-normal">（空欄ならひな形を自動作成）</span></Label>
                 <Textarea id="sk-inst"
                   className="min-h-40 flex-1 resize-none font-mono text-sm leading-relaxed"
                   placeholder={"## 実行方法\n\n1. まずエラーを検出する\n2. ブラインドインジェクションの種別を判別する\n\nスクリプトは scripts/ ディレクトリに配置する。"}

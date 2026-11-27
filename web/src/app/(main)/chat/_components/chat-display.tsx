@@ -198,7 +198,7 @@ export function Composer({
           onKeyDown={onKeyDown}
         />
         {running && allowBtw && isBtwCommand(value) && (
-          <Button size="icon" onClick={onSend} aria-label="サイドクエスチョンを送信" title="サイドクエスチョンを送信">
+          <Button size="icon" onClick={onSend} aria-label="補足質問を送信" title="補足質問を送信">
             <ArrowUpIcon />
           </Button>
         )}

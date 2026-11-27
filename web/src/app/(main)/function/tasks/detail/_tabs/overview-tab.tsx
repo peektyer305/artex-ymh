@@ -502,7 +502,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <Input
               className="h-7 min-w-56 flex-1 text-sm"
-              placeholder="ゴールを追加（例：『管理者アカウントの権限外アクセスを取得』）"
+                  placeholder="ゴールを追加（例：管理者権限を取得する）"
               value={goalText}
               onChange={(e) => setGoalText(e.target.value)}
               onKeyDown={(e) => {
@@ -970,7 +970,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">テスト範囲がありません。追加するとアセットカバレッジの分母になります。</p>
+            <p className="text-muted-foreground text-sm">テスト範囲がありません。範囲を追加すると、調査済みのアセットの割合を計算できます。</p>
           )}
         </CardContent>
       </Card>

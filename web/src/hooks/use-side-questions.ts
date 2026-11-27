@@ -144,7 +144,7 @@ export function useSideQuestions(parent: string | null) {
             restoreFailedDraft([item]);
             if (item.status !== "running") stream?.close();
           } catch {
-            setError("サイドクエスチョンのデータ解析に失敗しました。パネルを開き直してください");
+            setError("補足質問のデータ解析に失敗しました。パネルを開き直してください");
           }
         });
         stream.addEventListener("cleared", () => {

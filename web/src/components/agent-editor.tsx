@@ -242,10 +242,10 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
         agents: nextAgents,
         enabled: t.enabled,
       });
-      toast.success(`${on ? "バインド解除" : "バインド"}しました：ツール「${t.key}」`);
+      toast.success(`ツール「${t.key}」の割り当てを${on ? "解除" : "追加"}しました`);
       onSaved?.(); // refresh the list so the card's ツール count stays in sync
     } catch (e) {
-      toast.error("ツールのバインドに失敗しました：" + (e as Error).message);
+      toast.error("ツールの割り当てを変更できませんでした：" + (e as Error).message);
       reload();
       api.tools().then(setTools).catch(() => {});
     }
@@ -353,7 +353,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
                   <div className="grid gap-0.5">
                     <Label htmlFor="interactive-shell" className="text-sm">対話型 Shell</Label>
                     <span className="text-muted-foreground text-xs">
-                      このエージェントでオンにすると（上の「設定を保存」で有効）、永続 PTY セッション系ツール（shell_open/send/read/close/list）で msfconsole/ssh/REPL などの対話プログラムを操作できます
+                      オンにして上の「設定を保存」を押すと、このエージェントでshell_open、shell_sendなどのツールを使えます。msfconsoleやsshなどの対話型プログラムを操作できます
                     </span>
                   </div>
                 </div>
@@ -362,7 +362,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
           )}
 
           <div className="grid gap-2">
-            <Label className="text-muted-foreground text-xs">変数（クリックで挿入、レンダリング時に実行時データで置換）</Label>
+            <Label className="text-muted-foreground text-xs">変数（クリックすると入力欄に追加します。実行時に値を入れます）</Label>
             <div className="flex flex-wrap gap-2">
               {variables.map((v) => (
                 <Tooltip key={v.name}>
@@ -620,7 +620,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
 
       {/* Tools バインド */}
       <TabsContent value="tools" className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-        <p className="text-muted-foreground mb-3 text-xs">このエージェントにバインドする組み込みツールにチェックを入れます。</p>
+        <p className="text-muted-foreground mb-3 text-xs">このエージェントに割り当てる組み込みツールを選んでください。</p>
         <div className="grid gap-2">
           {tools.map((t) => {
             const isTraffic = TRAFFIC_TOOL_KEYS.has(t.key);
@@ -913,13 +913,13 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
   return (
     <div className="grid gap-4">
       <p className="text-muted-foreground text-xs">
-        トリガーでこのカスタムエージェントを自動実行できます。トリガーごとに<b>新しいセッションで実行</b>します（「チャット」ページに表示）。
-        トリガー条件は複数選択可。システムが「今回のトリガー理由 + 関連タスク/ファインディング/ゴール」を、あなたが書いた基本メッセージの後ろに自動で付加します。
+        条件を設定すると、このカスタムエージェントを自動で起動できます。<b>起動するたびに新しいセッションを作成し</b>、「チャット」ページに表示します。
+        条件は複数選べます。送信するメッセージには、起動した理由と関連するタスク、脆弱性、ゴールの情報が自動で追加されます。
       </p>
 
       {/* トリガー後の処理ポリシー */}
       <div className="grid gap-3 rounded-md border p-3">
-        <Label className="text-muted-foreground text-xs">トリガー後の処理ポリシー（トリガーの待機/マージ方法を決定）</Label>
+        <Label className="text-muted-foreground text-xs">起動条件が重なったときの処理</Label>
         <div className="flex flex-wrap items-center gap-4">
           <div className="grid gap-1">
             <Label className="text-xs">実行モード</Label>
@@ -984,12 +984,12 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
         </div>
         <p className="text-muted-foreground text-xs">
           {runMode === "parallel"
-            ? "並列：トリガーごとに即座にセッションを開いて並行実行し、マージしません。最大同時実行数を超えたトリガーは空きを待って待機します。"
+            ? "並列：条件を満たすたびに新しいセッションで実行します。同時実行数の上限に達した場合は、空きが出るまで待機します。"
             : mergeMode === "by_task"
-              ? "直列·タスクごとにマージ：同一エージェントは 1 回に 1 件。待機中に同一タスクで発生したイベントトリガーは 1 セッションにマージ。"
+              ? "直列・タスクごとにまとめる：このエージェントは1件ずつ実行します。待機中に同じタスクで条件を満たした場合は、まとめて1つのセッションで処理します。"
               : mergeMode === "all"
-                ? "直列·すべてマージ：同一エージェントは 1 回に 1 件。キュー取り出し時に、待機中の全トリガーを 1 セッションにマージ。"
-                : "直列·マージなし：同一エージェントは 1 回に 1 件。トリガーごとに 1 セッション。"}
+                ? "直列・すべてまとめる：このエージェントは1件ずつ実行します。待機中の起動条件は、次に実行するときにまとめて1つのセッションで処理します。"
+                : "直列・まとめない：このエージェントは1件ずつ実行し、条件を満たすたびに別のセッションを作成します。"}
         </p>
       </div>
 

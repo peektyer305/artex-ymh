@@ -135,7 +135,7 @@ export function SessionComposer({
                 {uploading ? <Loader2Icon className="animate-spin" /> : <PaperclipIcon />}
               </InputGroupButton>
               {mainBusy && isBtwCommand(input) && (
-                <InputGroupButton size="icon-xs" onClick={send} aria-label="サイドクエスチョンを送信">
+                <InputGroupButton size="icon-xs" onClick={send} aria-label="補足質問を送信">
                   <ArrowUpIcon />
                 </InputGroupButton>
               )}
@@ -201,7 +201,7 @@ export function SessionComposer({
                 {workerMessageCharCount(workerMessage)}/{MAX_WORKER_MESSAGE_CHARS}
               </span>
               {active.status === "running" && isBtwCommand(workerMessage) && (
-                <InputGroupButton size="icon-xs" onClick={sendWorkerChat} aria-label="サイドクエスチョンを送信">
+                <InputGroupButton size="icon-xs" onClick={sendWorkerChat} aria-label="補足質問を送信">
                   <ArrowUpIcon />
                 </InputGroupButton>
               )}

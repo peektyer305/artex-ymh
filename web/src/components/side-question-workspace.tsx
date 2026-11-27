@@ -31,8 +31,8 @@ type ComposerLayout = "inline" | "stacked";
 
 const preparationLabels = {
   preparing: "コンテキストを準備中…",
-  summarizing_history: "過去のサイドクエスチョンを整理中…",
-  compressing_snapshot: "サイドクエスチョンのコンテキストを圧縮中…",
+  summarizing_history: "過去の補足質問を整理中…",
+  compressing_snapshot: "補足質問のコンテキストを圧縮中…",
   retrying: "モデルコンテキストが上限超過。縮小して再試行中…",
   answering: "回答中…",
 };
@@ -40,9 +40,9 @@ const preparationLabels = {
 export function SideQuestionButton({ side }: { side: SideQuestions }) {
   if (!side.enabled) return null;
   return (
-    <Button variant="outline" size="sm" onClick={() => side.setOpen(true)} title="/btw サイドクエスチョン">
+    <Button variant="outline" size="sm" onClick={() => side.setOpen(true)} title="/btw 補足質問">
       <MessageCircleQuestionIcon data-icon="inline-start" />
-      サイドクエスチョン
+      補足質問
     </Button>
   );
 }
@@ -67,11 +67,11 @@ function SidePanel({
   }, [tail?.answer, tail?.id]);
   const status = { running: "回答中", completed: "完了", failed: "失敗", cancelled: "停止済み", interrupted: "中断済み" };
   return (
-    <section className="flex h-full min-h-0 flex-col bg-background" aria-label="サイドクエスチョンパネル">
+    <section className="flex h-full min-h-0 flex-col bg-background" aria-label="補足質問パネル">
       <div className="flex items-center gap-2 border-b p-3">
         <div className="min-w-0 flex-1">
           <p className="font-medium">
-            サイドクエスチョン <span className="text-muted-foreground">/btw</span>
+            補足質問 <span className="text-muted-foreground">/btw</span>
           </p>
           <p className="truncate text-muted-foreground text-xs">{label}</p>
         </div>
@@ -80,11 +80,11 @@ function SidePanel({
           size="icon-sm"
           onClick={() => setConfirm(true)}
           disabled={!side.items.length || side.busy}
-          aria-label="サイドクエスチョン履歴を消去"
+          aria-label="補足質問履歴を消去"
         >
           <Trash2Icon />
         </Button>
-        <Button variant="ghost" size="icon-sm" onClick={() => side.setOpen(false)} aria-label="サイドクエスチョンパネルを閉じる">
+        <Button variant="ghost" size="icon-sm" onClick={() => side.setOpen(false)} aria-label="補足質問パネルを閉じる">
           <XIcon />
         </Button>
       </div>
@@ -108,7 +108,7 @@ function SidePanel({
       >
         {side.nextCursor > 0 && (
           <Button variant="ghost" size="sm" onClick={() => void side.load(side.nextCursor)}>
-            以前のサイドクエスチョンを読み込む
+            以前の補足質問を読み込む
           </Button>
         )}
         {side.loading && <Skeleton className="h-16 w-full" />}
@@ -163,7 +163,7 @@ function SidePanel({
           <InputGroupTextarea
             rows={1}
             className={cn("overflow-y-auto", inlineComposer ? "max-h-40 min-h-0" : "max-h-36 min-h-9")}
-            aria-label="サイドクエスチョン"
+            aria-label="補足質問"
             placeholder="現在のコンテキストについて質問…"
             value={side.draft}
             maxLength={4000}
@@ -184,7 +184,7 @@ function SidePanel({
                 variant="destructive"
                 size="icon-xs"
                 onClick={() => void side.stop()}
-                aria-label="サイドクエスチョンの回答を停止"
+                aria-label="補足質問の回答を停止"
               >
                 <SquareIcon />
               </InputGroupButton>
@@ -195,7 +195,7 @@ function SidePanel({
                 size="icon-xs"
                 onClick={() => void side.ask(side.draft)}
                 disabled={side.busy || !side.draft.trim() || !side.snapshot?.available}
-                aria-label="サイドクエスチョンを送信"
+                aria-label="補足質問を送信"
               >
                 <ArrowUpIcon />
               </InputGroupButton>
@@ -209,9 +209,9 @@ function SidePanel({
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>サイドクエスチョン履歴を消去しますか？</AlertDialogTitle>
+            <AlertDialogTitle>補足質問履歴を消去しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              このエージェントのサイドクエスチョンを削除し、生成中の回答を停止します。メインセッションと、参照用に保存した会話の情報は残ります。
+              このエージェントの補足質問を削除し、生成中の回答を停止します。メインセッションと、参照用に保存した会話の情報は残ります。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -254,7 +254,7 @@ export function SideQuestionWorkspace({
       <Drawer open={mobile && side.open && side.enabled} onOpenChange={side.setOpen}>
         <DrawerContent className="h-[85svh]">
           <DrawerHeader className="sr-only">
-            <DrawerTitle>サイドクエスチョン</DrawerTitle>
+            <DrawerTitle>補足質問</DrawerTitle>
             <DrawerDescription>{label} の独立した問答</DrawerDescription>
           </DrawerHeader>
           <SidePanel side={side} label={label} composerLayout={composerLayout} />

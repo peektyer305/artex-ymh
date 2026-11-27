@@ -310,12 +310,11 @@ export function RetryPolicyPanel() {
   return (
     <div className="grid gap-4">
       <div className="rounded-lg border bg-muted/30 p-3 text-muted-foreground text-xs leading-relaxed">
-        1 回のモデル呼び出しの失敗は、内側から外側へ 5 層の再試行を順に通ります：
+        モデル呼び出しに失敗した場合は、次の順で対処します。
         <span className="text-foreground"> 接続 → 空の応答 → 応答開始前の再試行 → 設定の一時停止 → 実行指示の再実行</span>
-        。内側を使い切ってから外側に回るため、回数は
-        <span className="text-foreground">掛け算</span>
-        になる。各層をすべて最大にすると、一度の不調で数十回のリクエストを消費します。
-        すべて空欄なら現在の既定値で、このページがないときの動作と完全に一致します。内側 3 層はモデル設定ごとに個別に上書きできます。
+        。再試行を使い切っても復旧しない場合は、設定を一時停止するか、実行指示をやり直します。再試行の回数設定によっては、
+        <span className="text-foreground">一度の不調で数十回</span>
+        リクエストします。すべて空欄の場合は既定値を使います。最初の3段階はLLM設定ごとに変更できます。
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

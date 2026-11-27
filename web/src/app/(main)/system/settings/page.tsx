@@ -256,7 +256,7 @@ export default function SystemSettingsPage() {
               トラフィックキャプチャ
             </CardTitle>
             <CardDescription>
-              オンにすると、エージェントのHTTP通信を記録プロキシ経由でデータベースに保存します。エージェントにはtraffic_search、traffic_getとプロキシ設定を渡し、使い方をプロンプトに含めます。
+              オンにすると、エージェントのHTTP通信が記録用プロキシを通り、データベースに保存されます。エージェントにはtraffic_search、traffic_getとプロキシ設定を渡し、使い方も知らせます。
               <br />
               オフ（デフォルト）のときはトラフィックを一切記録しません。エージェントは
               プロキシ設定とトラフィックツールを<b>受け取らず</b>、プロンプトにもプロキシ関連の内容を<b>含みません</b>。切り替え後はエージェントを即時再構築して反映します。
@@ -282,8 +282,8 @@ export default function SystemSettingsPage() {
               エージェントの自動トラフィック紐付け
             </CardTitle>
             <CardDescription id="agent-traffic-binding-description">
-              デフォルトはオフ。オンにすると、脆弱性の登録時に起動するレポートエージェントが既存の HTTP リクエスト/レスポンスを照合し、対応するトラフィックを紐付けてからレポートを作成します。
-              <b>パケットの確認と追加のツール呼び出しにより Token 消費が増えます。</b>
+              初期設定はオフです。オンにすると、脆弱性の登録時に起動するレポートエージェントが保存済みのHTTPリクエストとレスポンスを調べ、関連する通信記録を紐付けてからレポートを作成します。
+              <b>通信記録の確認と追加のツール呼び出しにより、トークンの使用量が増えます。</b>
               <br />
               TCP、未キャプチャ、または一致するトラフィックがない場合も通常どおり報告できます。このスイッチはトラフィックキャプチャ、手動紐付け、保存済みエビデンスの閲覧には影響しません。次ターンのエージェントから
               有効になります。オフにすると新しい自動紐付けは即座に拒否されます。
@@ -315,9 +315,9 @@ export default function SystemSettingsPage() {
               <br />
               <b>トラフィックキャプチャ</b>がオンのときは記録プロキシの<b>上流</b>として使います。通信を記録してから、このプロキシ経由で外部へ接続します。キャプチャがオフの場合は、BashとWebFetchにプロキシ設定を直接渡します。Web検索用とLLM用のプロキシは別に設定します。
               <br />
-              <b>ヒント</b>：socks5 は<b>キャプチャがオフ</b>のとき、各コマンドラインツールの <code>ALL_PROXY</code> 対応に依存します（curl
-              は可、一部ツールは無視する場合あり）。socks5 を主に使う場合はトラフィックキャプチャの有効化を推奨します。この経路は MITM
-              自身が接続するため、ツールに意識させず安定して動作します。
+              <b>SOCKS5の注意</b>：<b>キャプチャがオフ</b>の場合、SOCKS5プロキシを使えるかどうかは各ツールの<code>ALL_PROXY</code>対応によります（curl
+              は対応していますが、設定を無視するツールもあります）。SOCKS5を主に使う場合は、トラフィックキャプチャをオンにすることをお勧めします。その場合は記録用プロキシが
+              上流のSOCKS5プロキシに接続します。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
@@ -388,9 +388,9 @@ export default function SystemSettingsPage() {
               Web 検索
             </CardTitle>
             <CardDescription>
-              ここは Web 検索の<b>総スイッチ + ソース設定</b>です。オンにすると、<b>各エージェントの設定</b>で個別に
-              <b>web_search</b> を有効にするか選べます（タイトル/リンク/要約のみ返し、本文は取得しません。取得は WebFetch が担当）。Web 検索は記録プロキシを<b>経由せず</b>、
-              トラフィックキャプチャとは独立しています。
+              Web検索の<b>利用設定</b>をオンにすると、<b>各エージェントの設定</b>で個別に
+              <b>web_search</b>を使うか選べます。結果にはタイトルとリンクが含まれ、検索元によっては要約も返ります。本文はWebFetchで取得します。Web検索の通信は記録用プロキシを<b>経由しません</b>。
+              トラフィックキャプチャの設定には左右されません。
               <br />
               ソースは <b>DuckDuckGo（ddgs）</b>（Key 不要）、<b>Brave（無料版）</b>（Brave APIキーの入力が必要）、{" "}
               <b>Tavily</b>（Tavily APIキーの入力が必要）、<b>DeepSeek</b>（現在の LLM 設定を再利用）から選択できます。総スイッチがオフの間は、各
@@ -482,11 +482,11 @@ export default function SystemSettingsPage() {
                 </div>
                 {braveNeedsKey && (
                   <p className="text-xs text-amber-500">
-                    Brave を選択しましたが Key が未設定です。Key を保存するまで検索ツールは有効になりません。
+                  BraveのAPIキーが未設定です。キーを保存すると検索を使えるようになります。
                   </p>
                 )}
                 <p className="text-muted-foreground text-xs">
-                  無料版の枠は月約 2,000 回です。Key の取得は https://brave.com/search/api/ へ。
+                  無料版の利用枠は月約2,000回です。APIキーは https://brave.com/search/api/ で取得できます。
                 </p>
               </div>
             )}
@@ -517,7 +517,7 @@ export default function SystemSettingsPage() {
                 </div>
                 {webSearch && backend === "tavily" && !tavilyKeySet && (
                   <p className="text-xs text-amber-500">
-                    Tavily を選択しましたが Key が未設定です。Key を保存するまで検索ツールは有効になりません。
+                    TavilyのAPIキーが未設定です。キーを保存すると検索を使えるようになります。
                   </p>
                 )}
                 <p className="text-muted-foreground text-xs">https://tavily.com で登録してAPIキーを取得してください。</p>
@@ -543,7 +543,7 @@ export default function SystemSettingsPage() {
                   </Button>
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  独立した出口プロキシで、検索エンドポイントへのアクセスにのみ使用します（VPN/SOCKS など）。トラフィックを記録する MITM プロキシとは無関係です。ネットワークが通らない場合はこのプロキシ経由でアクセスします。
+                  Web検索の通信に使うプロキシを指定します。通信記録用のプロキシとは別の設定です。検索先に直接接続できない場合などに指定してください。
                 </p>
               </div>
             )}

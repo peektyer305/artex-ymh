@@ -246,7 +246,7 @@ export function CreateTaskSheet({
               />
               <FieldDescription>
                 最大 {MAX_SOURCE_TASKS}{" "}
-                件まで関連付けられます。選択したタスクのブラックボード、アセット範囲、関連トラフィックを読み取り専用で参照します。参照先の変更も反映されます。新しいタスクの結果は、自分のブラックボードに記録します。
+                件まで関連付けられます。選択したタスクの調査メモ、アセット範囲、通信記録を読み取り専用で参照できます。参照先を変更すると、その内容も更新されます。新しいタスクの結果は、このタスクの調査メモに保存します。
               </FieldDescription>
             </Field>
             <Field>
@@ -262,7 +262,7 @@ export function CreateTaskSheet({
               </FieldDescription>
             </Field>
             <Field>
-              <FieldLabel htmlFor="llm-profiles">LLM 設定チェーン</FieldLabel>
+              <FieldLabel htmlFor="llm-profiles">使用するLLM設定の順序</FieldLabel>
               <TaskLLMProfileChain
                 profiles={profiles}
                 value={llmProfileIDs}

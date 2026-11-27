@@ -713,10 +713,9 @@ function ProfileSheet({
           <div className="grid gap-3 rounded-lg border p-3">
             <div className="flex items-center justify-between gap-4">
               <div className="grid gap-0.5">
-                <Label className="text-sm">思考スイッチ · thinking.type</Label>
+                <Label className="text-sm">思考の有効・無効 · thinking.type</Label>
                 <p className="text-muted-foreground text-xs">
-                  thinking フィールドを送信するか制御。送信しない=フィールドなし（MiniMax など未対応モデル向け）；オフ=disabled
-                  を送信；オン=enabled を送信。下の強度とは互いに独立です。
+                  「送信しない」はthinkingフィールドを付けません（MiniMaxなど、未対応のモデル向け）。「オフ」はdisabled、「オン」はenabledを送ります。下の「思考の強度」とは別に設定できます。
                 </p>
               </div>
               <Select value={thinkingType} onValueChange={setThinkingType}>
@@ -734,10 +733,9 @@ function ProfileSheet({
             </div>
             <div className="flex items-center justify-between gap-4 border-t pt-3">
               <div className="grid gap-0.5">
-                <Label className="text-sm">思考強度 · reasoning_effort</Label>
+                <Label className="text-sm">思考の強度 · reasoning_effort</Label>
                 <p className="text-muted-foreground text-xs">
-                  独立した強度の段階（OpenAI reasoning_effort / Anthropic output_config.effort）。 thinking フィールドを持たず強度だけで
-                  思考を有効化できる API もあるため、思考スイッチを送らず単独で設定できます。
+                  OpenAIではreasoning_effort、Anthropicではoutput_config.effortに対応します。thinkingフィールドに対応しないAPIでも、強度だけを指定して思考を有効にできる場合があります。
                 </p>
               </div>
               <Select value={effort} onValueChange={setEffort}>
