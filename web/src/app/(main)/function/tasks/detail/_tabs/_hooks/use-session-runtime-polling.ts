@@ -2,6 +2,7 @@
 import * as React from "react";
 
 import { api } from "@/lib/api";
+import { createPoller } from "@/lib/poller";
 
 import type { TaskSessionState } from "./use-task-session-state";
 
@@ -24,87 +25,49 @@ export function useSessionRuntimePolling(taskId: string, context: Context) {
     setSessionTokens,
     setTaskTokens,
   } = context;
-  // ── task token total (whole task, all agents) ───────────────────────────────────
   React.useEffect(() => {
-    let alive = true;
-    const load = () =>
-      api
-        .tokenStats(taskId)
-        .then((r) => {
-          if (!alive) return;
-          setTaskTokens(r.total);
-          setSessionTokens(Object.fromEntries(r.sessions.map((item) => [item.session, item])));
-        })
-        .catch(() => {
-          // Polling is best-effort; the next interval retries automatically.
-        });
-    void load();
-    const t = setInterval(load, 5000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
+    const poller = createPoller(
+      (signal) => api.tokenStats(taskId, signal),
+      (result) => {
+        setTaskTokens(result.total);
+        setSessionTokens(Object.fromEntries(result.sessions.map((item) => [item.session, item])));
+      },
+      5000,
+    );
+    void poller.refresh();
+    return () => poller.stop();
   }, [taskId, setTaskTokens, setSessionTokens]);
 
   React.useEffect(() => {
-    let alive = true;
     setMainChatRunning(null);
-    const load = () => {
-      const request = ++chatStatusRequestRef.current;
-      return api
-        .chatStatus(taskId)
-        .then(({ running }) => {
-          if (alive && chatStatusRequestRef.current === request) setMainChatRunning(running);
-        })
-        .catch(() => {
-          // Keep the last authoritative value. Before the first success, recent
-          // activity remains a conservative fallback.
-        });
-    };
-    void load();
-    const timer = setInterval(load, 2000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
+    const poller = createPoller(
+      (signal) => {
+        const request = ++chatStatusRequestRef.current;
+        return api.chatStatus(taskId, signal).then(({ running }) => ({ request, running }));
+      },
+      ({ request, running }) => {
+        if (chatStatusRequestRef.current === request) setMainChatRunning(running);
+      },
+      2000,
+    );
+    void poller.refresh();
+    return () => poller.stop();
   }, [taskId, setMainChatRunning, chatStatusRequestRef]);
 
   React.useEffect(() => {
-    let alive = true;
-    const load = () =>
-      api
-        .taskLLMResolution(taskId)
-        .then((value) => {
-          if (alive) setLLMResolutions(value);
-        })
-        .catch(() => {
-          // Polling is best-effort; the next interval retries automatically.
-        });
-    void load();
-    const timer = setInterval(load, 10_000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
+    const poller = createPoller((signal) => api.taskLLMResolution(taskId, signal), setLLMResolutions, 10_000);
+    void poller.refresh();
+    return () => poller.stop();
   }, [taskId, setLLMResolutions]);
 
   React.useEffect(() => {
-    let alive = true;
-    const load = () =>
-      api
-        .interceptTask(taskId)
-        .then((rows) => {
-          if (alive) setPendingIntercepts(rows.filter((r) => r.status === "pending"));
-        })
-        .catch(() => {
-          // Polling is best-effort; the next interval retries automatically.
-        });
-    void load();
-    const t = setInterval(load, 5000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
+    const poller = createPoller(
+      (signal) => api.interceptTask(taskId, signal),
+      (rows) => setPendingIntercepts(rows.filter((row) => row.status === "pending")),
+      5000,
+    );
+    void poller.refresh();
+    return () => poller.stop();
   }, [taskId, setPendingIntercepts]);
 
   // Re-render on a timer so "streaming" liveness recomputes as activity goes stale.

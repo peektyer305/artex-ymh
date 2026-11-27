@@ -23,7 +23,7 @@ export async function sseUrl(path: string): Promise<string> {
   return `${base}${path}${sep}ticket=${encodeURIComponent(ticket)}`;
 }
 
-export const get = <T>(p: string) => http<T>(p);
+export const get = <T>(p: string, signal?: AbortSignal) => http<T>(p, { signal });
 
 export const post = <T>(p: string, body?: unknown) =>
   http<T>(p, { method: "POST", body: body ? JSON.stringify(body) : undefined });

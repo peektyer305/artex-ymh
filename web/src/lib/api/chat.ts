@@ -20,7 +20,8 @@ export const chatApi = {
   chat: (message: string, task?: string, attachments?: ChatAttachment[], seg?: number) =>
     post<{ reply: string; mode: string }>(`/chat${tq(task)}`, { message, attachments, seg }),
 
-  chatStatus: (taskId: string) => get<{ running: boolean }>(`/tasks/${taskId}/chat/status`),
+  chatStatus: (taskId: string, signal?: AbortSignal) =>
+    get<{ running: boolean }>(`/tasks/${taskId}/chat/status`, signal),
 
   // 方式1 ファイルアップロード:セッション/タスクの作業ディレクトリ uploads/ に置き、agent が Read できる相対パスを返す。
   chatUpload: async (scope: "task" | "session" | "staging", id: string, files: File[]) => {

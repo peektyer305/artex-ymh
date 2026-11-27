@@ -158,7 +158,8 @@ export const tasksApi = {
       request_id: string;
     }>(`/tasks/${taskId}/intents/${intentId}/messages`, { message, request_id: requestId }),
 
-  taskLLMResolution: (id: string) => get<TaskLLMResolutions>(`/tasks/${id}/llm/resolution`),
+  taskLLMResolution: (id: string, signal?: AbortSignal) =>
+    get<TaskLLMResolutions>(`/tasks/${id}/llm/resolution`, signal),
 
   // うまく走らなかった意図(blocked/exhausted/stopped)を再実行する：open に戻すと worker が再び引き取り、最初から走らせる。
   rerunIntent: (taskId: string, intentId: string) =>

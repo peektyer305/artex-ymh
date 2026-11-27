@@ -58,8 +58,8 @@ export const interceptApi = {
       total: r.total ?? r.items?.length ?? 0,
     })),
 
-  interceptTask: (taskId: string) =>
-    get<{ items: InterceptApprovalRow[] }>(`/intercept/task/${taskId}`).then((r) => arr(r.items)),
+  interceptTask: (taskId: string, signal?: AbortSignal) =>
+    get<{ items: InterceptApprovalRow[] }>(`/intercept/task/${taskId}`, signal).then((r) => arr(r.items)),
 
   interceptTaskPage: (taskId: string, page = 1, size = 20, filter: InterceptApprovalFilter = {}) =>
     get<{ items: InterceptApprovalRow[]; total?: number }>(

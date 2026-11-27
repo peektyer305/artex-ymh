@@ -12,9 +12,10 @@ export const explorationApi = {
 
   intents: (task?: string) => get<TaskNode[]>(`/exploration/intents${tq(task)}`).then(arr),
 
-  tokenStats: (task?: string) =>
+  tokenStats: (task?: string, signal?: AbortSignal) =>
     get<{ workers: TokenUsage[]; sessions: SessionTokenUsage[]; total: TokenTotal }>(
       `/exploration/tokens${tq(task)}`,
+      signal,
     ).then((r) => ({
       workers: arr(r.workers),
       sessions: arr(r.sessions),
