@@ -2,23 +2,10 @@
 
 import * as React from "react";
 
-import Link from "next/link";
-
-import {
-  ArrowUpRightIcon,
-  BugIcon,
-  ChevronRightIcon,
-  ClockIcon,
-  DownloadIcon,
-  InfoIcon,
-  SearchIcon,
-  ShieldAlertIcon,
-  TriangleAlertIcon,
-} from "lucide-react";
+import { BugIcon, ChevronRightIcon, ClockIcon, InfoIcon, ShieldAlertIcon, TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { FindingRetestDialog } from "@/components/finding-retest-dialog";
-import { StatusBadge } from "@/components/status-badge";
 import { TablePagination } from "@/components/table-pagination";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,13 +18,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
 import { getLocalStorageValue, setLocalStorageValue } from "@/lib/local-storage.client";
 import { statusMeta } from "@/lib/status";
@@ -46,24 +29,25 @@ import type {
   Finding,
   FindingAssetNode,
   FindingGroup,
-  FindingStats,
   FindingStatus,
   Severity,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 import { AssetTree, assetPathOf } from "./_components/asset-tree";
+import { FindingFilters } from "./_components/finding-filters";
+import { FindingGroups, findingGroupKey, type GroupFindingsState } from "./_components/finding-groups";
 import {
   FINDING_STATUSES,
   type FindingEdit,
   type FindingReport,
   FindingsTable,
   findingRowKey,
-  fmtTime,
   isSameFinding,
   SEVERITIES,
   UNASSIGNED_TASK,
 } from "./_components/findings-table";
+import { useFindingStats } from "./_hooks/use-finding-stats";
 
 const FINDING_LIST_PREFERENCE_KEY = "artex_finding_list_preferences";
 
@@ -93,16 +77,6 @@ const EMPTY_ASSET_TREE: AssetTreeState = {
   loading: false,
 };
 
-// グループビューでは展開中のタスクグループごとにページング状態を持ち、互いに独立している。
-interface GroupFindingsState {
-  items: Finding[];
-  total: number;
-  page: number;
-  pageSize: number;
-  loaded: boolean;
-  loading: boolean;
-}
-
 // 平置きビューのページ番号は state に分けて置き（スナップショットには入れない）、絞り込みが変わればまとめてリセットして再読み込みできるようにする。
 interface FlatFindingsState {
   items: Finding[];
@@ -112,21 +86,6 @@ interface FlatFindingsState {
 }
 
 const EMPTY_FLAT_STATE: FlatFindingsState = { items: [], total: 0, loaded: false, loading: false };
-
-function findingGroupKey(group: FindingGroup) {
-  return group.task_id === null ? UNASSIGNED_TASK : String(group.task_id);
-}
-
-const EMPTY_STATS: FindingStats = {
-  total: 0,
-  pending: 0,
-  critical: 0,
-  high: 0,
-  medium: 0,
-  low: 0,
-  vulnclasses: [],
-  tasks: [],
-};
 
 export default function FindingsPage() {
   const [view, setView] = React.useState<FindingView>("flat");
@@ -148,8 +107,7 @@ export default function FindingsPage() {
   const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(() => new Set());
   const [groupFindings, setGroupFindings] = React.useState<Record<string, GroupFindingsState>>({});
   const [total, setTotal] = React.useState(0);
-  const [stats, setStats] = React.useState<FindingStats>(EMPTY_STATS);
-  const [statsLoaded, setStatsLoaded] = React.useState(false);
+  const { stats, statsLoaded, refreshStats } = useFindingStats();
   const [preferencesHydrated, setPreferencesHydrated] = React.useState(false);
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(10);
@@ -248,12 +206,6 @@ export default function FindingsPage() {
 
   // チェックしてエクスポート：finding_id（独立テーブルの id）で選択項目を記録し、ページをまたいで保持する。
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
-  // エクスポートダイアログの状態:範囲（現在の絞り込み/すべて/選択分）× 形式（md 単一ファイル/md 分割 zip/csv/json）。
-  const [exportOpen, setExportOpen] = React.useState(false);
-  const [exportScope, setExportScope] = React.useState<"filtered" | "all" | "selected">("filtered");
-  const [exportFormat, setExportFormat] = React.useState<"md-single" | "md-zip" | "csv" | "json">("md-single");
-  const [exporting, setExporting] = React.useState(false);
-
   const toggleSelected = React.useCallback((id: string, checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -273,30 +225,6 @@ export default function FindingsPage() {
       return next;
     });
   }, []);
-
-  // エクスポートダイアログを開くとき、チェック済み項目があれば既定の範囲を「選択分」に、なければ「現在の絞り込み」にする。
-  function openExport() {
-    setExportScope(selectedIds.size > 0 ? "selected" : "filtered");
-    setExportOpen(true);
-  }
-
-  async function doExport() {
-    setExporting(true);
-    try {
-      await api.exportFindings({
-        format: exportFormat,
-        scope: exportScope,
-        filters: { severity, status, vulnclass, task, query, sort },
-        ids: [...selectedIds],
-      });
-      setExportOpen(false);
-      toast.success("エクスポートファイルのダウンロードを開始しました");
-    } catch (e) {
-      toast.error(`エクスポートに失敗しました：${(e as Error).message}`);
-    } finally {
-      setExporting(false);
-    }
-  }
 
   const flatRequest = React.useRef(0);
   const assetTreeRequest = React.useRef(0);
@@ -533,9 +461,11 @@ export default function FindingsPage() {
   React.useEffect(() => {
     if (!preferencesHydrated) return;
     void activeRetestFingerprint; // 不定期ポーリングのアセットビューも、再テスト終了後に処理ステータスを更新する。
-    const refresh = () => {
+    const refresh = (force = false) => {
       if (view === "flat" || view === "asset") {
-        if (!flatStateRef.current.loading) void loadFlat();
+        // フィルター変更直後は前の条件の通信が残っていても新しい条件を取得する。
+        // アセットビューには定期取得がないため、初回を省くと一覧が空のままになる。
+        if (force || !flatStateRef.current.loading) void loadFlat();
         return;
       }
       void refreshGroups();
@@ -545,9 +475,9 @@ export default function FindingsPage() {
         if (state?.loaded && !state.loading) void loadGroup(key, state.page, state.pageSize);
       }
     };
-    refresh();
+    refresh(true);
     if (view === "asset") return;
-    const timer = setInterval(refresh, 5000);
+    const timer = setInterval(() => refresh(), 5000);
     return () => clearInterval(timer);
   }, [activeRetestFingerprint, loadFlat, loadGroup, preferencesHydrated, refreshGroups, view]);
 
@@ -561,31 +491,6 @@ export default function FindingsPage() {
     const lastPage = Math.max(1, Math.ceil(flat.total / flatPageSize));
     if (flatPage > lastPage) setFlatPage(lastPage);
   }, [flat.loaded, flat.total, flatPage, flatPageSize]);
-
-  // Whole-table aggregates (stat cards + vuln-class options) — independent of the
-  // current page, so they stay exact.
-  React.useEffect(() => {
-    let alive = true;
-    const load = () => {
-      api
-        .findingStats()
-        .then((s) => {
-          if (alive) {
-            setStats(s);
-            setStatsLoaded(true);
-          }
-        })
-        .catch(() => {
-          // Keep the previous aggregate snapshot until the next poll.
-        });
-    };
-    load();
-    const t = setInterval(load, 5000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
 
   React.useEffect(() => {
     if (!statsLoaded) return;
@@ -609,12 +514,7 @@ export default function FindingsPage() {
         await api.setFindingStatus(f.finding_id, next);
         toast.success(`「${statusMeta("finding", next).label}」に変更しました`);
         // refresh stat cards (pending count) and drop the row if it no longer matches the status filter
-        api
-          .findingStats()
-          .then(setStats)
-          .catch(() => {
-            // The row update remains valid even if the aggregate refresh fails.
-          });
+        void refreshStats();
         if (status !== "all" && next !== status) {
           setFindings((cur) => cur.filter((x) => !isSameFinding(x, f)));
           setTotal((t) => Math.max(0, t - 1));
@@ -626,7 +526,7 @@ export default function FindingsPage() {
         toast.error(`更新に失敗しました：${(e as Error).message}`);
       }
     },
-    [refreshAfterMutation, setFindings, status],
+    [refreshAfterMutation, refreshStats, setFindings, status],
   );
 
   // インライン展開の詳細レポートキャッシュはグローバルに安定した行キーで保持する。report は大きな Markdown で一覧クエリに含まれないため、
@@ -679,12 +579,7 @@ export default function FindingsPage() {
           ),
         );
         toast.success("保存しました");
-        api
-          .findingStats()
-          .then(setStats)
-          .catch(() => {
-            // The edit remains valid even if the aggregate refresh fails.
-          });
+        void refreshStats();
         refreshAfterMutation(f);
       } catch (e) {
         toast.error(`保存に失敗しました：${(e as Error).message}`);
@@ -692,7 +587,7 @@ export default function FindingsPage() {
         setSaving(false);
       }
     },
-    [edit, refreshAfterMutation, setFindings],
+    [edit, refreshAfterMutation, refreshStats, setFindings],
   );
 
   // deleteFinding は 1 件の脆弱性を削除する(2 段階確認あり)。成功したら一覧から外し、行を折りたたみ、統計を更新する。
@@ -712,18 +607,13 @@ export default function FindingsPage() {
         const rowKey = findingRowKey(f);
         setExpanded((cur) => (cur === rowKey ? null : cur));
         toast.success("脆弱性を削除しました");
-        api
-          .findingStats()
-          .then(setStats)
-          .catch(() => {
-            // The deletion remains valid even if the aggregate refresh fails.
-          });
+        void refreshStats();
         refreshAfterMutation(f, true);
       } catch (e) {
         toast.error(`削除に失敗しました：${(e as Error).message}`);
       }
     },
-    [refreshAfterMutation, setFindings],
+    [refreshAfterMutation, refreshStats, setFindings],
   );
 
   const openDeepen = React.useCallback((f: Finding) => {
@@ -847,117 +737,24 @@ export default function FindingsPage() {
           })}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <InputGroup className="w-full sm:w-72">
-            <InputGroupInput
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="脆弱性の内容を検索"
-              aria-label="脆弱性の内容を検索"
-            />
-            <InputGroupAddon>
-              <SearchIcon aria-hidden="true" />
-            </InputGroupAddon>
-          </InputGroup>
-
-          <ToggleGroup
-            type="single"
-            value={severity}
-            onValueChange={(value) => value && setSeverity(value as "all" | Severity)}
-            variant="outline"
-            size="sm"
-            spacing={0}
-          >
-            {(
-              [
-                ["all", "すべて"],
-                ["critical", "緊急"],
-                ["high", "高"],
-                ["medium", "中"],
-                ["low", "低"],
-              ] as const
-            ).map(([val, label]) => (
-              <ToggleGroupItem key={val} value={val} aria-label={`${label}で絞り込み`}>
-                {label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-
-          <Select value={status} onValueChange={(v) => setStatus(v as "all" | FindingStatus)}>
-            <SelectTrigger size="sm" className="w-32">
-              <SelectValue placeholder="ステータス" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべてのステータス</SelectItem>
-              {FINDING_STATUSES.map((st) => (
-                <SelectItem key={st} value={st}>
-                  {statusMeta("finding", st).label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={vulnclass} onValueChange={setVulnclass}>
-            <SelectTrigger size="sm" className="w-40">
-              <SelectValue placeholder="脆弱性タイプ" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべてのタイプ</SelectItem>
-              {stats.vulnclasses.map((vc) => (
-                <SelectItem key={vc} value={vc}>
-                  {vc}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={task} onValueChange={setTask}>
-            <SelectTrigger size="sm" className="w-48">
-              <SelectValue placeholder="タスク" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべてのタスク</SelectItem>
-              <SelectItem value={UNASSIGNED_TASK}>未関連 / タスク削除済み</SelectItem>
-              {(stats.tasks ?? []).map((t) => {
-                const id = String(t.id);
-                const label = t.name || t.description || `タスク #${id}（削除済み）`;
-                return (
-                  <SelectItem key={id} value={id}>
-                    <span className="flex w-full items-center gap-2">
-                      <span className="max-w-[14rem] truncate" title={label}>
-                        {label}
-                      </span>
-                      <span className="inline-flex items-center gap-1 text-muted-foreground tabular-nums">
-                        <BugIcon className="size-3.5" aria-hidden="true" />
-                        {t.count}
-                      </span>
-                    </span>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-
-          <Select value={sort} onValueChange={(v) => setSort(v as "severity" | "time")}>
-            <SelectTrigger size="sm" className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="severity">深刻度順</SelectItem>
-              <SelectItem value="time">日時順</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <div className="ml-auto flex items-center gap-3">
-            {selectedIds.size > 0 && (
-              <span className="text-xs text-muted-foreground tabular-nums">選択中 {selectedIds.size} 件</span>
-            )}
-            <Button size="sm" variant="outline" onClick={openExport}>
-              <DownloadIcon /> エクスポート
-            </Button>
-          </div>
-        </div>
+        <FindingFilters
+          search={search}
+          setSearch={setSearch}
+          severity={severity}
+          setSeverity={setSeverity}
+          status={status}
+          setStatus={setStatus}
+          vulnclass={vulnclass}
+          setVulnclass={setVulnclass}
+          task={task}
+          setTask={setTask}
+          sort={sort}
+          setSort={setSort}
+          query={query}
+          stats={stats}
+          selectedIds={selectedIds}
+          filteredTotal={filteredTotal}
+        />
 
         {view === "flat" && flatListCard}
 
@@ -1015,117 +812,19 @@ export default function FindingsPage() {
           </div>
         )}
 
-        {view === "grouped" && (
-          <div className="flex flex-col gap-3">
-            {groups.map((group) => {
-              const key = findingGroupKey(group);
-              const groupOpen = expandedGroups.has(key);
-              const state = groupFindings[key] ?? {
-                items: [],
-                total: group.count,
-                page: 1,
-                pageSize: 10,
-                loaded: false,
-                loading: false,
-              };
-              return (
-                <Card key={key} className="gap-0 py-0">
-                  <CardHeader className="px-4 py-3">
-                    <div className="flex min-w-0 flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                        aria-expanded={groupOpen}
-                        onClick={() => toggleGroup(key)}
-                      >
-                        <ChevronRightIcon
-                          className={cn(
-                            "size-4 shrink-0 text-muted-foreground transition-transform",
-                            groupOpen && "rotate-90",
-                          )}
-                        />
-                        <div className="flex min-w-0 flex-col gap-1">
-                          <CardTitle className="truncate text-sm">
-                            {group.task_id === null
-                              ? "未関連 / タスク削除済み"
-                              : group.task_name
-                                ? `${group.task_name}（タスク #${group.task_id}）`
-                                : `タスク #${group.task_id}`}
-                          </CardTitle>
-                          <CardDescription className="truncate" title={group.task_description}>
-                            {group.task_description || "ソースタスクは利用できません"}
-                          </CardDescription>
-                        </div>
-                      </button>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {group.task_status && <StatusBadge domain="task" value={group.task_status} dot />}
-                        {SEVERITIES.map((level) => {
-                          const count = group[level];
-                          if (count === 0) return null;
-                          return (
-                            <span key={level} className="inline-flex items-center gap-1">
-                              <StatusBadge domain="severity" value={level} dot />
-                              <span className="text-xs tabular-nums text-muted-foreground">{count}</span>
-                            </span>
-                          );
-                        })}
-                        <span className="text-xs tabular-nums text-muted-foreground">
-                          {fmtTime(group.last_found_at)}
-                        </span>
-                        {group.task_id !== null && (
-                          <Button size="icon-sm" variant="ghost" asChild>
-                            <Link
-                              href={`/function/tasks/detail?id=${group.task_id}`}
-                              aria-label={`タスク #${group.task_id} を表示`}
-                            >
-                              <ArrowUpRightIcon />
-                            </Link>
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  {groupOpen && (
-                    <CardContent className="px-0">
-                      {state.loading && !state.loaded ? (
-                        <div className="flex min-h-36 items-center justify-center">
-                          <Spinner />
-                        </div>
-                      ) : (
-                        <>
-                          <FindingsTable items={state.items} selectAllLabel="このグループの現在のページをすべて選択" {...rowProps} />
-                          <TablePagination
-                            page={state.page}
-                            pageSize={state.pageSize}
-                            total={state.total}
-                            onPageChange={(nextPage) => void loadGroup(key, nextPage, state.pageSize)}
-                            onPageSizeChange={(nextSize) => void loadGroup(key, 1, nextSize)}
-                          />
-                        </>
-                      )}
-                    </CardContent>
-                  )}
-                </Card>
-              );
-            })}
-            {groups.length === 0 && (
-              <Card>
-                <CardContent className="py-12 text-center text-sm text-muted-foreground">一致するファインディングがありません。</CardContent>
-              </Card>
-            )}
-            <TablePagination
-              page={page}
-              pageSize={pageSize}
-              total={groupTotal}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={[5, 10, 20]}
-            />
-          </div>
-        )}
+        <FindingGroups
+          groups={groups}
+          expandedGroups={expandedGroups}
+          groupFindings={groupFindings}
+          toggleGroup={toggleGroup}
+          loadGroup={loadGroup}
+          rowProps={rowProps}
+          page={page}
+          pageSize={pageSize}
+          groupTotal={groupTotal}
+          setPage={setPage}
+          setPageSize={setPageSize}
+        />
       </div>
 
       {retestFinding?.finding_id ? (
@@ -1196,64 +895,6 @@ export default function FindingsPage() {
             <Button onClick={submitDeepen} disabled={deepening || !deepenDescription.trim()}>
               {deepening && <Spinner data-icon="inline-start" />}
               追加調査の実行指示を作成
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ファインディングのエクスポート</DialogTitle>
-            <DialogDescription>エクスポート範囲と形式を選択してください。生成後、ブラウザが自動でダウンロードします。</DialogDescription>
-          </DialogHeader>
-
-          <div className="flex flex-col gap-5 py-1">
-            <div className="flex flex-col gap-2">
-              <span className="text-xs text-muted-foreground">エクスポート範囲</span>
-              <RadioGroup value={exportScope} onValueChange={(v) => setExportScope(v as typeof exportScope)}>
-                <label htmlFor="export-scope-filtered" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-scope-filtered" value="filtered" /> 現在の絞り込み結果をエクスポート（全 {filteredTotal}{" "}
-                  件）
-                </label>
-                <label htmlFor="export-scope-all" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-scope-all" value="all" /> すべてをエクスポート
-                </label>
-                <label
-                  htmlFor="export-scope-selected"
-                  className={cn("flex items-center gap-2 text-sm", selectedIds.size === 0 && "text-muted-foreground")}
-                >
-                  <RadioGroupItem id="export-scope-selected" value="selected" disabled={selectedIds.size === 0} />
-                  選択した {selectedIds.size} 件をエクスポート
-                </label>
-              </RadioGroup>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-xs text-muted-foreground">エクスポート形式</span>
-              <RadioGroup value={exportFormat} onValueChange={(v) => setExportFormat(v as typeof exportFormat)}>
-                <label htmlFor="export-format-md-single" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-md-single" value="md-single" /> Markdown サマリレポート（単一 .md ファイル）
-                </label>
-                <label htmlFor="export-format-md-zip" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-md-zip" value="md-zip" /> Markdown 分割ファイル（1 脆弱性 1 .md、.zip にまとめる）
-                </label>
-                <label htmlFor="export-format-csv" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-csv" value="csv" /> CSV テーブル（.csv）
-                </label>
-                <label htmlFor="export-format-json" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-format-json" value="json" /> JSON（.json）
-                </label>
-              </RadioGroup>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setExportOpen(false)} disabled={exporting}>
-              キャンセル
-            </Button>
-            <Button onClick={doExport} disabled={exporting || (exportScope === "selected" && selectedIds.size === 0)}>
-              <DownloadIcon /> {exporting ? "エクスポート中…" : "エクスポート"}
             </Button>
           </DialogFooter>
         </DialogContent>

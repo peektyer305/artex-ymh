@@ -50,7 +50,7 @@ export const findingsApi = {
   findingAssetTree: (q: Omit<FindingQuery, "page" | "pageSize">) =>
     get<FindingAssetTree>(`/exploration/findings/asset-tree?${findingFilterParams(q).toString()}`),
 
-  findingStats: () => get<FindingStats>("/exploration/findings/stats"),
+  findingStats: (signal?: AbortSignal) => http<FindingStats>("/exploration/findings/stats", { signal }),
 
   // exportFindings はファインディングページのエクスポートを実行しファイルをダウンロードする。scope=selected なら ids(finding_id のリスト)を渡す;
   // scope=filtered なら現在の絞り込み(FindingQuery の絞り込みフィールド)を渡す;scope=all は絞り込みを無視。
