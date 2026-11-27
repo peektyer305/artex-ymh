@@ -120,9 +120,9 @@ TokenMetrics.displayName = "TokenMetrics";
 // fmtDuration renders an elapsed milliseconds span compactly (90s → 1m30s).
 
 export const roleMeta = {
-  mainagent: { label: "メイン Agent", icon: UserIcon },
+  mainagent: { label: "メインエージェント", icon: UserIcon },
   planner: { label: "プランナー", icon: BrainIcon },
-  worker: { label: "Workers", icon: RadioIcon },
+  worker: { label: "ワーカー", icon: RadioIcon },
   system: { label: "システム監査", icon: HistoryIcon },
 } as const;
 
@@ -215,8 +215,8 @@ export function SessionItem({
             size="icon-xs"
             onClick={onCancel}
             disabled={controlling}
-            title="この意図を削除（理由必須、論理削除/物理削除を選択可）"
-            aria-label="この意図を削除（理由必須、論理削除/物理削除を選択可）"
+            title="実行指示を削除（理由の入力と、記録を残すかどうかの選択が必要です）"
+            aria-label="実行指示を削除（理由の入力と、記録を残すかどうかの選択が必要です）"
             className="text-destructive hover:text-destructive"
           >
             <Trash2Icon />

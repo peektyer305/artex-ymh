@@ -201,13 +201,13 @@ function ToolEditor({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
         {trafficGated && (
           <div className="border-amber-500/40 bg-amber-500/10 text-muted-foreground rounded-md border px-3 py-2 text-xs">
-            このツールは<b>トラフィックキャプチャ</b>に依存します。「システム設定」でトラフィックキャプチャをオンにすると、Agent にバインドして有効化できます。
+            このツールは<b>トラフィックキャプチャ</b>に依存します。「システム設定」でトラフィックキャプチャをオンにすると、エージェントにバインドして有効化できます。
           </div>
         )}
         {/* binding + switch */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <div className="grid gap-1.5">
-            <Label className="text-muted-foreground text-xs">Agent バインド（このツールを渡す Agent を指定）</Label>
+            <Label className="text-muted-foreground text-xs">エージェントへの割り当て（このツールを渡すエージェントを指定）</Label>
             <div className="flex flex-wrap gap-3">
               {agents.map((ag) => (
                 <label key={ag.key} className="flex items-center gap-2 text-sm">
@@ -220,7 +220,7 @@ function ToolEditor({
                   <span className="text-muted-foreground font-mono text-xs">{ag.key}</span>
                 </label>
               ))}
-              {agents.length === 0 && <span className="text-muted-foreground text-xs">（Agent なし）</span>}
+              {agents.length === 0 && <span className="text-muted-foreground text-xs">（エージェントなし）</span>}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -351,7 +351,7 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
       </p>
       <div className="mt-auto flex flex-wrap gap-1 pt-1">
         {tool.agents.length === 0 && (
-          <span className="text-muted-foreground text-[10px]">（Agent 未バインド）</span>
+          <span className="text-muted-foreground text-[10px]">（エージェント未割り当て）</span>
         )}
         {tool.agents.map((a) => (
           <Badge key={a} variant="outline" className="px-1.5 py-0 text-[10px]">
@@ -409,7 +409,7 @@ export default function ToolsPage() {
           <SearchIcon className="text-muted-foreground absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
           <Input
             className="h-8 pl-8 text-sm"
-            placeholder="ツール名・説明・Agent を検索…"
+            placeholder="ツール名・説明・エージェントを検索…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -428,8 +428,8 @@ export default function ToolsPage() {
               <CardTitle>システムツール</CardTitle>
               <CardDescription>
                 {query.trim()
-                  ? `${systemTools.length} / ${allSystemCount} 件一致。カードをクリックして説明・パラメータのデフォルト値・Agent バインドを編集`
-                  : `全 ${allSystemCount} 件。カードをクリックして説明・パラメータのデフォルト値・Agent バインドを編集`}
+                  ? `${systemTools.length} / ${allSystemCount} 件一致。カードをクリックして説明・パラメータのデフォルト値・エージェントへの割り当てを編集`
+                  : `全 ${allSystemCount} 件。カードをクリックして説明・パラメータのデフォルト値・エージェントへの割り当てを編集`}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -491,7 +491,7 @@ export default function ToolsPage() {
             <>
               <SheetHeader className="px-4">
                 <SheetTitle className="font-mono">{selected.key}</SheetTitle>
-                <SheetDescription>説明・パラメータのデフォルト値・Agent バインドを編集</SheetDescription>
+                <SheetDescription>説明・パラメータのデフォルト値・エージェントへの割り当てを編集</SheetDescription>
               </SheetHeader>
               <ToolEditor
                 key={selected.key}
@@ -779,7 +779,7 @@ function CustomToolDialog({
           )}
 
           <div className="grid gap-1.5">
-            <Label className="text-muted-foreground text-xs">Agent バインド</Label>
+            <Label className="text-muted-foreground text-xs">エージェントへの割り当て</Label>
             <div className="flex flex-wrap gap-3">
               {agents.map((a) => (
                 <label key={a.key} className="flex items-center gap-2 text-sm">

@@ -150,8 +150,8 @@ function CodeBlock({ label, text, truncated = false }: { label: string; text: st
 
 const contextLabels: Record<string, string> = {
   user: "ユーザーメッセージ",
-  assistant: "Agent メッセージ",
-  text: "Agent メッセージ",
+  assistant: "エージェントメッセージ",
+  text: "エージェントメッセージ",
   tool_use: "ツールリクエスト",
   tool_result: "ツール出力",
 };
@@ -184,14 +184,14 @@ function ModelReviewContext({ input }: { input: InterceptReviewInput }) {
         input.background ? (
           <div className="flex min-w-0 flex-col gap-2">
             <CodeBlock
-              label={input.background.source === "user_message" ? "背景 · ユーザーメッセージ" : "背景 · Worker 意図要約（旧版）"}
+              label={input.background.source === "user_message" ? "背景 · ユーザーメッセージ" : "背景 · ワーカー実行指示の要約（旧版）"}
               text={input.background.text}
               truncated={input.background.truncated}
             />
             <p className="text-muted-foreground text-xs">
               {input.background.source === "user_message"
                 ? "現在のユーザーメッセージから取得。"
-                : "これは旧版が送信した Worker 意図要約です。新版の Worker 審査では送信されません。"}
+                : "これは旧版が送信したワーカー実行指示の要約です。新版のワーカー審査では送信されません。"}
             </p>
           </div>
         ) : (
@@ -210,7 +210,7 @@ function ModelReviewContext({ input }: { input: InterceptReviewInput }) {
             </>
           ) : null}
           {input.worker_intent ? (
-            <CodeBlock label="Worker 意図（旧版）" text={input.worker_intent} truncated={input.background_truncated} />
+            <CodeBlock label="ワーカー実行指示（旧版）" text={input.worker_intent} truncated={input.background_truncated} />
           ) : null}
         </>
       )}
@@ -333,7 +333,7 @@ export function ApprovalDetail({
       <div className="grid min-w-0 gap-5 rounded-xl border bg-muted/20 p-4 lg:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-3">
           <CodeBlock
-            label={`${current.agent_name || current.conv_agent_key || "Agent"} · ツールリクエスト`}
+            label={`${current.agent_name || current.conv_agent_key || "エージェント"} · ツールリクエスト`}
             text={JSON.stringify(row.tool_input ?? {}, null, 2)}
           />
           {command ? (
@@ -406,7 +406,7 @@ export function ApprovalDetail({
       {!detail && !error ? <Skeleton className="h-8 w-60" /> : null}
       {detail && !audit ? (
         <Alert>
-          <AlertDescription>この記録には承認詳細のスナップショットが保存されておらず、当時のコンテキスト、モデル初回判定、実行出力を復元できません。</AlertDescription>
+          <AlertDescription>この記録には承認時の詳細が保存されていないため、当時の会話、モデルの初回判定、実行結果を表示できません。</AlertDescription>
         </Alert>
       ) : null}
       {audit ? (
@@ -425,7 +425,7 @@ export function ApprovalDetail({
                 <Alert>
                   <AlertDescription>
                     {audit.model_input_digest
-                      ? "この履歴記録には審査入力のフィンガープリントのみ保存され、入力原文は保存されていないため、当時モデルに送信したコンテキストを復元できません。これは審査時にコンテキストがなかったことを意味しません。新たに生成されるモデル判定では入力スナップショットが保持されます。"
+                      ? "この記録には、審査入力を識別する情報だけが保存され、入力本文は残っていません。そのため、当時モデルに送った内容を表示できません。新しいモデル判定では入力本文も保存されます。"
                       : "この記録にはモデル審査入力が保存されていません。ルールによる直接判定、モデル呼び出し前の異常、または旧バージョンでの生成が原因と考えられます。"}
                   </AlertDescription>
                 </Alert>
@@ -487,7 +487,7 @@ export function ApprovalDetail({
                 <Alert>
                   <AlertDescription>
                     {audit.correlation === "ambiguous"
-                      ? "同一パラメータの同時呼び出しがあり、ツール呼び出しを一意に対応付けできません。この記録では推測の実行結果を表示しません。"
+                      ? "同じパラメータで同時に呼び出されたため、どの実行結果に対応するか特定できません。対応を確認できた結果だけを表示します。"
                       : "一意に対応付けできるツール呼び出し ID が記録されていません。"}
                   </AlertDescription>
                 </Alert>

@@ -98,7 +98,7 @@ function TaskLLMControl({ task, profiles, onUpdated }: { task: Task; profiles: L
     .filter(Boolean)
     .join(" · ");
   let editorDescription = "順序または現在の設定を変更すると、次回の LLM 呼び出しから反映されます。";
-  if (terminal) editorDescription = "タスクは終了しています。変更は以降のメイン Agent の会話にのみ影響します。";
+  if (terminal) editorDescription = "タスクは終了しています。変更は以降のメインエージェントの会話にのみ影響します。";
   let saveLabel = "保存";
   if (exhausted) saveLabel = "保存してリセット";
   if (saving) saveLabel = "保存中";
@@ -132,7 +132,7 @@ function TaskLLMControl({ task, profiles, onUpdated }: { task: Task; profiles: L
       } else {
         toast.success(
           result.reopened_intents > 0
-            ? `LLM 設定を更新し、予算でブロックされた意図 ${result.reopened_intents} 件を復元しました`
+            ? `LLM 設定を更新し、予算でブロックされた実行指示 ${result.reopened_intents} 件を復元しました`
             : "LLM 設定を更新しました",
         );
       }
@@ -372,8 +372,7 @@ function TaskDetailInner() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>タスク #{task.id} をアーカイブしますか？</AlertDialogTitle>
                   <AlertDialogDescription>
-                    タスクグラフ、関連レコード、専有アセットとトラフィック、作業ファイル、LLM
-                    履歴がコールドストレージに圧縮されます。アーカイブ完了後はタスク一覧の「アーカイブ済み」から復元できます。
+                    タスクのグラフ、関連記録、このタスクだけが使うアセットとトラフィック、作業ファイル、LLM履歴を圧縮してローカルに保存します。保存後はタスク一覧の「アーカイブ済み」から復元できます。
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

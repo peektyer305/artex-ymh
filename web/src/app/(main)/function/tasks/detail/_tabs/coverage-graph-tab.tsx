@@ -374,7 +374,7 @@ function AssetSheet({
                 </section>
                 {refs && (refs.intents.length > 0 || refs.facts.length > 0 || refs.findings.length > 0) && (
                   <section className="flex flex-col gap-3 border-t pt-3">
-                    <RefList title="関連する意図" items={refs.intents} />
+                    <RefList title="関連する実行指示" items={refs.intents} />
                     <RefList title="関連する事実" items={refs.facts} />
                     <RefList title="関連するファインディング" items={refs.findings} />
                   </section>
@@ -690,7 +690,7 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
           </span>
         </div>
         <p className="text-muted-foreground/80 border-border/60 border-t pt-2 leading-relaxed">
-          力学レイアウト。ノードはドラッグ、ホイールでズームできます。灰色の「⋯」は折りたたみノードで、クリックすると展開できます。
+          ノードをドラッグして移動し、ホイールで拡大・縮小できます。灰色の「⋯」をクリックすると、折りたたまれたノードを展開できます。
         </p>
       </div>
 

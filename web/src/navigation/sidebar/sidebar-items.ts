@@ -83,7 +83,7 @@ export const sidebarItems: NavGroup[] = [
     label: "システム",
     items: [
       { id: "llm", title: "LLM", url: "/system/llm", icon: Brain },
-      { id: "agents", title: "Agent", url: "/system/agents", icon: Bot },
+      { id: "agents", title: "エージェント", url: "/system/agents", icon: Bot },
       { id: "mcp", title: "MCP", url: "/system/mcp", icon: Plug },
       { id: "skills", title: "Skill", url: "/system/skills", icon: Sparkles },
       { id: "tools", title: "ツール", url: "/system/tools", icon: Wrench },

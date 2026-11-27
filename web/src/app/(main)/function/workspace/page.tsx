@@ -78,7 +78,7 @@ export default function WorkspacePage() {
           setEntries(r.entries);
           setPath(r.path);
         })
-        .catch((e) => toast.error(`ディレクトリの読み込みに失敗しました：${(e as Error).message}`))
+        .catch((e) => toast.error(`フォルダーの内容を取得できませんでした：${(e as Error).message}`))
         .finally(() => setLoading(false));
     },
     [],
@@ -103,7 +103,7 @@ export default function WorkspacePage() {
     api
       .workspaceRead(e.path)
       .then((f) => setEdit({ file: f, content: f.content ?? "", dirty: false, saving: false }))
-      .catch((err) => toast.error(`ファイルを開くのに失敗しました：${(err as Error).message}`));
+      .catch((err) => toast.error(`ファイルを開けませんでした：${(err as Error).message}`));
   };
 
   const saveFile = () => {
@@ -117,7 +117,7 @@ export default function WorkspacePage() {
         load(path);
       })
       .catch((err) => {
-        toast.error(`保存に失敗しました：${(err as Error).message}`);
+        toast.error(`ファイルを保存できませんでした：${(err as Error).message}`);
         setEdit((cur) => (cur ? { ...cur, saving: false } : cur));
       });
   };
@@ -130,7 +130,7 @@ export default function WorkspacePage() {
         toast.success("削除しました");
         load(path);
       })
-      .catch((err) => toast.error(`削除に失敗しました：${(err as Error).message}`));
+      .catch((err) => toast.error(`ファイルまたはフォルダーを削除できませんでした：${(err as Error).message}`));
   };
 
   const doUpload = (files: FileList | null) => {
@@ -141,7 +141,7 @@ export default function WorkspacePage() {
         toast.success(`${r.uploaded}件のファイルをアップロードしました`);
         load(path);
       })
-      .catch((err) => toast.error(`アップロードに失敗しました：${(err as Error).message}`))
+      .catch((err) => toast.error(`ファイルをアップロードできませんでした：${(err as Error).message}`))
       .finally(() => {
         if (uploadRef.current) uploadRef.current.value = "";
       });
@@ -159,7 +159,7 @@ export default function WorkspacePage() {
         setMkdirName("");
         load(path);
       })
-      .catch((err) => toast.error(`作成に失敗しました：${(err as Error).message}`));
+      .catch((err) => toast.error(`フォルダーを作成できませんでした：${(err as Error).message}`));
   };
 
   return (
@@ -219,7 +219,7 @@ export default function WorkspacePage() {
               {entries.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-muted-foreground py-10 text-center text-sm">
-                    {loading ? "読み込み中…" : "空のディレクトリ"}
+                    {loading ? "読み込み中…" : "ファイルやフォルダーはありません"}
                   </TableCell>
                 </TableRow>
               )}
@@ -251,7 +251,7 @@ export default function WorkspacePage() {
                           size="icon"
                           className="size-7"
                           title="ダウンロード"
-                          onClick={() => api.workspaceDownload(e.path).catch((err) => toast.error(`ダウンロードに失敗しました：${(err as Error).message}`))}
+                          onClick={() => api.workspaceDownload(e.path).catch((err) => toast.error(`ファイルをダウンロードできませんでした：${(err as Error).message}`))}
                         >
                           <DownloadIcon className="size-3.5" />
                         </Button>
@@ -292,7 +292,7 @@ export default function WorkspacePage() {
               {edit.file.binary || edit.file.too_large ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
                   <p className="text-muted-foreground text-sm">
-                    {edit.file.too_large ? "ファイルが大きすぎるため、オンラインプレビュー/編集はできません。" : "バイナリファイルのため、オンラインプレビュー/編集はできません。"}
+                    {edit.file.too_large ? "この画面で表示・編集できるサイズを超えています。ファイルをダウンロードして確認してください。" : "このファイルはテキストとして表示・編集できません。ダウンロードして確認してください。"}
                   </p>
                   <Button variant="outline" onClick={() => api.workspaceDownload(edit.file.path)}>
                     <DownloadIcon /> ファイルをダウンロード

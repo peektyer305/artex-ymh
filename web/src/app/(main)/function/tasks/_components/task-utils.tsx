@@ -20,7 +20,7 @@ export function appendUploads(desc: string, atts: ChatAttachment[]): string {
     return `${desc.replace(/\s*$/, "")}\n${bullets}\n`;
   }
   const head = desc.trim() ? `${desc.replace(/\s*$/, "")}\n\n` : "";
-  return `${head}${UPLOAD_MARKER} worker は Read/Bash でパス指定して開けます：\n${bullets}\n`;
+  return `${head}${UPLOAD_MARKER}ワーカーはReadやBashに保存先のパスを指定してファイルを開けます：${bullets}\n`;
 }
 
 // POLL_MS is the task-list refresh interval. Task state moves on the server (planner /

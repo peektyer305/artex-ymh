@@ -252,7 +252,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
   }
 
   if (loaded && !detail) {
-    return <div className="text-muted-foreground p-6 text-center text-sm">Agent が見つかりません：{agentKey}</div>;
+    return <div className="text-muted-foreground p-6 text-center text-sm">エージェントが見つかりません：{agentKey}</div>;
   }
   // config is meaningless for the conversational main agent and the fixed-budget
   // goals decomposer; every other agent (workers, custom assistants) honors it.
@@ -301,7 +301,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
                       </SelectContent>
                     </Select>
                     <span className="text-muted-foreground max-w-md text-xs">
-                      この Agent に固定の LLM 設定をバインドします（上の「設定を保存」で有効）。優先順位：Agent バインド &gt; タスク/セッション指定 &gt; グローバル有効。
+                      このエージェントで使うLLM設定を指定します。上の「設定を保存」で反映します。優先順位は、エージェントへの指定、タスクやセッションへの指定、全体のアクティブ設定の順です。
                     </span>
                   </div>
                 </div>
@@ -337,7 +337,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
                     <Label htmlFor="web-search" className="text-sm">Web 検索</Label>
                     <span className="text-muted-foreground text-xs">
                       {webSearchGlobalOn
-                        ? "この Agent でオンにすると（上の「設定を保存」で有効）、web_search で Web 検索できます"
+                        ? "このエージェントでオンにすると（上の「設定を保存」で有効）、web_search で Web 検索できます"
                         : "先に「システム設定」で Web 検索をオンにし、バックエンドを設定する必要があります"}
                     </span>
                   </div>
@@ -353,7 +353,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
                   <div className="grid gap-0.5">
                     <Label htmlFor="interactive-shell" className="text-sm">対話型 Shell</Label>
                     <span className="text-muted-foreground text-xs">
-                      この Agent でオンにすると（上の「設定を保存」で有効）、永続 PTY セッション系ツール（shell_open/send/read/close/list）で msfconsole/ssh/REPL などの対話プログラムを操作できます
+                      このエージェントでオンにすると（上の「設定を保存」で有効）、永続 PTY セッション系ツール（shell_open/send/read/close/list）で msfconsole/ssh/REPL などの対話プログラムを操作できます
                     </span>
                   </div>
                 </div>
@@ -503,8 +503,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
       <TabsContent value="wrapup" className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         <div className="grid gap-3">
           <p className="text-muted-foreground text-xs leading-relaxed">
-            この Agent が<b>タイムアウト</b>または<b>ステップ数上限</b>で終了した際、システムがこの「締めくくりプロンプト」を注入して 1 ラウンドの締めくくりを実行します：
-            まず認識済みで未保存の内容を書き戻し、最後に要約を 1 文出力します（尻切れを防ぐ）。空欄なら組み込みデフォルトを使用。
+            このエージェントが<b>タイムアウト</b>または<b>ステップ数上限</b>で処理を終えるときに使うプロンプトです。未保存の結果を保存してから、最後に短い要約を返すために使います。空欄の場合は組み込みの既定値を使います。
           </p>
           <div className="flex items-center gap-2">
             <Label className="text-xs">締めくくりプロンプト本文</Label>
@@ -548,8 +547,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
             <>
               <Separator className="my-2" />
               <p className="text-muted-foreground text-xs leading-relaxed">
-                <b>タスクタイムアウト時の締めくくり</b>（上記の per-run の締めくくりとは<b>別物</b>）：<b>タスク全体</b>がタイムアウト上限に達し、終了間際になった時点で注入。
-                per-run とは意味が逆になることが多い（例：planner では per-run は「止まらず計画を続けろ」、タスクタイムアウト時は「時間切れ、最終判定をせよ」）。空欄なら組み込みデフォルトを使用。
+                <b>タスクタイムアウト時の締めくくり</b>（上記の per-run の締めくくりとは<b>別物</b>）：<b>タスク全体</b>がタイムアウトしたときに使うプロンプトです。per-runとは別に、タスクを終了するための指示を設定します。例えば、プランナーに最終判定を行わせます。空欄の場合は組み込みの既定値を使います。
               </p>
               <div className="flex items-center gap-2">
                 <Label className="text-xs">タスクタイムアウトの締めくくりプロンプト本文</Label>
@@ -592,7 +590,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
 
       {/* MCP 可視性 */}
       <TabsContent value="mcp" className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-        <p className="text-muted-foreground mb-3 text-xs">この Agent で可視にする MCP サーバーにチェックを入れます。</p>
+        <p className="text-muted-foreground mb-3 text-xs">このエージェントから使える MCP サーバーにチェックを入れます。</p>
         <div className="grid gap-2">
           {mcp.map((m) => (
             <label key={m.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
@@ -607,7 +605,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
 
       {/* Skill 可視性 */}
       <TabsContent value="skill" className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-        <p className="text-muted-foreground mb-3 text-xs">この Agent で可視にする Skill にチェックを入れます。</p>
+        <p className="text-muted-foreground mb-3 text-xs">このエージェントから使える Skill にチェックを入れます。</p>
         <div className="grid gap-2">
           {skills.map((s) => (
             <label key={s.name} className="flex items-center gap-2 rounded-md border p-2 text-sm">
@@ -622,7 +620,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
 
       {/* Tools バインド */}
       <TabsContent value="tools" className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-        <p className="text-muted-foreground mb-3 text-xs">この Agent にバインドする組み込みツールにチェックを入れます。</p>
+        <p className="text-muted-foreground mb-3 text-xs">このエージェントにバインドする組み込みツールにチェックを入れます。</p>
         <div className="grid gap-2">
           {tools.map((t) => {
             const isTraffic = TRAFFIC_TOOL_KEYS.has(t.key);
@@ -915,7 +913,7 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
   return (
     <div className="grid gap-4">
       <p className="text-muted-foreground text-xs">
-        トリガーでこのカスタム Agent を自動実行できます。トリガーごとに<b>新しいセッションで実行</b>します（「チャット」ページに表示）。
+        トリガーでこのカスタムエージェントを自動実行できます。トリガーごとに<b>新しいセッションで実行</b>します（「チャット」ページに表示）。
         トリガー条件は複数選択可。システムが「今回のトリガー理由 + 関連タスク/ファインディング/ゴール」を、あなたが書いた基本メッセージの後ろに自動で付加します。
       </p>
 
@@ -988,10 +986,10 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
           {runMode === "parallel"
             ? "並列：トリガーごとに即座にセッションを開いて並行実行し、マージしません。最大同時実行数を超えたトリガーは空きを待って待機します。"
             : mergeMode === "by_task"
-              ? "直列·タスクごとにマージ：同一 agent は 1 回に 1 件。待機中に同一タスクで発生したイベントトリガーは 1 セッションにマージ。"
+              ? "直列·タスクごとにマージ：同一エージェントは 1 回に 1 件。待機中に同一タスクで発生したイベントトリガーは 1 セッションにマージ。"
               : mergeMode === "all"
-                ? "直列·すべてマージ：同一 agent は 1 回に 1 件。キュー取り出し時に、待機中の全トリガーを 1 セッションにマージ。"
-                : "直列·マージなし：同一 agent は 1 回に 1 件。トリガーごとに 1 セッション。"}
+                ? "直列·すべてマージ：同一エージェントは 1 回に 1 件。キュー取り出し時に、待機中の全トリガーを 1 セッションにマージ。"
+                : "直列·マージなし：同一エージェントは 1 回に 1 件。トリガーごとに 1 セッション。"}
         </p>
       </div>
 
@@ -1017,7 +1015,7 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
                 <span className="text-muted-foreground text-xs">秒</span>
               </div>
               <Textarea className="text-xs" rows={2} value={intervalMsg}
-                placeholder="定期トリガー時に agent へ送るメッセージ。例：全タスクを巡回" onChange={(e) => setIntervalMsg(e.target.value)} />
+                placeholder="定期トリガー時にエージェントへ送るメッセージ。例：全タスクを巡回" onChange={(e) => setIntervalMsg(e.target.value)} />
             </div>
           )}
         </div>
@@ -1029,7 +1027,7 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
           </label>
           {onFinding && (
             <Textarea className="text-xs" rows={2} value={findingMsg}
-              placeholder="ファインディング検出時に agent へ送るメッセージ（システムがタスクと finding の詳細を付加）" onChange={(e) => setFindingMsg(e.target.value)} />
+              placeholder="ファインディング検出時にエージェントへ送るメッセージ（システムがタスクと finding の詳細を付加）" onChange={(e) => setFindingMsg(e.target.value)} />
           )}
         </div>
 
@@ -1040,7 +1038,7 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
           </label>
           {onGoalMet && (
             <Textarea className="text-xs" rows={2} value={goalMsg}
-              placeholder="ゴール達成時に agent へ送るメッセージ（システムがタスクと達成したゴールを付加）" onChange={(e) => setGoalMsg(e.target.value)} />
+              placeholder="ゴール達成時にエージェントへ送るメッセージ（システムがタスクと達成したゴールを付加）" onChange={(e) => setGoalMsg(e.target.value)} />
           )}
         </div>
 
@@ -1051,7 +1049,7 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
           </label>
           {onTaskTimeout && (
             <Textarea className="text-xs" rows={2} value={taskTimeoutMsg}
-              placeholder="タスクタイムアウト時に agent へ送るメッセージ（システムがタスク番号とゴールを付加）" onChange={(e) => setTaskTimeoutMsg(e.target.value)} />
+              placeholder="タスクタイムアウト時にエージェントへ送るメッセージ（システムがタスク番号とゴールを付加）" onChange={(e) => setTaskTimeoutMsg(e.target.value)} />
           )}
         </div>
 
@@ -1081,7 +1079,7 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
                 </div>
               </div>
               <Textarea className="text-xs" rows={2} value={toolCallMsg}
-                placeholder="ツール呼び出し時に agent へ送るメッセージ（システムがタスク情報、ツール入力、戻り値を付加）" onChange={(e) => setToolCallMsg(e.target.value)} />
+                placeholder="ツール呼び出し時にエージェントへ送るメッセージ（システムがタスク情報、ツール入力、戻り値を付加）" onChange={(e) => setToolCallMsg(e.target.value)} />
             </div>
           )}
         </div>
@@ -1093,7 +1091,7 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
           </label>
           {onTaskCreate && (
             <Textarea className="text-xs" rows={2} value={taskCreateMsg}
-              placeholder="タスク作成時に agent へ送るメッセージ（システムがタスク番号とゴールを付加）" onChange={(e) => setTaskCreateMsg(e.target.value)} />
+              placeholder="タスク作成時にエージェントへ送るメッセージ（システムがタスク番号とゴールを付加）" onChange={(e) => setTaskCreateMsg(e.target.value)} />
           )}
         </div>
 

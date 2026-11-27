@@ -124,7 +124,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
         {/* Right: transcript */}
         <SideQuestionWorkspace
           side={side}
-          label={active.role === "worker" ? `Worker #${active.intent_id} · ${activeDisplayTitle}` : activeDisplayTitle}
+          label={active.role === "worker" ? `ワーカー #${active.intent_id} · ${activeDisplayTitle}` : activeDisplayTitle}
         >
           <div className="flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
             <SessionHeader
@@ -146,9 +146,9 @@ export function SessionsTab({ taskId }: { taskId: string }) {
                 <div className="flex items-start gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-2.5 text-xs">
                   <Trash2Icon className="mt-0.5 size-3.5 shrink-0 text-destructive" />
                   <div className="min-w-0">
-                    <span className="font-medium text-destructive">この意図はユーザーにより削除されました</span>
+                    <span className="font-medium text-destructive">この実行指示はユーザーにより削除されました</span>
                     <span className="text-muted-foreground">
-                      （実行は停止済み、プランナーへ通知済み。意図と成果は保持され、下で履歴を確認できます）
+                      （実行は停止し、プランナーにも通知しました。実行指示と調査結果は残っているため、下で履歴を確認できます）
                     </span>
                     {dm.deleteReason && (
                       <p className="mt-1 break-words text-foreground">

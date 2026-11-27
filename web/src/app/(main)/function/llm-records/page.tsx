@@ -371,7 +371,7 @@ export default function LLMRecordsPage() {
                 <TableRow>
                   <TableHead className="w-[130px]">時刻</TableHead>
                   <TableHead className="w-[60px]">タスク</TableHead>
-                  <TableHead className="w-[90px]">Worker</TableHead>
+                  <TableHead className="w-[90px]">ワーカー</TableHead>
                   <TableHead className="w-[100px]">Profile</TableHead>
                   <TableHead className="w-[140px]">Model</TableHead>
                   <TableHead className="w-[70px]">レイテンシ</TableHead>

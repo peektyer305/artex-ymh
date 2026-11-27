@@ -141,7 +141,7 @@ function TopologyLegend({
         </span>
       </div>
       <p className="text-muted-foreground/80 border-border/60 border-t pt-2 leading-relaxed">
-        力学レイアウトです。ノードはドラッグ、ホイールで拡大縮小できます。ホストノードをクリックすると、下部の「セッション」タブでそのホストのセッションに絞り込めます。
+        ノードをドラッグして移動し、ホイールで拡大・縮小できます。ホストをクリックすると、下部の「セッション」タブをそのホストで絞り込めます。
       </p>
     </div>
   );

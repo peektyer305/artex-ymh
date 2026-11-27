@@ -305,7 +305,7 @@ function AddTaskAssetsSheet({
         <SheetHeader>
           <SheetTitle>テストアセットを追加</SheetTitle>
           <SheetDescription>
-            テスト範囲を直接入力します。ドメインと IP はグローバルアセットを作成または再利用します。CIDR、ICP、キーワードは Agent の範囲コンテキストとして扱われます。
+            テスト範囲を直接入力します。ドメインと IP はグローバルアセットを作成または再利用します。CIDR、ICP、キーワードはエージェントの範囲コンテキストとして扱われます。
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">

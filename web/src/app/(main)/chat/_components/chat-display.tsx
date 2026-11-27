@@ -369,7 +369,7 @@ export function DraftChat({
   const agentPicker = (
     <Select value={agentKey} onValueChange={setAgentKey}>
       <SelectTrigger className="w-full sm:w-40">
-        <SelectValue placeholder="Agent を選択…" />
+        <SelectValue placeholder="エージェントを選択…" />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
@@ -398,7 +398,7 @@ export function DraftChat({
         <div className="bg-primary/10 flex size-12 items-center justify-center rounded-full">
           <Bot className="text-primary size-6" />
         </div>
-        <div className="text-sm font-medium">「{agent?.name ?? "Agent"}」とチャットを開始</div>
+        <div className="text-sm font-medium">「{agent?.name ?? "エージェント"}」とチャットを開始</div>
         {agent?.description && <p className="text-muted-foreground max-w-md text-xs">{agent.description}</p>}
       </div>
 
@@ -726,7 +726,7 @@ export function ChatView({
         <SideQuestionButton side={side} />
         <div className="text-muted-foreground ml-auto flex min-w-0 max-w-full items-center justify-end gap-x-3 gap-y-1 text-xs max-sm:w-full max-sm:flex-wrap">
           {tokenTotal.turns > 0 && (
-            <span title="agent ループのターン数（モデル呼び出し回数）" className="tabular-nums">
+            <span title="エージェントループのターン数（モデル呼び出し回数）" className="tabular-nums">
               {tokenTotal.turns} ターン
             </span>
           )}
@@ -764,7 +764,7 @@ export function ChatView({
         onSend={send}
         disabled={running || sending}
         allowBtw
-        placeholder={running ? "Agent が応答中です。/btw で質問できます…" : "メッセージを入力、@ でレコードを引用、Enter で送信"}
+        placeholder={running ? "エージェントが応答中です。/btw で質問できます…" : "メッセージを入力、@ でレコードを引用、Enter で送信"}
         running={running}
         onStop={stop}
         stopDisabled={stopping}
@@ -879,7 +879,7 @@ export const ConversationItem = React.memo(function ConversationItem({
             {pinned && <PinIcon className="text-primary size-3 shrink-0" aria-label="ピン留め済み" />}
             <div className="truncate text-sm">{conv.title || "新しいチャット"}</div>
             {conv.running ? (
-              <Badge variant="secondary" className="shrink-0 gap-1" title="Agent が実行中">
+              <Badge variant="secondary" className="shrink-0 gap-1" title="エージェントが実行中">
                 <Spinner className="size-3" aria-hidden="true" />
                 実行中
               </Badge>

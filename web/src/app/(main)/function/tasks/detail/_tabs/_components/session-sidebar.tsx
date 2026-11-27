@@ -155,8 +155,8 @@ export function SessionSidebar({
                       type="button"
                       onClick={() => setConfirmNewMain(true)}
                       disabled={creatingMain}
-                      title="メイン Agent のセッションを新規作成（コンテキストを初期化、タスク状態は保持）"
-                      aria-label="メイン Agent のセッションを新規作成"
+                      title="新しい会話を始める（タスクの状態は引き継ぎます）"
+                      aria-label="メインエージェントのセッションを新規作成"
                       className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent/60 hover:text-foreground disabled:opacity-50"
                     >
                       {creatingMain ? (
@@ -205,14 +205,14 @@ export function SessionSidebar({
                     ) : (
                       <RotateCwIcon className="size-3.5" />
                     )}
-                    以前の Worker を読み込む
+                    以前のワーカーを読み込む
                   </button>
                 )}
               </div>
             );
           })}
           {mainLoaded && !workerSessions.length && (
-            <div className="px-2 py-1 text-xs text-muted-foreground">実行中の Worker セッションはありません。</div>
+            <div className="px-2 py-1 text-xs text-muted-foreground">実行中のワーカーセッションはありません。</div>
           )}
         </div>
       </ScrollArea>

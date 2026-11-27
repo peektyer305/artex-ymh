@@ -24,8 +24,7 @@ export function NewMainSessionDialog({ confirmNewMain, createMainSession, creati
         <AlertDialogHeader>
           <AlertDialogTitle>新しいセッションを開始しますか？</AlertDialogTitle>
           <AlertDialogDescription className="break-words whitespace-normal">
-            現在のセッションはアーカイブされ（いつでも切り戻せます）、メイン Agent
-            はまっさらなコンテキストで続行します。タスクのグラフ、アセット、ゴールは影響を受けません。
+            新しい会話を始めます。これまでの会話はセッション一覧から開けます。タスクのグラフ、アセット、ゴールは引き継がれます。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -105,7 +105,7 @@ function AgentGridCard({
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Agent「{agent.name}」の削除？</AlertDialogTitle>
+              <AlertDialogTitle>エージェント「{agent.name}」の削除？</AlertDialogTitle>
               <AlertDialogDescription>
                 プロンプト、変数、可視性、ツールの紐付けも併せて削除されます。この操作は元に戻せません。
               </AlertDialogDescription>
@@ -152,12 +152,12 @@ function CreateAgentDialog({ onCreated }: { onCreated: (key: string) => void }) 
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm">
-          <PlusIcon /> Agent を新規作成
+          <PlusIcon /> エージェントを新規作成
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>カスタム Agent の新規作成</DialogTitle>
+          <DialogTitle>カスタムエージェントの新規作成</DialogTitle>
           <DialogDescription>
             会話型アシスタントを作成します。key は内部識別子で、作成後は変更できません。名前と説明は識別用です。
           </DialogDescription>
@@ -189,7 +189,7 @@ function CreateAgentDialog({ onCreated }: { onCreated: (key: string) => void }) 
             <Label htmlFor="agent-desc">説明</Label>
             <Textarea
               id="agent-desc"
-              placeholder="この Agent の役割を一文で説明"
+              placeholder="このエージェントの役割を一文で説明"
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -223,9 +223,9 @@ export default function AgentsPage() {
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Agent</h1>
+          <h1 className="text-xl font-semibold tracking-tight">エージェント</h1>
           <p className="text-muted-foreground text-sm">
-            組み込み Agent のプロンプト/設定、およびカスタム会話型 Agent の作成と管理
+            組み込みエージェントのプロンプト/設定、およびカスタム会話型エージェントの作成と管理
           </p>
         </div>
         <CreateAgentDialog
@@ -238,12 +238,12 @@ export default function AgentsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Agent 一覧</CardTitle>
+          <CardTitle>エージェント一覧</CardTitle>
           <CardDescription>全 {agents.length} 件</CardDescription>
         </CardHeader>
         <CardContent>
           {agents.length === 0 ? (
-            <p className="text-muted-foreground py-6 text-center text-sm">（Agent なし）</p>
+            <p className="text-muted-foreground py-6 text-center text-sm">（エージェントなし）</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {agents.map((a) => (

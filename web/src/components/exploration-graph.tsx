@@ -46,7 +46,7 @@ import type { Edge, ExploreKind, TaskNode } from "@/lib/types";
 
 export const relLabel: Record<string, string> = {
   spawns: "派生",
-  derived_from: "意図チェーン",
+  derived_from: "実行指示のつながり",
   yields: "生成",
   proves: "証明",
 };
@@ -71,7 +71,7 @@ const typeMeta: Record<ExploreKind, TypeMeta> = {
   begin: { label: "起点", icon: Flag, iconBg: "bg-slate-500", chip: "bg-slate-500/15 text-slate-600 dark:text-slate-300", hex: "#64748b" },
   goal: { label: "ゴール", icon: Target, iconBg: "bg-emerald-500", chip: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400", hex: "#10b981" },
   hint: { label: "ヒント", icon: Lightbulb, iconBg: "bg-violet-500", chip: "bg-violet-500/15 text-violet-600 dark:text-violet-400", hex: "#8b5cf6" },
-  intent: { label: "意図", icon: Compass, iconBg: "bg-blue-500", chip: "bg-blue-500/15 text-blue-600 dark:text-blue-400", hex: "#3b82f6" },
+  intent: { label: "実行指示", icon: Compass, iconBg: "bg-blue-500", chip: "bg-blue-500/15 text-blue-600 dark:text-blue-400", hex: "#3b82f6" },
   fact: { label: "事実", icon: FlaskConical, iconBg: "bg-amber-500", chip: "bg-amber-500/15 text-amber-600 dark:text-amber-400", hex: "#f59e0b" },
   finding: { label: "ファインディング", icon: Bug, iconBg: "bg-rose-500", chip: "bg-rose-500/15 text-rose-600 dark:text-rose-400", hex: "#f43f5e" },
   digest: { label: "圧縮", icon: Layers, iconBg: "bg-teal-500", chip: "bg-teal-500/15 text-teal-600 dark:text-teal-400", hex: "#14b8a6" },

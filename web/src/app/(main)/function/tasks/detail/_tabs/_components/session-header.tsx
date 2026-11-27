@@ -42,7 +42,7 @@ export function SessionHeader({
         const meta = isWorker ? sessionMeta.get(active.id) : undefined;
         // Worker: the intent moved into the transcript as a message, so the
         // header shows a stable generic label (intent JSON stays on hover).
-        const title = isWorker ? "Worker 実行セッション" : active.title;
+        const title = isWorker ? "ワーカー実行セッション" : active.title;
         const titleEl = <span className="min-w-0 truncate text-sm font-medium">{title}</span>;
         return meta?.json ? (
           <Tooltip>

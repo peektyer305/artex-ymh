@@ -55,7 +55,7 @@ export default function LoginPage() {
       .then(({ initialized }) => {
         if (!initialized) router.replace("/setup");
       })
-      .catch(() => setError("バックエンドサービスに接続できません"))
+      .catch(() => setError("サーバーの状態を取得できませんでした。サーバーの起動状況と接続先を確認してください。"))
       .finally(() => setChecking(false));
   }, [router]);
 

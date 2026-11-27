@@ -178,7 +178,7 @@ function SkillsOverview({
   const stats: { label: string; value: React.ReactNode; hint?: string }[] = [
     { label: "Skill 総数", value: skills.length, hint: `${agg.usedCount} 件が呼び出し済み` },
     { label: "累計呼び出し", value: agg.totalCalls },
-    { label: "未使用", value: agg.neverUsed.length, hint: agg.neverUsed.length > 0 ? "どの agent にも読み込まれていません" : "すべて使用済み" },
+    { label: "未使用", value: agg.neverUsed.length, hint: agg.neverUsed.length > 0 ? "どのエージェントにも読み込まれていません" : "すべて使用済み" },
     { label: "未ヒット呼び出し", value: agg.missingCalls, hint: missing.length > 0 ? `${missing.length} 件の存在しない skill` : "なし" },
   ];
 
@@ -698,7 +698,7 @@ export default function SkillsPage() {
       <div className="flex items-center gap-3 border-b px-4 py-2.5 lg:px-6">
         <div className="flex flex-col gap-0.5">
           <h1 className="text-sm font-semibold leading-tight">Skill</h1>
-          <p className="text-muted-foreground text-xs">スキルライブラリ · agentskills.io 仕様 · Agent 単位で可視性を認可</p>
+          <p className="text-muted-foreground text-xs">スキルライブラリ · agentskills.io 仕様 · 使用できるエージェントを指定</p>
         </div>
         {/* 不足一覧：agent が名前で呼び出したがライブラリに存在しない skill。何を補うべきかの判断材料。 */}
         {missing.length > 0 && (
@@ -711,7 +711,7 @@ export default function SkillsPage() {
             </PopoverTrigger>
             <PopoverContent align="end" className="w-80">
               <p className="mb-2 text-xs text-muted-foreground">
-                Agent が名前で呼び出したがスキルライブラリに存在しない skill。指名された回数で並べています。
+                エージェントが名前で呼び出したがスキルライブラリに存在しない skill。指名された回数で並べています。
               </p>
               <div className="space-y-1">
                 {missing.map((m) => (
@@ -931,7 +931,7 @@ export default function SkillsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">可視性（Agent 単位で認可）</Label>
+                    <Label className="text-xs text-muted-foreground">使用できるエージェント</Label>
                     <div className="space-y-2">
                       {agents.map((a) => (
                         <label key={a.key} className="flex cursor-pointer items-center gap-2 text-sm">
@@ -943,7 +943,7 @@ export default function SkillsPage() {
                         </label>
                       ))}
                       {agents.length === 0 && (
-                        <span className="text-xs text-muted-foreground">（Agent がありません）</span>
+                        <span className="text-xs text-muted-foreground">（エージェントがありません）</span>
                       )}
                     </div>
                   </div>
@@ -1088,9 +1088,9 @@ export default function SkillsPage() {
 
             {/* 可視性 */}
             <TabsContent value="visibility" className="overflow-y-auto px-4 pb-4 pt-4 data-[state=inactive]:hidden">
-              <p className="mb-3 text-xs text-muted-foreground">選択した Agent は作成後すぐにこの Skill を参照できます。</p>
+              <p className="mb-3 text-xs text-muted-foreground">選択したエージェントは作成後すぐにこの Skill を参照できます。</p>
               {agents.length === 0 ? (
-                <p className="text-xs text-muted-foreground">（Agent がありません）</p>
+                <p className="text-xs text-muted-foreground">（エージェントがありません）</p>
               ) : (
                 <div className="flex flex-col gap-2">
                   {agents.map((a) => (

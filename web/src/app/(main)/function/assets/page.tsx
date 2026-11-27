@@ -1055,7 +1055,7 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
       <SheetContent className="w-full! max-w-none! gap-0 p-0 sm:w-[520px]! sm:max-w-[520px]!">
         <SheetHeader className="border-b p-6">
           <SheetTitle>企業を追加</SheetTitle>
-          <SheetDescription>企業とそのアセット範囲を設定します。キーワードは Agent へのヒントのみで、アセットは自動割り当てされません。</SheetDescription>
+          <SheetDescription>企業とそのアセット範囲を設定します。キーワードはエージェントへのヒントのみで、アセットは自動割り当てされません。</SheetDescription>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto p-6">
           <FieldGroup>
@@ -1134,7 +1134,7 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
         <DialogHeader>
           <DialogTitle>アセット範囲の編集 · {company.name}</DialogTitle>
           <DialogDescription>
-            編集すると既存の範囲はすべて置き換わります。ICP はアセットに完全一致し、企業キーワードは Agent へのヒントのみです。
+            編集すると既存の範囲はすべて置き換わります。ICP はアセットに完全一致し、企業キーワードはエージェントへのヒントのみです。
           </DialogDescription>
         </DialogHeader>
         <FieldGroup className="py-2">
@@ -1216,7 +1216,7 @@ function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: ()
       <DialogContent>
         <DialogHeader>
           <DialogTitle>アセット範囲の追加 · {company.name}</DialogTitle>
-          <DialogDescription>新しい範囲は既存の範囲に追加されます。ICP はアセットに完全一致し、企業キーワードは Agent へのヒントのみです。</DialogDescription>
+          <DialogDescription>新しい範囲は既存の範囲に追加されます。ICP はアセットに完全一致し、企業キーワードはエージェントへのヒントのみです。</DialogDescription>
         </DialogHeader>
         <FieldGroup className="py-2">
           <ScopeTextEditor

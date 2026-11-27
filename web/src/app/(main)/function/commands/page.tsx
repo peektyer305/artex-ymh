@@ -200,7 +200,7 @@ export default function CommandsPage() {
                 <TableRow>
                   <TableHead className="w-[130px]">時間</TableHead>
                   <TableHead className="w-[60px]">タスク</TableHead>
-                  <TableHead className="w-[90px]">Worker</TableHead>
+                  <TableHead className="w-[90px]">ワーカー</TableHead>
                   <TableHead className="w-[110px]">ツール</TableHead>
                   <TableHead>入力</TableHead>
                   <TableHead className="w-[60px]">ステータス</TableHead>

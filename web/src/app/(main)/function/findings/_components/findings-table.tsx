@@ -306,7 +306,7 @@ export function FindingsTable({
                               <span className="break-all">
                                 {f.name || f.vulnclass || f.summary || `#${f.finding_id}`}
                               </span>
-                              」は完全に削除されます。ファインディング一覧、タスクのファインディング Tab、探索グラフからも削除され、この操作は取り消せません。
+                              」は完全に削除されます。ファインディング一覧、タスクのファインディングタブ、探索グラフからも削除され、この操作は取り消せません。
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -333,7 +333,7 @@ export function FindingsTable({
                             <Input
                               value={edit.name}
                               onChange={(e) => onEditChange((s) => (s ? { ...s, name: e.target.value } : s))}
-                              placeholder="読みやすいタイトル。空欄ならカテゴリにフォールバック"
+                              placeholder="内容が分かる名前を入力します。空欄の場合はカテゴリ名を表示します。"
                             />
                           </div>
                           <div className="flex min-w-[10rem] flex-col gap-1">

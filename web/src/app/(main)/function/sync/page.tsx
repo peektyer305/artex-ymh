@@ -149,7 +149,7 @@ function DataSourceCard({
         {!status?.exists ? (
           <div className="flex items-center justify-between gap-4">
             <p className="text-muted-foreground text-sm">
-              まだ ScopeSentry データソースがありません。作成するとプレースホルダの MCP（アドレス/キーは空、無効）が追加されます。
+              ScopeSentryのデータソースがありません。作成すると、接続先とAPIキーが未設定のMCPを無効な状態で追加します。
             </p>
             <Button onClick={create} disabled={busy}>
               データソースを作成
@@ -159,7 +159,7 @@ function DataSourceCard({
           <>
             {!status.configured && (
               <p className="text-amber-600 text-sm dark:text-amber-500">
-                データソースは作成済みですが未設定です。MCP アドレスと API Key を入力して有効化してください。
+                データソースは作成済みですが未設定です。MCP アドレスとAPIキーを入力して有効化してください。
               </p>
             )}
             {status.configured && !status.enabled && (
@@ -171,7 +171,7 @@ function DataSourceCard({
                 <Input placeholder="http://<ホスト>:8082/mcp" value={url} onChange={(e) => setUrl(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label>API Key（X-API-Key、空欄なら元の値を維持）</Label>
+                <Label>APIキー（X-API-Key、空欄なら元の値を維持）</Label>
                 <Input
                   type="password"
                   placeholder="ssk_..."

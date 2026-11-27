@@ -52,7 +52,7 @@ const MAX_TOKENS_FIELDS: { value: string; label: string }[] = [
 // 他の 2 形式はフィールド名が固定で、選択肢は意味を持たないため説明文で明示する。
 const MAX_TOKENS_FIELD_HINTS: Record<string, string> = {
   openai:
-    "上限をどのキーで送るか。max_tokens がデフォルトで、ほとんどの互換ゲートウェイはこれしか受け付けません。OpenAI 公式の推論モデル（o シリーズ / GPT-5）は逆に max_completion_tokens しか受け付けず、max_tokens を渡すと unsupported_parameter を返します。",
+    "出力上限を送るフィールド名を選びます。通常はmax_tokensを使い、利用するモデルや互換APIがmax_completion_tokensを要求する場合は、そちらを選んでください。",
   anthropic: "openai 形式でのみ選択可能。Anthropic のフィールド名は max_tokens に固定されています。",
   "openai-responses": "openai 形式でのみ選択可能。Responses API のフィールド名は max_output_tokens に固定されています。",
 };
@@ -79,7 +79,7 @@ function healthOf(p: LLMProfile, m?: LLMPoolMember): Health {
     return {
       label: "Key 未設定",
       cls: "border-muted-foreground/40 text-muted-foreground",
-      hint: "API Key が未入力のため呼び出せません",
+      hint: "APIキーが未入力のため呼び出せません",
     };
   }
   if (m?.state === "tripped") {
@@ -130,9 +130,9 @@ function PoolSheet({
       await api.setSettings(patch);
       await onReload();
       if (patch.llm_pool_enabled !== undefined) {
-        toast.success(patch.llm_pool_enabled ? "LLM ポーリングをオンにしました" : "LLM ポーリングをオフにしました");
+        toast.success(patch.llm_pool_enabled ? "LLM設定の自動切り替えをオンにしました" : "LLM設定の自動切り替えをオフにしました");
       } else {
-        toast.success("フォールバック設定を更新しました");
+        toast.success("自動切り替えの設定を更新しました");
       }
     } catch (e) {
       toast.error(`設定に失敗しました：${(e as Error).message}`);
@@ -162,27 +162,26 @@ function PoolSheet({
       <SheetContent side="right" className="flex flex-col gap-0 p-0 data-[side=right]:sm:max-w-lg">
         <SheetHeader className="px-4">
           <SheetTitle className="flex items-center gap-2">
-            <ZapIcon className="size-4" /> LLM ポーリング · フェイルオーバー
+            <ZapIcon className="size-4" /> LLM設定の自動切り替え
           </SheetTitle>
           <SheetDescription>
-            オンにすると、<b>モデル未指定</b>の Agent は現在の設定が利用不可（残高不足 / Key 失効 / レート制限 /
-            サービス異常）のとき、自動的に次の設定へ切り替えます。
+            オンにすると、<b>モデル未指定</b>のエージェントは、残高不足、APIキーの無効化、レート制限、サービスの障害などで現在の設定を使えないとき、次の設定に切り替えます。
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6">
           <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
             <div className="grid gap-0.5">
-              <Label className="text-sm">ポーリングを有効化</Label>
+              <Label className="text-sm">自動切り替えを有効にする</Label>
               <p className="text-muted-foreground text-xs">
-                デフォルトはオフ。オフの間は常にアクティブ設定のみを使い、失敗すればそのまま失敗します。
+                初期設定はオフです。オフの場合は、現在のアクティブ設定だけを使います。
               </p>
             </div>
             <Switch
               checked={enabled}
               disabled={busy}
               onCheckedChange={(v) => void toggle({ llm_pool_enabled: v })}
-              aria-label="LLM ポーリングのオン/オフ"
+              aria-label="LLM設定の自動切り替えのオン/オフ"
             />
           </div>
 
@@ -190,17 +189,16 @@ function PoolSheet({
             <>
               <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
                 <div className="grid gap-0.5">
-                  <Label className="text-sm">モデル指定時の失敗もフォールバック</Label>
+                  <Label className="text-sm">モデル指定時も自動切り替え</Label>
                   <p className="text-muted-foreground text-xs">
-                    デフォルトはオフ：Agent やタスクが特定の設定を指定した場合はそれだけを使い、失敗すればそのまま失敗します（無断で別のモデルに切り替えません）。
-                    オンにすると、指定した設定が失敗したときも下のポーリングチェーンへフォールバックします。
+                    オフの場合、エージェントやタスクに指定した設定だけを使います。オンにすると、指定した設定で失敗した場合も、下の順序で別の設定を試します。初期設定はオフです。
                   </p>
                 </div>
                 <Switch
                   checked={pool?.bind_fallback ?? false}
                   disabled={busy}
                   onCheckedChange={(v) => void toggle({ llm_pool_bind_fallback: v })}
-                  aria-label="指定設定の失敗時フォールバックのオン/オフ"
+                  aria-label="指定設定からの自動切り替えのオン/オフ"
                 />
               </div>
 
@@ -208,7 +206,7 @@ function PoolSheet({
 
               <div className="grid gap-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm">ポーリング順</Label>
+                  <Label className="text-sm">切り替え順</Label>
                   {tripped.length > 0 && (
                     <Button size="sm" variant="ghost" onClick={() => void recover()}>
                       <RotateCcwIcon /> すべて再開
@@ -217,7 +215,7 @@ function PoolSheet({
                 </div>
                 {inChain.length < 2 && (
                   <p className="text-muted-foreground text-xs">
-                    現在利用可能な設定は {inChain.length} 個のみで、ポーリングは機能しません。API Key が入力済みでポーリングに参加する設定が最低 2 個必要です。
+                    現在利用可能な設定は {inChain.length} 件です。自動切り替えを使うには、APIキーを登録した対象設定が2件以上必要です。
                   </p>
                 )}
                 {chain.map((m) => {
@@ -242,7 +240,7 @@ function PoolSheet({
                             アクティブ
                           </Badge>
                         )}
-                        {excluded && <Badge variant="outline">ポーリング不参加</Badge>}
+                        {excluded && <Badge variant="outline">自動切り替えの対象外</Badge>}
                         <div className="ml-auto flex items-center gap-2">
                           {m.state === "tripped" && m.cooldown_secs > 0 && (
                             <span className="text-muted-foreground text-xs">クールダウン {cooldownText(m.cooldown_secs)}</span>
@@ -284,10 +282,7 @@ function PoolSheet({
               </div>
 
               <div className="rounded-lg border border-dashed p-3 text-muted-foreground text-xs leading-relaxed">
-                アクティブ設定は常に第 1 順位、残りは優先度の高い順（各設定で指定）。設定が失敗するとクールダウンに入り
-                （60s → 5min → 30min）、クールダウン中はスキップされ、回復後は自動で戻ります。コンテキストウィンドウに
-                現在のリクエストが収まらない設定はスキップされます。モデルを指定した Agent とタスクはデフォルトで
-                ポーリングに参加しません。
+                アクティブ設定を最初に使い、その後は優先度の高い順に試します。失敗した設定は60秒、5分、30分の順に待機時間を延ばして一時停止し、待機後に自動復帰します。リクエストがコンテキストウィンドウに収まらない設定は使いません。モデルを指定したエージェントとタスクは、初期設定では自動切り替えの対象外です。
               </div>
             </>
           )}
@@ -478,7 +473,7 @@ function ProfileSheet({
           <SheetDescription>
             {isNew
               ? "作成直後は自動でアクティブになりません。カードで「アクティブに設定」すると有効になります。"
-              : "変更後は保存をクリック。アクティブ設定は保存後すぐ全 Agent に反映されます。"}
+              : "変更後は保存をクリック。アクティブ設定は保存後すぐ全エージェントに反映されます。"}
           </SheetDescription>
         </SheetHeader>
 
@@ -576,8 +571,7 @@ function ProfileSheet({
               onChange={(e) => setProxy(e.target.value)}
             />
             <p className="text-muted-foreground text-xs">
-              LLM の外向きリクエストのみこのプロキシを経由します。http/https/socks5 に対応し、認証情報も指定可能（例
-              socks5://user:pass@host:port、特殊文字を含むパスワードは URL エンコードが必要）。空欄ならプロキシ不使用（直接接続）。
+              LLMへのリクエストに使うプロキシです。HTTP、HTTPS、SOCKS5と認証情報に対応します（例：socks5://user:pass@host:port）。パスワードに特殊文字を含む場合はURLエンコードしてください。空欄の場合は直接接続します。
             </p>
           </div>
 
@@ -598,7 +592,7 @@ function ProfileSheet({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="p-api-key">API Key</Label>
+            <Label htmlFor="p-api-key">APIキー</Label>
             <Input
               id="p-api-key"
               type="password"
@@ -631,18 +625,17 @@ function ProfileSheet({
             </div>
           </div>
           <p className="-mt-2 text-muted-foreground text-xs">
-            レート制限 0 = 無制限、全 Agent で共有。コンテキストウィンドウの単位は K（千 token）、0 = デフォルト 200K、上限 1000（1M）；
-            高すぎると圧縮が発動しません。
+            レート制限は全エージェントで共有し、0は無制限です。コンテキストウィンドウの単位はK（千トークン）で、0は既定の200K、上限は1000（1M）です。値を大きくしすぎると、履歴の圧縮が始まらない場合があります。
           </p>
 
           <div className="grid gap-3 rounded-lg border p-3">
             <div className="flex items-center justify-between gap-4">
               <div className="grid gap-0.5">
                 <Label htmlFor="p-priority" className="text-sm">
-                  ポーリング優先度
+                  切り替えの優先度
                 </Label>
                 <p className="text-muted-foreground text-xs">
-                  数値が大きいほど先に選ばれます。アクティブ設定は常に第 1 順位で、この値とは無関係。同じ優先度の設定は順番に先頭になり、自然に枠を分散します。
+                  数値が大きい設定を先に使います。アクティブ設定は、この値に関係なく最初に使います。同じ優先度の設定は、順番に先頭を入れ替えます。
                 </p>
               </div>
               <Input
@@ -655,21 +648,18 @@ function ProfileSheet({
             </div>
             <div className="flex items-center justify-between gap-4 border-t pt-3">
               <div className="grid gap-0.5">
-                <Label className="text-sm">ポーリング不参加</Label>
+                <Label className="text-sm">自動切り替えの対象外</Label>
                 <p className="text-muted-foreground text-xs">
-                  オンにするとフェイルオーバー先として選ばれません（Agent / タスクから明示的に指定すれば使用可能）。
-                  「特定の Agent 専用で、他の失敗時に消費されたくない」高価な設定向け。
+                  オンにすると、自動切り替え先から除外します。エージェントやタスクから指定した場合は使用できます。特定の用途だけに使う設定に向いています。
                 </p>
               </div>
-              <Switch checked={poolExclude} onCheckedChange={setPoolExclude} aria-label="ポーリング不参加" />
+              <Switch checked={poolExclude} onCheckedChange={setPoolExclude} aria-label="自動切り替えの対象外" />
             </div>
             <div className="flex items-center justify-between gap-4 border-t pt-3">
               <div className="grid gap-0.5">
                 <Label className="text-sm">ストリーミング出力 · streaming</Label>
                 <p className="text-muted-foreground text-xs">
-                  オン（デフォルト）はストリーミング SSE で、実行中のリアルタイム進捗と token 数の逐次表示あり。 オフは純粋な非ストリーミング（stream:false、
-                  完全な応答を一括返却）。一部ゲートウェイの粗悪な SSE 実装（空フレーム / 思考フィールドの欠落）を回避できますが、
-                  実行中のリアルタイム進捗は失われます。
+                  オンにすると、SSEで応答を受け取り、処理の進行状況とトークン数を順次表示します。オフの場合は応答全体をまとめて受け取るため、生成途中の進行状況は表示されません。SSEの空フレームや思考情報の欠落が起きるゲートウェイでは、オフにすることで回避できる場合があります。初期設定はオンです。
                 </p>
               </div>
               <Switch checked={streaming} onCheckedChange={setStreaming} aria-label="ストリーミング出力" />
@@ -683,9 +673,7 @@ function ProfileSheet({
                   出力上限 · max tokens
                 </Label>
                 <p className="text-muted-foreground text-xs">
-                  1 回の返答で生成する token の上限で、毎回のリクエストに付与。0（デフォルト）= このフィールドを送信せず、サーバ側のデフォルト値に委ねます。
-                  上記の「コンテキストウィンドウ」とは別物で、あちらはモデルの総容量であり、ローカルで圧縮しきい値の計算にのみ使います。
-                  小さすぎると推論モデルが思考段階で打ち切られ、回答が 1 文字も出ません。
+                  1回の応答で生成するトークン数の上限です。0の場合は上限を送らず、接続先の既定値を使います。コンテキストウィンドウは入力と出力を含む容量で、この出力上限とは別の設定です。上限が小さすぎると、思考中に打ち切られて回答が出ない場合があります。
                 </p>
               </div>
               <Input
@@ -861,12 +849,12 @@ export default function LLMPage() {
         <div>
           <h1 className="font-semibold text-xl tracking-tight">LLM</h1>
           <p className="text-muted-foreground text-sm">
-            全 Agent で共有する形式 / モデル / レート制限の設定。カードをクリックで編集、星印が現在のアクティブ設定。
+            全エージェントで共有するAPI形式、モデル、レート制限を設定します。カードをクリックすると編集できます。星印は現在のアクティブ設定です。
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setPoolOpen(true)}>
-            <ZapIcon /> ポーリング設定
+            <ZapIcon /> 自動切り替え設定
             {poolOn && (
               <Badge variant="outline" className="ml-1 border-emerald-500/50 text-emerald-600 dark:text-emerald-400">
                 オン
@@ -941,7 +929,7 @@ export default function LLMPage() {
                       {/* ポーリング関連の 2 フィールドはポーリングがオンの時のみ意味があり、オフの時は表示しない */}
                       {poolOn &&
                         !p.is_default &&
-                        (p.pool_exclude ? <span>ポーリング不参加</span> : <span>優先度 {p.priority ?? 0}</span>)}
+                        (p.pool_exclude ? <span>自動切り替えの対象外</span> : <span>優先度 {p.priority ?? 0}</span>)}
                     </div>
 
                     <div className="mt-1 flex gap-2">

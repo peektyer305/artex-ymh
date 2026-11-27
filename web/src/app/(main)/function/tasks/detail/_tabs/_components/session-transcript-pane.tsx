@@ -68,7 +68,7 @@ export function SessionTranscriptPane({
         ) : (
           <div className="pl-9 text-xs text-muted-foreground">
             {isMain
-              ? "まだ会話がありません。下からメイン Agent にメッセージを送り、探索の方向づけやフローへの介入ができます。"
+              ? "まだ会話がありません。下の入力欄からメインエージェントにメッセージを送り、調査の方針を伝えられます。"
               : "アクティビティ記録はありません。"}
           </div>
         )}

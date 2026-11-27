@@ -100,7 +100,7 @@ export const mainSessionId = (seg: number) => `s-main-${seg}`;
 
 export const mainSessionKey = (seg: number) => `main:${seg}`;
 
-export const mainSessionTitle = (seg: number) => `メイン Agent · セッション #${seg + 1}`;
+export const mainSessionTitle = (seg: number) => `メインエージェント · セッション #${seg + 1}`;
 
 export const MAIN_ID = mainSessionId(0);
 
@@ -181,7 +181,7 @@ export function intentToSession(n: TaskNode): Session {
   return {
     id: n.id,
     role: "worker",
-    title: label || `Intent ${n.id}`,
+    title: label || `実行指示 ${n.id}`,
     status: state,
     live: !n.inherited && state === "running",
     last_activity: n.ts,

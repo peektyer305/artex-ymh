@@ -69,7 +69,7 @@ export function ChangePasswordDialog({
           <DialogHeader>
             <DialogTitle>パスワード変更</DialogTitle>
             <DialogDescription>
-              ユーザー名は <b>ARTEX</b> 固定です。先に現在のパスワードで認証してください。変更後は発行済みのログイン認証情報がすべて即時失効し、再ログインが必要です。
+              ユーザー名は <b>ARTEX</b> に固定されています。現在のパスワードと新しいパスワードを入力してください。変更後はすべてのログインが無効になり、再ログインが必要です。
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">

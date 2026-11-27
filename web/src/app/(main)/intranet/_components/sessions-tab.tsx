@@ -307,7 +307,7 @@ export function SessionsTab({
             <AlertDialogTitle>セッション #{pendingDelete?.id} を削除しますか？</AlertDialogTitle>
             <AlertDialogDescription>
               この WebShell セッション（{pendingDelete?.kind} · {pendingDelete?.host_asset_id}
-              ）を切断して削除します。ターゲット上のマルウェアファイルは消去されません。この操作は取り消せません。
+              ）を切断して削除します。接続先に置いたWebShellファイルは残ります。この操作は取り消せません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

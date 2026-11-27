@@ -189,7 +189,7 @@ export function CreateTaskSheet({
                 onCategoryCreated={onCategoriesChanged}
                 portalContainer={sheetContentRef}
               />
-              <FieldDescription>任意、単一カテゴリ。タスク一覧の絞り込みとアーカイブに使い、Agent の実行には影響しません。</FieldDescription>
+              <FieldDescription>任意、単一カテゴリ。タスク一覧の絞り込みとアーカイブに使い、エージェントの実行には影響しません。</FieldDescription>
             </Field>
             <div className="grid gap-2">
               <Label htmlFor="description">説明</Label>
@@ -222,7 +222,7 @@ export function CreateTaskSheet({
                 <span className="text-muted-foreground text-xs">
                   {uploadCount > 0
                     ? `${uploadCount} 件のファイルをアップロードしました。絶対パスを説明の末尾に追記しました（編集可能）`
-                    : "複数選択可。アップロードするとファイルの絶対パスを説明に追記し、worker が Read/Bash で開けるようにします"}
+                    : "複数のファイルを選べます。アップロード後、保存先の絶対パスを説明に追加します。ワーカーはReadやBashでファイルを開けます。"}
                 </span>
               </div>
             </div>
@@ -246,7 +246,7 @@ export function CreateTaskSheet({
               />
               <FieldDescription>
                 最大 {MAX_SOURCE_TASKS}{" "}
-                件まで関連付け可能。選択したタスクの永続ブラックボード、アセット範囲、関連トラフィックを読み取り専用でリアルタイムに継承し、新しいタスクは独立したブラックボードに書き込みます。
+                件まで関連付けられます。選択したタスクのブラックボード、アセット範囲、関連トラフィックを読み取り専用で参照します。参照先の変更も反映されます。新しいタスクの結果は、自分のブラックボードに記録します。
               </FieldDescription>
             </Field>
             <Field>
@@ -258,8 +258,7 @@ export function CreateTaskSheet({
                 portalContainer={sheetContentRef}
               />
               <FieldDescription>
-                タスク作成時に、選択した企業の現在のアセットを「テストアセット」に追加し、ドメイン、IP、CIDR、ICP、企業キーワードを Agent
-                に範囲コンテキストとして渡します。意図を自動生成したり、実行ゴールを強制的に変えたりはしません。
+                タスク作成時に、選択した企業のアセットを「テストアセット」に追加します。ドメイン、IP、CIDR、ICP、企業キーワードは、調査範囲の情報としてエージェントに渡します。実行指示の自動作成やゴールの変更は行いません。
               </FieldDescription>
             </Field>
             <Field>
@@ -279,7 +278,7 @@ export function CreateTaskSheet({
               <CollapsibleTrigger className="group flex w-full items-center gap-2 border-t pt-4 text-sm font-medium">
                 <ChevronRightIcon className="text-muted-foreground size-4 transition-transform group-data-[state=open]:rotate-90" />
                 詳細設定
-                <span className="text-muted-foreground ml-auto text-xs font-normal">タイムアウト · ハートビート · 最初の意図</span>
+                <span className="text-muted-foreground ml-auto text-xs font-normal">タイムアウト · ハートビート · 最初の実行指示</span>
               </CollapsibleTrigger>
               <CollapsibleContent className="grid gap-5 pt-5">
                 <div className="grid gap-2">
@@ -294,11 +293,11 @@ export function CreateTaskSheet({
                     onChange={(e) => setTimeoutMin(e.target.value)}
                   />
                   <p className="text-muted-foreground text-xs">
-                    時間に達すると正常終了処理（各 agent の書き戻し + planner の最終判定）を実行し、タスクは timeout の終端状態になります。
+                    指定時間に達すると、各エージェントが結果を保存し、プランナーが最終判定を行います。その後、タスクはタイムアウトとして終了します。
                   </p>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="heartbeat-min">planner のハートビート（分）</Label>
+                  <Label htmlFor="heartbeat-min">プランナーの定期実行間隔（分）</Label>
                   <Input
                     id="heartbeat-min"
                     type="number"
@@ -309,8 +308,7 @@ export function CreateTaskSheet({
                     onChange={(e) => setHeartbeatMin(e.target.value)}
                   />
                   <p className="text-muted-foreground text-xs">
-                    前回の計画終了またはタスク開始からこの時間が経過し、その間トリガーがなければ自動で計画を 1 回実行します（停止の検知と、実行中
-                    worker の監視の再開）。下限は 10 分です。
+                    前回の計画終了、またはタスク開始から指定時間が経過し、新しい通知がなければ、プランナーが計画と実行中のワーカーを再確認します。最短で10分です。
                   </p>
                 </div>
                 <div className="grid gap-2">
@@ -320,11 +318,10 @@ export function CreateTaskSheet({
                       checked={seedFirstIntent}
                       onCheckedChange={(v) => setSeedFirstIntent(!!v)}
                     />
-                    最初の意図（説明+ゴール）を直接送信
+                    最初の実行指示（説明+ゴール）を直接送信
                   </label>
                   <p className="text-muted-foreground text-xs">
-                    オンにすると作成時に「説明+ゴール」を 1 つの意図として送信し、worker は初回の計画を待たずに実行を開始、実行後に planner が
-                    判定・補足を引き継ぎます。CTF のように 1 回の work で解決することが多い場面ではオンを推奨。オフなら標準の「計画してから実行」になります。
+                    オンにすると、説明とゴールを最初の実行指示として送り、ワーカーが計画を待たずに作業を始めます。実行後はプランナーが結果を確認して計画を補います。1回の作業で解けることが多いCTFなどに適しています。オフの場合は、計画を立ててから実行します。
                   </p>
                 </div>
                 <div className="grid gap-2">
@@ -337,8 +334,7 @@ export function CreateTaskSheet({
                     アセットカバレッジ機能
                   </label>
                   <p className="text-muted-foreground text-xs">
-                    デフォルトはオン：テストカバレッジを計算・表示し、状況図にテスト進捗を表示、テスト範囲を自動で累積します。オフにするとカバレッジの計算/表示を行わず、
-                    状況図は進捗なしでアセットのみ表示し、agent にも範囲系ツールを渡しません。オフは「関連企業のアセット範囲」に影響しません。
+                    オンにすると、調査済みの範囲を集計し、カバレッジと状況図に進捗を表示します。オフの場合、状況図にはアセットだけを表示し、エージェントへの範囲関連ツールの提供も停止します。「関連企業のアセット範囲」は引き続き利用できます。初期設定はオンです。
                   </p>
                 </div>
               </CollapsibleContent>

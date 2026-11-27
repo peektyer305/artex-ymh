@@ -100,7 +100,7 @@ export function useTaskSessions(taskId: string) {
         id,
         role: "worker",
         intent_id: id,
-        title: `Worker #${id}`,
+        title: `ワーカー #${id}`,
         status: "done",
         live: false,
         last_activity: source.items[0]?.ts ?? "",
@@ -145,7 +145,7 @@ export function useTaskSessions(taskId: string) {
   const sessionMeta = React.useMemo(() => {
     const map = new Map<string, { title: string; json: unknown; deleted: boolean; deleteReason: string }>();
     for (const node of allIntents) {
-      let title = `Intent ${node.id}`;
+      let title = `実行指示 ${node.id}`;
       let parsedPayload: unknown = node.payload;
       // 論理削除:意図の state='deleted'、削除理由は独立フィールド delete_reason に置く。
       const deleted = node.state === "deleted";

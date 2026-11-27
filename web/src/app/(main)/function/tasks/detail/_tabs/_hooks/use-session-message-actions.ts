@@ -110,7 +110,7 @@ export function useSessionMessageActions(taskId: string, context: Context) {
         patchIntentState(intentId, result.state);
         setWorkerMessage("");
         setWorkerMessageRequestId("");
-        toast.success(`Worker #${intentId} にメッセージを送信し、即座に実行を再開しました`);
+        toast.success(`ワーカー #${intentId} にメッセージを送信し、即座に実行を再開しました`);
       })
       .catch((error) => {
         toast.error(`送信に失敗しました：${(error as Error).message || "しばらくして再試行してください"}`);

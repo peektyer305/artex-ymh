@@ -93,27 +93,27 @@ export function useSessionActions(taskId: string, context: Context) {
         const res = await api.controlIntent(taskId, session.intent_id, action, reason, mode);
         if (action === "pause") {
           patchIntentState(session.intent_id, "paused");
-          toast.success(`Worker #${session.intent_id} を一時停止しました`);
+          toast.success(`ワーカー #${session.intent_id} を一時停止しました`);
         } else if (action === "resume") {
           patchIntentState(session.intent_id, "open");
-          toast.success(`Worker #${session.intent_id} を再開しました。再取得を待機中`);
+          toast.success(`ワーカー #${session.intent_id} を再開しました。再取得を待機中`);
         } else if (mode === "hard") {
           // 物理削除:意図と独占の下流を物理的に削除し、一覧からその行を除く。
           patchIntentState(session.intent_id);
           const d = res.deleted;
-          const extra = d ? `（意図 ${d.intents} / 事実 ${d.facts} / 脆弱性 ${d.findings} を含む）` : "";
-          toast.success(`Worker #${session.intent_id} とその独占下流を完全に削除しました${extra}`);
+          const extra = d ? `（実行指示 ${d.intents} / 事実 ${d.facts} / 脆弱性 ${d.findings} を含む）` : "";
+          toast.success(`ワーカー #${session.intent_id} とその独占下流を完全に削除しました${extra}`);
           setCancelReason("");
         } else {
           // 論理削除:意図を deleted にし、削除理由を記録、ノードと成果は保持。
           patchIntentState(session.intent_id, "deleted");
           toast.success(
-            `Worker #${session.intent_id} を削除しました（理由を記録済み、プランナーがこれに基づき再計画します）`,
+            `ワーカー #${session.intent_id} を削除しました（理由を記録済み、プランナーがこれに基づき再計画します）`,
           );
           setCancelReason("");
         }
       } catch (error) {
-        toast.error(`Worker の操作に失敗しました：${(error as Error).message}`);
+        toast.error(`ワーカーの操作に失敗しました：${(error as Error).message}`);
       } finally {
         setControllingIntent(null);
         setCancelIntent(null);

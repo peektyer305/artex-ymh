@@ -738,8 +738,8 @@ export default function FindingsPage() {
       const result = await api.deepenFinding(deepenFinding.finding_id, deepenDescription.trim());
       toast.success(
         result.queued
-          ? `深掘り意図 #${result.intent_id} をタスクキューに追加しました`
-          : `優先度の高い Worker 意図 #${result.intent_id} を作成しました`,
+          ? `追加調査の実行指示 #${result.intent_id} をタスクキューに追加しました`
+          : `優先度の高いワーカー実行指示 #${result.intent_id} を作成しました`,
       );
       refreshAfterMutation(deepenFinding);
       setDeepenFinding(null);
@@ -1161,7 +1161,7 @@ export default function FindingsPage() {
           <DialogHeader>
             <DialogTitle>脆弱性の深掘り</DialogTitle>
             <DialogDescription className="break-words">
-              元のタスク #{deepenFinding?.task_id} に優先度 10 の Worker 意図を作成し、この脆弱性をもとに二次検証を行います：
+              元のタスク #{deepenFinding?.task_id} に優先度 10 のワーカー実行指示を作成し、この脆弱性をもとに二次検証を行います：
               {deepenFinding?.name || deepenFinding?.vulnclass || deepenFinding?.summary}
             </DialogDescription>
           </DialogHeader>
@@ -1177,7 +1177,7 @@ export default function FindingsPage() {
                 disabled={deepening}
               />
               <FieldDescription className="flex justify-between gap-3">
-                <span>新しい意図はこの脆弱性のアセットアンカーを引き継ぎます。</span>
+                <span>新しい実行指示には、この脆弱性に関連するアセットを引き継ぎます。</span>
                 <span className="shrink-0 tabular-nums">{deepenDescription.length} / 4000</span>
               </FieldDescription>
             </Field>
@@ -1195,7 +1195,7 @@ export default function FindingsPage() {
             </Button>
             <Button onClick={submitDeepen} disabled={deepening || !deepenDescription.trim()}>
               {deepening && <Spinner data-icon="inline-start" />}
-              深掘り意図を作成
+              追加調査の実行指示を作成
             </Button>
           </DialogFooter>
         </DialogContent>

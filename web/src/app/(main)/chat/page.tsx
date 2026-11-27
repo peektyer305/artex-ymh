@@ -333,13 +333,13 @@ export default function ChatPage() {
               onValueChange={(value) => changeAgentFilter(value === "all" ? null : value.slice(6))}
               disabled={bulkDeleting}
             >
-              <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Agent でチャットを絞り込み">
+              <SelectTrigger size="sm" className="w-full min-w-0" aria-label="エージェントでチャットを絞り込み">
                 <Bot />
-                <SelectValue placeholder="すべての Agent" />
+                <SelectValue placeholder="すべてのエージェント" />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="all">すべての Agent</SelectItem>
+                  <SelectItem value="all">すべてのエージェント</SelectItem>
                   {agentFilterOptions.map((agent) => (
                     <SelectItem key={agent.key} value={`agent:${agent.key}`}>
                       {agent.name}（{agent.count}）
@@ -401,7 +401,7 @@ export default function ChatPage() {
             <div className="flex min-w-0 flex-col gap-0.5 p-2">
               {filteredConversations.length === 0 && (
                 <p className="text-muted-foreground px-2 py-6 text-center text-xs">
-                  {agentFilter === null ? "チャットはありません" : "この Agent のチャットはありません"}
+                  {agentFilter === null ? "チャットはありません" : "このエージェントのチャットはありません"}
                 </p>
               )}
               {pinnedConversations.map((c) => (

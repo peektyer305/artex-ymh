@@ -48,7 +48,7 @@ export function ArchiveConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>{count === 1 ? "タスクをアーカイブ" : `タスク ${count} 件をアーカイブ`}</AlertDialogTitle>
           <AlertDialogDescription className="[overflow-wrap:anywhere]">
-            アーカイブするとタスクのスケジュールが停止し、グラフ、LLM 履歴、ファイル、および排他的なアセットとトラフィックがローカルのコールドストレージに圧縮されます。完了後は「アーカイブ済み」から復元できます。
+            タスクの実行を止め、グラフ、LLM履歴、ファイル、このタスクだけが使うアセットとトラフィックを圧縮してローカルに保存します。保存後は「アーカイブ済み」から復元できます。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -407,7 +407,7 @@ export function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
           <Empty className="mx-4 border border-dashed lg:mx-6">
             <EmptyHeader>
               <EmptyTitle>タスクアーカイブがありません</EmptyTitle>
-              <EmptyDescription>一時停止中または終端状態のタスクは、現在のタスク一覧からアーカイブできます。</EmptyDescription>
+              <EmptyDescription>一時停止中、または終了したタスクは、「現在のタスク」からアーカイブできます。</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (

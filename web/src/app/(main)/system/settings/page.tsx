@@ -69,7 +69,7 @@ export default function SystemSettingsPage() {
       .setSettings({ workers: n })
       .then((s) => {
         apply(s);
-        toast.success("作業 agent の同時実行数を保存しました（以後に起動するタスクに適用）");
+        toast.success("作業エージェントの同時実行数を保存しました（以後に起動するタスクに適用）");
       })
       .catch((e) => toast.error("保存に失敗しました：" + (e as Error).message))
       .finally(() => setSavingWorkers(false));
@@ -128,7 +128,7 @@ export default function SystemSettingsPage() {
       .setSettings({ agent_traffic_binding: v })
       .then((s) => {
         apply(s);
-        toast.success(v ? "Agent の自動トラフィック紐付けをオンにしました" : "Agent の自動トラフィック紐付けをオフにしました");
+        toast.success(v ? "エージェントの自動トラフィック紐付けをオンにしました" : "エージェントの自動トラフィック紐付けをオフにしました");
       })
       .catch((e) => {
         setAgentTrafficBinding(!v);
@@ -171,7 +171,7 @@ export default function SystemSettingsPage() {
       .then((s) => {
         apply(s);
         setBraveKeyInput("");
-        toast.success("Brave API Key を保存しました");
+        toast.success("Brave APIキーを保存しました");
       })
       .catch((e) => toast.error("保存に失敗しました：" + (e as Error).message))
       .finally(() => setSavingKey(false));
@@ -184,7 +184,7 @@ export default function SystemSettingsPage() {
       .then((s) => {
         apply(s);
         setTavilyKeyInput("");
-        toast.success("Tavily API Key を保存しました");
+        toast.success("Tavily APIキーを保存しました");
       })
       .catch((e) => toast.error("保存に失敗しました：" + (e as Error).message))
       .finally(() => setSavingTavilyKey(false));
@@ -256,16 +256,15 @@ export default function SystemSettingsPage() {
               トラフィックキャプチャ
             </CardTitle>
             <CardDescription>
-              オンにすると、すべての Agent の HTTP トラフィックを記録プロキシ経由で漏れなく DB に保存し、Agent に traffic_search / traffic_get
-              ツールとプロキシ設定を注入します（プロンプトにプロキシの説明を含む）。
+              オンにすると、エージェントのHTTP通信を記録プロキシ経由でデータベースに保存します。エージェントにはtraffic_search、traffic_getとプロキシ設定を渡し、使い方をプロンプトに含めます。
               <br />
-              オフ（デフォルト）のときはトラフィックを一切記録しません。Agent は
-              プロキシ設定とトラフィックツールを<b>受け取らず</b>、プロンプトにもプロキシ関連の内容を<b>含みません</b>。切り替え後は Agent を即時再構築して反映します。
+              オフ（デフォルト）のときはトラフィックを一切記録しません。エージェントは
+              プロキシ設定とトラフィックツールを<b>受け取らず</b>、プロンプトにもプロキシ関連の内容を<b>含みません</b>。切り替え後はエージェントを即時再構築して反映します。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
             <Label htmlFor="traffic-capture" className="text-sm font-normal text-muted-foreground">
-              {trafficCapture ? "オン · トラフィックを記録しプロキシも注入中" : "オフ · 記録もプロキシ注入もなし"}
+              {trafficCapture ? "オン：通信を記録し、プロキシ設定を適用しています" : "オフ：通信の記録と記録用プロキシの適用を停止しています"}
             </Label>
             <Switch
               id="traffic-capture"
@@ -280,13 +279,13 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <RadioTowerIcon className="size-4" />
-              Agent の自動トラフィック紐付け
+              エージェントの自動トラフィック紐付け
             </CardTitle>
             <CardDescription id="agent-traffic-binding-description">
-              デフォルトはオフ。オンにすると、脆弱性の登録時に起動するレポート Agent が既存の HTTP リクエスト/レスポンスを照合し、対応するトラフィックを紐付けてからレポートを作成します。
+              デフォルトはオフ。オンにすると、脆弱性の登録時に起動するレポートエージェントが既存の HTTP リクエスト/レスポンスを照合し、対応するトラフィックを紐付けてからレポートを作成します。
               <b>パケットの確認と追加のツール呼び出しにより Token 消費が増えます。</b>
               <br />
-              TCP、未キャプチャ、または一致するトラフィックがない場合も通常どおり報告できます。このスイッチはトラフィックキャプチャ、手動紐付け、保存済みエビデンスの閲覧には影響しません。次ターンの Agent から
+              TCP、未キャプチャ、または一致するトラフィックがない場合も通常どおり報告できます。このスイッチはトラフィックキャプチャ、手動紐付け、保存済みエビデンスの閲覧には影響しません。次ターンのエージェントから
               有効になります。オフにすると新しい自動紐付けは即座に拒否されます。
             </CardDescription>
           </CardHeader>
@@ -311,11 +310,10 @@ export default function SystemSettingsPage() {
               グローバルプロキシ
             </CardTitle>
             <CardDescription>
-              すべての Agent の<b>対象トラフィック</b>をこのプロキシ経由で外部へ出します（送信元 IP を隠す／踏み台経由）。<b>http / https / socks5</b> に対応し、{" "}
+              すべてのエージェントの<b>対象トラフィック</b>をこのプロキシ経由で外部へ出します（送信元 IP を隠す／踏み台経由）。<b>http / https / socks5</b> に対応し、{" "}
               <code>user:pass</code> 認証も可能です。空欄=直接接続。
               <br />
-              <b>トラフィックキャプチャ</b>がオンのときは記録プロキシの<b>上流</b>として動作します（トラフィックは漏れなく DB に保存されたうえで、このプロキシ経由で外部へ出ます）。キャプチャがオフのときは
-              Agent の bash / WebFetch に直接注入して外部へ出します。Web 検索プロキシ、LLM プロキシとは独立しています。
+              <b>トラフィックキャプチャ</b>がオンのときは記録プロキシの<b>上流</b>として使います。通信を記録してから、このプロキシ経由で外部へ接続します。キャプチャがオフの場合は、BashとWebFetchにプロキシ設定を直接渡します。Web検索用とLLM用のプロキシは別に設定します。
               <br />
               <b>ヒント</b>：socks5 は<b>キャプチャがオフ</b>のとき、各コマンドラインツールの <code>ALL_PROXY</code> 対応に依存します（curl
               は可、一部ツールは無視する場合あり）。socks5 を主に使う場合はトラフィックキャプチャの有効化を推奨します。この経路は MITM
@@ -349,20 +347,18 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <ShieldAlertIcon className="size-4" />
-              操作制約の注入
+              操作制約をプロンプトに含める
             </CardTitle>
             <CardDescription>
-              オンにすると、各タスクの<b>操作制約</b>（タスク概要の「操作制約」で管理している allow/deny 項目）を対応する Agent
-              のシステムプロンプトに組み込み、探索の境界を定めます（例：「現在のポートのみテスト」「ブルートフォース禁止」）。
+              オンにすると、各タスクの<b>操作制約</b>（タスク概要で設定する許可・禁止事項）をエージェントのシステムプロンプトに組み込みます。例：現在のポートだけを調べる、ブルートフォースを禁止する。
               <br />
-              注入先は <b>プランナー（planner）</b>と <b>ワーカー（worker）</b>を個別に制御
-              できます。デフォルトは両方オン。切り替えは即時反映され（次のターンで読み込み）、Agent の再構築は不要です。オフにするとその Agent は制約を参照しなくなります。
+              設定は <b>プランナー</b>と <b>ワーカー</b>ごとに切り替えられます。変更は次の処理から反映されます。オフにすると、対応するエージェントは操作制約を参照しなくなります。初期設定は両方オンです。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-4">
               <Label htmlFor="inject-planner" className="text-sm font-normal text-muted-foreground">
-                プランナー（planner）への注入{injectPlanner ? " · オン" : " · オフ"}
+                プランナーに適用{injectPlanner ? " · オン" : " · オフ"}
               </Label>
               <Switch
                 id="inject-planner"
@@ -373,7 +369,7 @@ export default function SystemSettingsPage() {
             </div>
             <div className="flex items-center justify-between gap-4">
               <Label htmlFor="inject-worker" className="text-sm font-normal text-muted-foreground">
-                ワーカー（worker）への注入{injectWorker ? " · オン" : " · オフ"}
+                ワーカーに適用{injectWorker ? " · オン" : " · オフ"}
               </Label>
               <Switch
                 id="inject-worker"
@@ -392,19 +388,19 @@ export default function SystemSettingsPage() {
               Web 検索
             </CardTitle>
             <CardDescription>
-              ここは Web 検索の<b>総スイッチ + ソース設定</b>です。オンにすると、<b>各 Agent の設定</b>で個別に
+              ここは Web 検索の<b>総スイッチ + ソース設定</b>です。オンにすると、<b>各エージェントの設定</b>で個別に
               <b>web_search</b> を有効にするか選べます（タイトル/リンク/要約のみ返し、本文は取得しません。取得は WebFetch が担当）。Web 検索は記録プロキシを<b>経由せず</b>、
               トラフィックキャプチャとは独立しています。
               <br />
-              ソースは <b>DuckDuckGo（ddgs）</b>（Key 不要）、<b>Brave（無料版）</b>（Brave API Key の入力が必要）、{" "}
-              <b>Tavily</b>（Tavily API Key の入力が必要）、<b>DeepSeek</b>（現在の LLM 設定を再利用）から選択できます。総スイッチがオフの間は、各
-              Agent の Web 検索スイッチは使用できません。
+              ソースは <b>DuckDuckGo（ddgs）</b>（Key 不要）、<b>Brave（無料版）</b>（Brave APIキーの入力が必要）、{" "}
+              <b>Tavily</b>（Tavily APIキーの入力が必要）、<b>DeepSeek</b>（現在の LLM 設定を再利用）から選択できます。総スイッチがオフの間は、各
+              エージェントの Web 検索スイッチは使用できません。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-4">
               <Label htmlFor="web-search" className="text-sm font-normal text-muted-foreground">
-                {webSearch ? "総スイッチはオン · 各 Agent 設定で個別に有効化可能" : "オフ · 各 Agent は Web 検索を有効化できません"}
+                {webSearch ? "総スイッチはオン · 各エージェント設定で個別に有効化可能" : "オフ · 各エージェントは Web 検索を有効化できません"}
               </Label>
               <Switch
                 id="web-search"
@@ -463,7 +459,7 @@ export default function SystemSettingsPage() {
             {webSearch && backend === "brave-free" && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="brave-key" className="text-sm font-normal text-muted-foreground">
-                  Brave Search API Key
+                  Brave Search APIキー
                   {braveKeySet && <span className="ml-2 text-xs text-emerald-500">設定済み</span>}
                 </Label>
                 <div className="flex items-center gap-2">
@@ -471,7 +467,7 @@ export default function SystemSettingsPage() {
                     id="brave-key"
                     type="password"
                     autoComplete="off"
-                    placeholder={braveKeySet ? "設定済み（空欄なら変更なし）" : "Brave API Key を入力"}
+                    placeholder={braveKeySet ? "設定済み（空欄なら変更なし）" : "Brave APIキーを入力"}
                     value={braveKeyInput}
                     disabled={!loaded || savingKey}
                     onChange={(e) => setBraveKeyInput(e.target.value)}
@@ -498,7 +494,7 @@ export default function SystemSettingsPage() {
             {webSearch && backend === "tavily" && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="tavily-key" className="text-sm font-normal text-muted-foreground">
-                  Tavily Search API Key
+                  Tavily Search APIキー
                   {tavilyKeySet && <span className="ml-2 text-xs text-emerald-500">設定済み</span>}
                 </Label>
                 <div className="flex items-center gap-2">
@@ -506,7 +502,7 @@ export default function SystemSettingsPage() {
                     id="tavily-key"
                     type="password"
                     autoComplete="off"
-                    placeholder={tavilyKeySet ? "設定済み（空欄なら変更なし）" : "Tavily API Key を入力（tvly-…）"}
+                    placeholder={tavilyKeySet ? "設定済み（空欄なら変更なし）" : "Tavily APIキーを入力（tvly-…）"}
                     value={tavilyKeyInput}
                     disabled={!loaded || savingTavilyKey}
                     onChange={(e) => setTavilyKeyInput(e.target.value)}
@@ -524,7 +520,7 @@ export default function SystemSettingsPage() {
                     Tavily を選択しましたが Key が未設定です。Key を保存するまで検索ツールは有効になりません。
                   </p>
                 )}
-                <p className="text-muted-foreground text-xs">https://tavily.com で登録して API Key を取得してください。</p>
+                <p className="text-muted-foreground text-xs">https://tavily.com で登録してAPIキーを取得してください。</p>
               </div>
             )}
 
@@ -578,8 +574,7 @@ export default function SystemSettingsPage() {
               カスタムスクリプト · Python インタプリタ
             </CardTitle>
             <CardDescription>
-              カスタムの <b>script</b> タイプツールがこれで Python を実行します。起動時に自動検出（python3 を優先）。ここには venv や
-              特定バージョンの絶対パスを手入力でき、空欄なら実行時に自動検出します。
+              カスタムの <b>script</b> Python形式のツールを実行するプログラムです。起動時はpython3を優先して自動検出します。仮想環境や特定バージョンを使う場合は絶対パスを入力してください。空欄の場合は実行時に自動検出します。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
@@ -605,10 +600,10 @@ export default function SystemSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <CpuIcon className="size-4" />
-              作業並列度 · Work Agent 数
+              ワーカーの同時実行数
             </CardTitle>
             <CardDescription>
-              タスクごとに並列実行する作業 agent 数（デフォルト 3）。値を大きくすると並列探索が増え、消費も増えます。変更は
+              1つのタスクで同時に動かすワーカーの数です。初期値は3です。数を増やすと同時に進める調査が増え、LLMの使用量も増えます。変更は
               <b>以後に起動するタスクに適用</b>され、実行中のタスクには影響しません。
             </CardDescription>
           </CardHeader>
@@ -637,7 +632,7 @@ export default function SystemSettingsPage() {
               セッション入力欄の送信キー
             </CardTitle>
             <CardDescription>
-              チャットページとタスク詳細のメイン Agent セッション入力欄がこの設定を共用します。選択後は即時反映され、保存は不要です。
+              チャットページとタスク詳細のメインエージェントセッション入力欄がこの設定を共用します。選択後は即時反映され、保存は不要です。
               <br />
               この設定は<b>このブラウザにのみ保存</b>され、アカウント同期はされません。ブラウザを変更したりサイトデータを消去したりすると再設定が必要です。
             </CardDescription>

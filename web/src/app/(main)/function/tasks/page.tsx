@@ -668,7 +668,7 @@ export default function TasksPage() {
                       onSort={sortTasksBy}
                     />
                     <TableHead className="text-center">ゴール進捗</TableHead>
-                    <TableHead className="text-center">実行中の Worker</TableHead>
+                    <TableHead className="text-center">実行中のワーカー</TableHead>
                     <SortableTaskHead
                       field="created"
                       label="作成日時"

@@ -588,7 +588,7 @@ export default function DashboardPage() {
                   onClick={() => setTokenVersion(v)}
                   title={
                     v === "new"
-                      ? "新版：llm_usage 計量台帳から取得。呼び出しごとに正確で中断分も含む。有効化後のデータのみ対象"
+                      ? "呼び出しごとの使用量を集計します。中断した呼び出しも含み、使用量の記録を有効にした後のデータが対象です。"
                       : "旧版：activity 統計から取得（過去のタスク含む）。中断分は不算入、モデル別の内訳は不可"
                   }
                   className={cn(

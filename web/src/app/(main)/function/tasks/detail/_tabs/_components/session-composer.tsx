@@ -107,11 +107,11 @@ export function SessionComposer({
             <MentionTextarea
               inputGroup
               rows={1}
-              aria-label="メイン Agent にメッセージを送信"
+              aria-label="メインエージェントにメッセージを送信"
               placeholder={
                 mainBusy
-                  ? "メイン Agent が実行中です。/btw で質問できます…"
-                  : "メイン Agent にメッセージ、@ で脆弱性やアセットを引用…"
+                  ? "メインエージェントが実行中です。/btw で質問できます…"
+                  : "メインエージェントへのメッセージを入力（@で脆弱性やアセットを参照）"
               }
               value={input}
               disabled={sending}
@@ -175,8 +175,8 @@ export function SessionComposer({
             <MentionTextarea
               inputGroup
               rows={1}
-              aria-label={`Worker #${active.intent_id} にメッセージを送信`}
-              placeholder={`Worker #${active.intent_id} にメッセージ、@ でレコードを引用し実行方向を調整…`}
+              aria-label={`ワーカー #${active.intent_id} にメッセージを送信`}
+              placeholder={`ワーカー #${active.intent_id} にメッセージ、@ でレコードを引用し実行方向を調整…`}
               value={workerMessage}
               onValueChange={(value) => {
                 setWorkerMessage(value);
@@ -212,8 +212,8 @@ export function SessionComposer({
                   variant="destructive"
                   onClick={() => void controlWorker(active, "pause")}
                   disabled={controllingIntent === active.intent_id}
-                  title="現在の Worker を一時停止"
-                  aria-label="現在の Worker を一時停止"
+                  title="現在のワーカーを一時停止"
+                  aria-label="現在のワーカーを一時停止"
                 >
                   {controllingIntent === active.intent_id ? <Loader2Icon className="animate-spin" /> : <SquareIcon />}
                 </InputGroupButton>

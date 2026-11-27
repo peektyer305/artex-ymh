@@ -62,7 +62,7 @@ export function FindingRetestDialog({ findingId, findingName, onClose, onStarted
           <DialogTitle>脆弱性の再テスト #{findingId}</DialogTitle>
           <DialogDescription className="break-words">
             {findingName ? <span className="mb-2 block">{findingName}</span> : null}
-            再テスト Agent は、元のエビデンスとテスト制約を読み込み、
+            再テストエージェントは、元のエビデンスとテスト制約を読み込み、
             独立したセッションで対象を絞った検証を行います。再テストが正常に完了し修正が確認されると、脆弱性のステータスは自動的に「修正済み」に変わり、その他の結論では元のステータスを維持します。
           </DialogDescription>
         </DialogHeader>

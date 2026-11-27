@@ -32,7 +32,7 @@ const MOCK_LOGS: LogLine[] = [
     ts: "2026-07-26T03:56:10Z",
     level: "info",
     tag: "planner",
-    text: "task t-acme-web: 第 3 ターンの計画、意図 i-4 を生成",
+    text: "task t-acme-web: 第 3 ターンの計画、実行指示 i-4 を生成",
   },
   {
     seq: 4,
@@ -202,7 +202,7 @@ export default function LogsPage() {
     <div className="flex flex-1 flex-col gap-3">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">システムログ</h1>
-        <p className="text-muted-foreground text-sm">バックエンドのリアルタイムログストリーム（planner / worker / データベース / トラフィック …）</p>
+        <p className="text-muted-foreground text-sm">プランナー、ワーカー、データベース、トラフィックなどのログをリアルタイムに表示します。</p>
       </div>
       <div className="flex flex-1 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">

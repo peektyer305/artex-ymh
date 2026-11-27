@@ -261,7 +261,7 @@ function FileManager({ session }: { session: ShellSession }) {
           {entries === null ? (
             <div className="py-10 text-center text-xs text-muted-foreground">パスを入力して「一覧表示」を押します。</div>
           ) : entries.length === 0 ? (
-            <div className="py-10 text-center text-xs text-muted-foreground">空のディレクトリ</div>
+            <div className="py-10 text-center text-xs text-muted-foreground">ファイルやフォルダーはありません</div>
           ) : (
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
@@ -324,7 +324,7 @@ function FileManager({ session }: { session: ShellSession }) {
         </div>
         {fileMeta?.binary && (
           <p className="text-[11px] text-amber-600 dark:text-amber-400">
-            バイナリファイル：テキストで表示できない場合はエディタが空になります。直接書き込むと元ファイルを上書きするため注意してください。
+            テキストとして表示できないファイルは、エディターが空欄になります。保存すると元のファイルを上書きするため、内容を確認してください。
           </p>
         )}
         {fileMeta?.truncated && (
@@ -429,7 +429,7 @@ export function SessionWorkbench({
                 <AlertDialogHeader>
                   <AlertDialogTitle>セッション #{session.id} を削除しますか？</AlertDialogTitle>
                   <AlertDialogDescription>
-                    この WebShell セッションを切断して削除します。ターゲット上のマルウェアファイルは消去されません。この操作は取り消せません。
+                    このWebShellセッションを切断して削除します。接続先に置いたWebShellファイルは残ります。この操作は取り消せません。
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

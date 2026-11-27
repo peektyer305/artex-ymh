@@ -72,7 +72,7 @@ const SCOPE_KIND_LABELS: Record<TaskScopeRow["kind"], string> = {
 
 const SCOPE_SOURCE_LABELS: Record<TaskScopeRow["source"], string> = {
   auto: "自動",
-  agent: "Agent",
+  agent: "エージェント",
   manual: "手動",
 };
 
@@ -604,7 +604,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
               )}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">ゴールがありません。追加するとプランナーがこれに基づき探索意図を配分し、達成を判定します。</p>
+            <p className="text-muted-foreground text-sm">ゴールがありません。追加すると、プランナーが実行指示を作成し、結果から達成状況を判定します。</p>
           )}
         </CardContent>
       </Card>
@@ -616,7 +616,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
           <CardTitle className="flex items-center gap-2 text-base">
             <ShieldAlertIcon className="size-4 text-amber-500" /> 操作制約
             <span className="text-muted-foreground text-xs font-normal">
-              （planner/worker の探索境界を画定、全 {constraints.length} 件。変更は次の計画から有効）
+              （プランナーとワーカーの操作範囲を指定します。全 {constraints.length} 件。変更は次の計画から有効）
             </span>
           </CardTitle>
         </CardHeader>
@@ -731,7 +731,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
             </div>
           ) : (
             <p className="text-muted-foreground text-sm">
-              操作制約がありません。タスク作成時に説明/ゴールから自動抽出されます。ここで手動の追加/削除/変更もでき、「許可/禁止する操作」を画定できます。
+              操作制約がありません。タスク作成時は説明とゴールから自動抽出します。ここで許可・禁止する操作を追加、変更、削除できます。
             </p>
           )}
         </CardContent>
@@ -992,7 +992,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
             />
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">実行中 Worker</div>
+            <div className="text-xs text-muted-foreground">実行中ワーカー</div>
             <div className="mt-1 text-lg font-semibold tabular-nums">{running.length}</div>
           </div>
           <div>
@@ -1025,7 +1025,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm">
-              <TargetIcon className="size-4" /> 実行中の意図
+              <TargetIcon className="size-4" /> 実行中の指示
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
@@ -1035,7 +1035,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                 <span className="min-w-0 flex-1 truncate">{i.payload}</span>
               </div>
             ))}
-            {running.length === 0 && <p className="text-sm text-muted-foreground">実行中の意図はありません</p>}
+            {running.length === 0 && <p className="text-sm text-muted-foreground">実行中の指示はありません</p>}
           </CardContent>
         </Card>
 
@@ -1060,7 +1060,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
             </div>
             <div>
               <div className="text-2xl font-semibold tabular-nums text-red-600">{blocked.length}</div>
-              <div className="text-xs text-muted-foreground">ブロックされた意図</div>
+              <div className="text-xs text-muted-foreground">ブロックされた実行指示</div>
             </div>
           </CardContent>
         </Card>
@@ -1089,7 +1089,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
         <Card className="border-red-500/30">
           <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <AlertTriangleIcon className="size-4 text-red-500" /> ブロック/エラー意図
+              <AlertTriangleIcon className="size-4 text-red-500" /> ブロック/エラー実行指示
               <span className="text-xs font-normal text-muted-foreground">（全 {blocked.length} 件、再実行可）</span>
             </CardTitle>
             <Button size="sm" variant="outline" disabled={rerunning.has("__all__")} onClick={() => void rerunAll()}>
@@ -1125,9 +1125,9 @@ export function OverviewTab({ taskId }: { taskId: string }) {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-        <StatCard label="未割り当て意図" value={open.length} icon={ShieldCheckIcon} sub="frontier 開放" />
+        <StatCard label="未割り当ての指示" value={open.length} icon={ShieldCheckIcon} sub="frontier 開放" />
         <StatCard label="確定ファインディング" value={taskFindings.length} icon={BugIcon} sub="このタスク" />
-        <StatCard label="意図総数" value={intents.length} icon={AlertTriangleIcon} sub="このタスクの全意図" />
+        <StatCard label="実行指示の総数" value={intents.length} icon={AlertTriangleIcon} sub="このタスクの全意図" />
       </div>
     </div>
   );

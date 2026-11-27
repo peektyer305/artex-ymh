@@ -95,7 +95,7 @@ function SidePanel({
             <p>コンテキスト更新日時：{new Date(side.snapshot.captured_at).toLocaleString()}</p>
           </>
         ) : (
-          "メイン Agent の初回実行後から質問できます"
+          "メインエージェントの初回実行後から質問できます"
         )}
       </div>
       <div
@@ -116,7 +116,7 @@ function SidePanel({
           <Empty>
             <EmptyHeader>
               <EmptyTitle>いつでも質問できます</EmptyTitle>
-              <EmptyDescription>現在の Agent のコンテキストに基づいて回答し、メインタスクは実行を継続します。</EmptyDescription>
+              <EmptyDescription>今の会話を参照して回答します。質問中もタスクの実行は続きます。</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
@@ -211,7 +211,7 @@ function SidePanel({
           <AlertDialogHeader>
             <AlertDialogTitle>サイドクエスチョン履歴を消去しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              現在の Agent のサイドクエスチョンを削除し、生成中のサイドクエスチョン回答を停止します。メインセッションとコンテキストスナップショットは保持されます。
+              このエージェントのサイドクエスチョンを削除し、生成中の回答を停止します。メインセッションと、参照用に保存した会話の情報は残ります。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

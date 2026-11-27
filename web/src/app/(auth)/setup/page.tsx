@@ -23,7 +23,7 @@ export default function SetupPage() {
       .then(({ initialized }) => {
         if (initialized) router.replace("/login");
       })
-      .catch(() => setError("バックエンドサービスに接続できません"))
+      .catch(() => setError("サーバーの状態を取得できませんでした。サーバーの起動状況と接続先を確認してください。"))
       .finally(() => setChecking(false));
   }, [router]);
 
@@ -34,7 +34,7 @@ export default function SetupPage() {
       return;
     }
     if (password.length < 8) {
-      setError("パスワードは8桁以上にしてください");
+      setError("パスワードは8文字以上にしてください");
       return;
     }
     setLoading(true);
@@ -75,8 +75,8 @@ export default function SetupPage() {
       <div className="flex w-full items-center justify-center bg-background p-8 lg:w-2/3">
         <div className="w-full max-w-md space-y-10 py-24 lg:py-32">
           <div className="space-y-4 text-center">
-            <h2 className="text-2xl font-medium tracking-tight">パスワードの初期化</h2>
-            <p className="mx-auto max-w-xl text-muted-foreground">ARTEX の初回利用時は、アカウントのログインパスワード（8桁以上）を設定してください</p>
+            <h2 className="text-2xl font-medium tracking-tight">初回パスワードの設定</h2>
+            <p className="mx-auto max-w-xl text-muted-foreground">ARTEXを使い始める前に、ログイン用パスワードを8文字以上で設定してください。</p>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="space-y-1.5">
@@ -86,7 +86,7 @@ export default function SetupPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="8桁以上"
+                placeholder="8文字以上"
                 autoFocus
                 autoComplete="new-password"
               />

@@ -183,7 +183,7 @@ function JudgeCard() {
       setCfg(j);
       setProfiles(ps);
     } catch (e) {
-      toast.error("モデルフォールバック設定の読み込みに失敗しました: " + (e as Error).message);
+      toast.error("モデル審査の設定の読み込みに失敗しました: " + (e as Error).message);
     } finally {
       setLoading(false);
     }
@@ -201,7 +201,7 @@ function JudgeCard() {
     setSaving(true);
     try {
       await api.interceptSetJudgeConfig(cfg);
-      toast.success("モデルフォールバック設定を保存しました");
+      toast.success("モデル審査の設定を保存しました");
       await load(); // 再読み込み:プロンプトが空なら組み込みテンプレートを再入力
     } catch (e) {
       toast.error("保存に失敗しました: " + (e as Error).message);
@@ -236,7 +236,7 @@ function JudgeCard() {
         <div className="flex items-center gap-2.5">
           <BotIcon className={`h-5 w-5 shrink-0 ${cfg.enabled ? "text-violet-600" : "text-muted-foreground"}`} />
           <div>
-            <p className="text-sm font-semibold leading-tight">モデルフォールバック承認</p>
+            <p className="text-sm font-semibold leading-tight">ルール未一致時のモデル審査</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               <span className="font-medium text-foreground">インターセプト範囲</span>内で、かつ<span className="font-medium text-foreground">どのインターセプトルールにも一致しない</span>コマンドのみ、モデルが意味判定を行います（許可 / 手動承認へ / ブロック）
             </p>
@@ -450,7 +450,7 @@ function AutoAllowCard() {
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 <p>
-                  有効にすると、AI agent の承認が必要なすべての操作（横移動、トンネルツール、ブルートフォース、一時サービスなど）が
+                  有効にすると、AI エージェントの承認が必要なすべての操作（横移動、トンネルツール、ブルートフォース、一時サービスなど）が
                   <span className="font-semibold text-red-600 dark:text-red-400">自動承認</span>
                   となり、拒否ルールに該当する操作は引き続きブロックされます。認可された検証環境/テスト環境でのみ使用してください。有効期間を選択してください。
                 </p>
@@ -662,7 +662,7 @@ export default function InterceptPage() {
         <div>
           <h1 className="text-lg font-semibold leading-tight">コマンドインターセプト</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            ツール実行前にインターセプトルールで照合します。一致しないコマンドはモデルのフォールバック判定に委ねられます
+            ツール実行前にルールと照合します。一致しない場合は、モデル審査を有効にしていればモデルが判定します。
           </p>
         </div>
       </div>
@@ -683,7 +683,7 @@ export default function InterceptPage() {
           <span className="shrink-0 font-medium">インターセプト範囲</span>
           {scopeTools.length === 0 ? (
             <span className="text-amber-700 dark:text-amber-500">
-              ツールが1つも有効になっていません — インターセプトルールとモデルフォールバックはどちらも機能しません
+              判定対象のツールを選んでください。選択するまで、ルール照合とモデル審査は実行されません。
             </span>
           ) : (
             <>

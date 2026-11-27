@@ -10,7 +10,7 @@ const ASSET_TYPE_LABELS: Record<NewAssetType, string> = {
 };
 
 const TASK_ASSET_SOURCE_LABELS: Record<string, string> = {
-  agent: "Agent 検出",
+  agent: "エージェント検出",
   anchor: "黒板アンカー",
   api: "アセット API",
   company: "企業関連",
